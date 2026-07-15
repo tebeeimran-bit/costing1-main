@@ -9,45 +9,51 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('assistant_topics', function (Blueprint $table) {
-            $table->id();
-            $table->string('menu')->default('general');
-            $table->string('title');
-            $table->text('content');
-            $table->string('role')->nullable();
-            $table->json('keywords')->nullable();
-            $table->boolean('active')->default(true);
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('assistant_topics')) {
+            Schema::create('assistant_topics', function (Blueprint $table) {
+                $table->id();
+                $table->string('menu')->default('general');
+                $table->string('title');
+                $table->text('content');
+                $table->string('role')->nullable();
+                $table->json('keywords')->nullable();
+                $table->boolean('active')->default(true);
+                $table->timestamps();
+            });
+        }
 
-        Schema::create('assistant_rules', function (Blueprint $table) {
-            $table->id();
-            $table->string('code')->unique();
-            $table->string('title');
-            $table->string('condition_type')->default('always');
-            $table->json('condition_payload')->nullable();
-            $table->string('severity')->default('info');
-            $table->text('message');
-            $table->string('action_label')->nullable();
-            $table->string('action_url')->nullable();
-            $table->boolean('active')->default(true);
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('assistant_rules')) {
+            Schema::create('assistant_rules', function (Blueprint $table) {
+                $table->id();
+                $table->string('code')->unique();
+                $table->string('title');
+                $table->string('condition_type')->default('always');
+                $table->json('condition_payload')->nullable();
+                $table->string('severity')->default('info');
+                $table->text('message');
+                $table->string('action_label')->nullable();
+                $table->string('action_url')->nullable();
+                $table->boolean('active')->default(true);
+                $table->timestamps();
+            });
+        }
 
-        Schema::create('assistant_file_templates', function (Blueprint $table) {
-            $table->id();
-            $table->string('type')->default('excel');
-            $table->string('name');
-            $table->json('required_columns')->nullable();
-            $table->json('optional_columns')->nullable();
-            $table->json('validation_rules')->nullable();
-            $table->boolean('active')->default(true);
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('assistant_file_templates')) {
+            Schema::create('assistant_file_templates', function (Blueprint $table) {
+                $table->id();
+                $table->string('type')->default('excel');
+                $table->string('name');
+                $table->json('required_columns')->nullable();
+                $table->json('optional_columns')->nullable();
+                $table->json('validation_rules')->nullable();
+                $table->boolean('active')->default(true);
+                $table->timestamps();
+            });
+        }
 
         $now = now();
 
-        DB::table('assistant_topics')->insert([
+        $topics = [
             [
                 'menu' => 'form',
                 'title' => 'Form Costing belum bisa submit',
@@ -88,9 +94,15 @@ return new class extends Migration
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-        ]);
+        ];
 
-        DB::table('assistant_rules')->insert([
+        foreach ($topics as $topic) {
+            if (! DB::table('assistant_topics')->where('title', $topic['title'])->exists()) {
+                DB::table('assistant_topics')->insert($topic);
+            }
+        }
+
+        $rules = [
             [
                 'code' => 'unresolved_unpriced_parts',
                 'title' => 'Unpriced parts aktif',
@@ -143,9 +155,13 @@ return new class extends Migration
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-        ]);
+        ];
 
-        DB::table('assistant_file_templates')->insert([
+        foreach ($rules as $rule) {
+            DB::table('assistant_rules')->insertOrIgnore($rule);
+        }
+
+        $templates = [
             [
                 'type' => 'excel',
                 'name' => 'Database Parts Excel',
@@ -176,7 +192,13 @@ return new class extends Migration
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-        ]);
+        ];
+
+        foreach ($templates as $template) {
+            if (! DB::table('assistant_file_templates')->where('name', $template['name'])->exists()) {
+                DB::table('assistant_file_templates')->insert($template);
+            }
+        }
     }
 
     public function down(): void

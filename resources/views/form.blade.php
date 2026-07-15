@@ -847,6 +847,15 @@
         const initialCostingResumeOverrides = @json($costingData->costing_resume_overrides ?? []);
         let costingResumeOverrides = { ...(initialCostingResumeOverrides || {}) };
 
+        // Material ownership is now consolidated under DEM. Discard saved display
+        // overrides from the previous split so they cannot restore stale totals.
+        Object.keys(costingResumeOverrides).forEach((key) => {
+            if (key.startsWith('material.dem.') || key.startsWith('material.customer.')) {
+                delete costingResumeOverrides[key];
+            }
+        });
+        syncCostingResumeOverridesInput();
+
         function triggerUmhImport() {
             const input = document.getElementById('importUmhFileInput');
 
@@ -2416,45 +2425,69 @@
 
         function costingResumeCollectMaterials(ownerType) {
             const categories = ['Wire', 'Connector', 'Terminal', 'Tube', 'Tape', 'Accessories'];
+
+            // Keep the CUSTOMER section available, but consolidate every material
+            // row into DEM regardless of its C/N value.
+            if (ownerType === 'customer') {
+                return [];
+            }
+
             const grouped = categories.reduce((acc, category) => {
-                acc[category] = { name: category, qty: 0, units: new Set(), amount: 0 };
+                acc[category] = new Map();
                 return acc;
             }, {});
 
             document.querySelectorAll('#materialTableBody tr').forEach((row) => {
-                const cnType = (row.querySelector('.cn-type')?.value || '').trim().toUpperCase();
-                const isCustomerMaterial = cnType === 'C';
-
-                if (ownerType === 'dem' && isCustomerMaterial) return;
-                if (ownerType === 'customer' && !isCustomerMaterial) return;
-
                 const partName = row.querySelector('.part-name')?.value || row.querySelector('.part-name')?.textContent || '';
-                const category = costingResumeClassifyMaterial(partName);
                 const qty = parseInputNumber(row.querySelector('.qty-req')?.value || 0);
                 const unit = (row.querySelector('.unit')?.value || row.querySelector('.unit')?.textContent || '').trim().toLowerCase();
+                const unitKey = unit || '-';
                 const totalElement = row.querySelector('.total-price');
                 const amount = totalElement ? parseDataValueNumber(totalElement.getAttribute('data-value') || totalElement.textContent || 0) : 0;
 
-                grouped[category].qty += qty;
-                grouped[category].amount += amount;
-                if (unit) grouped[category].units.add(unit);
+                // Ignore unused input rows; otherwise a blank row is incorrectly
+                // classified as an additional Accessories row.
+                if (!String(partName).trim() && qty <= 0 && amount <= 0) {
+                    return;
+                }
+
+                const category = costingResumeClassifyMaterial(partName);
+
+                if (!grouped[category].has(unitKey)) {
+                    const safeUnitKey = unitKey.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'none';
+                    grouped[category].set(unitKey, {
+                        name: category,
+                        fieldKey: `${category}.${safeUnitKey}`,
+                        qty: 0,
+                        units: new Set(),
+                        amount: 0
+                    });
+                }
+
+                const categoryUnitRow = grouped[category].get(unitKey);
+                categoryUnitRow.qty += qty;
+                categoryUnitRow.amount += amount;
+                if (unit) categoryUnitRow.units.add(unit);
             });
 
-            return categories.map((category) => grouped[category]);
+            return categories.flatMap((category) => {
+                return Array.from(grouped[category].values())
+                    .filter((row) => row.qty > 0 || row.amount > 0);
+            });
         }
 
         function costingResumeMaterialRow(row, materialTotal, ownerType) {
-            const unit = row.units.size === 0 ? '-' : (row.units.size === 1 ? Array.from(row.units)[0] : 'mix');
+            const unit = row.units.size === 0 ? '-' : Array.from(row.units)[0];
             const qty = row.qty > 0 ? costingResumePlainNumber(row.qty, 3) : '-';
             const amount = row.amount > 0 ? costingResumeMoney(row.amount) : '-';
             const pct = costingResumePercent(row.amount, materialTotal);
             return `
                 <tr>
-                    <td data-cr-field="material.${ownerType}.${row.name}.name">${row.name}</td>
-                    <td class="text-right" data-cr-field="material.${ownerType}.${row.name}.qty">${qty}</td>
-                    <td data-cr-field="material.${ownerType}.${row.name}.unit">${unit}</td>
-                    <td class="text-right" data-cr-field="material.${ownerType}.${row.name}.amount">Rp&nbsp;${amount}</td>
-                    <td class="text-right" data-cr-field="material.${ownerType}.${row.name}.pct">${pct}</td>
+                    <td data-cr-field="material.${ownerType}.${row.fieldKey}.name">${row.name}</td>
+                    <td class="text-right" data-cr-field="material.${ownerType}.${row.fieldKey}.qty">${qty}</td>
+                    <td data-cr-field="material.${ownerType}.${row.fieldKey}.unit">${unit}</td>
+                    <td class="text-right" data-cr-field="material.${ownerType}.${row.fieldKey}.amount">Rp&nbsp;${amount}</td>
+                    <td class="text-right" data-cr-field="material.${ownerType}.${row.fieldKey}.pct">${pct}</td>
                 </tr>
             `;
         }
@@ -2499,7 +2532,7 @@
                 <tr><td><strong data-cr-field="material.dem.total.label">TOTAL MATERIAL DEM</strong></td><td></td><td></td><td class="text-right"><strong data-cr-field="material.dem.total.amount">Rp&nbsp;${costingResumeMoney(demTotal)}</strong></td><td class="text-right"><strong data-cr-field="material.dem.total.pct">${costingResumePercent(demTotal, materialCost)}</strong></td></tr>
                 <tr class="section-row"><td colspan="5">Material by CUSTOMER</td></tr>
                 ${customerRows.map((row) => costingResumeMaterialRow(row, materialCost, 'customer')).join('')}
-                <tr><td><strong data-cr-field="material.customer.total.label">TOTAL MATERIAL CUSTOMER</strong></td><td></td><td></td><td class="text-right"><strong data-cr-field="material.customer.total.amount">Rp&nbsp;${customerTotal > 0 ? costingResumeMoney(customerTotal) : '-'}</strong></td><td class="text-right"><strong data-cr-field="material.customer.total.pct">${costingResumePercent(customerTotal, materialCost)}</strong></td></tr>
+                <tr><td><strong data-cr-field="material.customer.total.label">TOTAL MATERIAL CUSTOMER</strong></td><td></td><td></td><td class="text-right"><strong data-cr-field="material.customer.total.amount">Rp&nbsp;${costingResumeMoney(customerTotal)}</strong></td><td class="text-right"><strong data-cr-field="material.customer.total.pct">${costingResumePercent(customerTotal, materialCost)}</strong></td></tr>
             `;
 
             costingResumeSetText('crTotalMaterialCost', costingResumeMoney(materialCost));

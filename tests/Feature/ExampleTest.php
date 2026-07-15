@@ -18,6 +18,17 @@ class ExampleTest extends TestCase
         $response->assertRedirect('/login');
     }
 
+    public function test_admin_can_render_dashboard(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($user)->get('/');
+
+        $response
+            ->assertOk()
+            ->assertSee('Total Project Tracking (Semua Periode)');
+    }
+
     public function test_login_page_can_be_rendered(): void
     {
         $response = $this->get('/login');

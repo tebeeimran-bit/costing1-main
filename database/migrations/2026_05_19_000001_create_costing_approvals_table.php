@@ -9,26 +9,28 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('costing_approvals', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('document_revision_id')->constrained('document_revisions')->cascadeOnDelete();
-            $table->foreignId('costing_data_id')->nullable()->constrained('costing_data')->nullOnDelete();
-            $table->string('status')->default('waiting_coordinator_approval');
-            $table->decimal('cogm_value', 20, 2)->nullable();
-            $table->foreignId('submitted_by_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('approved_by_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('rejected_by_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->timestamp('submitted_at')->nullable();
-            $table->timestamp('approved_at')->nullable();
-            $table->timestamp('rejected_at')->nullable();
-            $table->text('submit_notes')->nullable();
-            $table->text('approval_notes')->nullable();
-            $table->text('rejection_notes')->nullable();
-            $table->timestamps();
+        if (! Schema::hasTable('costing_approvals')) {
+            Schema::create('costing_approvals', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('document_revision_id')->constrained('document_revisions')->cascadeOnDelete();
+                $table->foreignId('costing_data_id')->nullable()->constrained('costing_data')->nullOnDelete();
+                $table->string('status')->default('waiting_coordinator_approval');
+                $table->decimal('cogm_value', 20, 2)->nullable();
+                $table->foreignId('submitted_by_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->foreignId('approved_by_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->foreignId('rejected_by_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->timestamp('submitted_at')->nullable();
+                $table->timestamp('approved_at')->nullable();
+                $table->timestamp('rejected_at')->nullable();
+                $table->text('submit_notes')->nullable();
+                $table->text('approval_notes')->nullable();
+                $table->text('rejection_notes')->nullable();
+                $table->timestamps();
 
-            $table->index(['document_revision_id', 'status']);
-            $table->index(['status', 'submitted_at']);
-        });
+                $table->index(['document_revision_id', 'status']);
+                $table->index(['status', 'submitted_at']);
+            });
+        }
 
         $roles = [
             'admin_costing' => [
@@ -56,10 +58,13 @@ return new class extends Migration
 
         foreach ($roles as $role => $modules) {
             foreach ($modules as $module => $access) {
-                DB::table('role_permissions')->updateOrInsert(
-                    ['role' => $role, 'module' => $module],
-                    ['access' => $access, 'created_at' => now(), 'updated_at' => now()]
-                );
+                DB::table('role_permissions')->insertOrIgnore([
+                    'role' => $role,
+                    'module' => $module,
+                    'access' => $access,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
         }
     }

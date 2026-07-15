@@ -2,16 +2,14 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Foundation\Testing\WithFaker;
-use Tests\TestCase;
-use App\Models\Product;
-use App\Models\Customer;
-use App\Models\CostingData;
-use App\Models\Material;
-use App\Models\MaterialBreakdown;
-use App\Models\User;
 use App\Models\BusinessCategory;
+use App\Models\CostingData;
+use App\Models\Customer;
+use App\Models\Material;
+use App\Models\Product;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class CostingSubmissionTest extends TestCase
 {
@@ -43,6 +41,8 @@ class CostingSubmissionTest extends TestCase
             'model' => 'Model X',
             'assy_no' => 'ASSY-001',
             'assy_name' => 'Test Assembly',
+            'pic_engineering' => 'Engineering PIC',
+            'pic_marketing' => 'Marketing PIC',
             'material_cost' => 100000, // Added
             'labor_cost' => 20000, // Added
             'overhead_cost' => 10000, // Added
@@ -66,8 +66,8 @@ class CostingSubmissionTest extends TestCase
                     'pro_code' => 'P',
                     'cn_type' => 'N',
                     'import_tax' => '0',
-                ]
-            ]
+                ],
+            ],
         ];
 
         // 2. Act: Post data

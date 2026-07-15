@@ -43,10 +43,11 @@ class DatabaseSpreadsheetImportService
                 $col = $colIndex + 1;
                 if ($col > $highestColIndex) {
                     $payload[$field] = $field === 'base_uom' ? '' : null;
+
                     continue;
                 }
 
-                $cellRef = Coordinate::stringFromColumnIndex($col) . $row;
+                $cellRef = Coordinate::stringFromColumnIndex($col).$row;
                 $cell = $sheet->getCell($cellRef);
                 $rawValue = trim((string) $cell->getFormattedValue());
 
@@ -55,11 +56,13 @@ class DatabaseSpreadsheetImportService
                     $payload[$field] = ($cellRawValue !== null && $cellRawValue !== '')
                         ? floatval($cellRawValue)
                         : (($field === 'price') ? 0 : null);
+
                     continue;
                 }
 
                 if ($field === 'price_update') {
                     $payload[$field] = $this->parseDateValue($rawValue);
+
                     continue;
                 }
 
@@ -69,6 +72,7 @@ class DatabaseSpreadsheetImportService
                     } elseif ($field !== 'currency') {
                         $payload[$field] = null;
                     }
+
                     continue;
                 }
 
@@ -79,7 +83,7 @@ class DatabaseSpreadsheetImportService
                 DB::table('materials')->insert($payload);
                 $created++;
             } catch (\Throwable $e) {
-                \Log::warning('Row ' . $row . ' insert failed: ' . $e->getMessage());
+                \Log::warning('Row '.$row.' insert failed: '.$e->getMessage());
             }
         }
 
@@ -91,14 +95,19 @@ class DatabaseSpreadsheetImportService
 
     private function parseDateValue(string $rawValue): ?string
     {
+        $rawValue = trim($rawValue);
         if ($rawValue === '') {
             return null;
         }
 
-        try {
-            return \Carbon\Carbon::parse($rawValue)->format('Y-m-d');
-        } catch (\Throwable $e) {
-            return null;
+        foreach (['!Y-m-d', '!d/m/Y', '!m/d/Y', '!d-m-Y'] as $format) {
+            $date = \DateTimeImmutable::createFromFormat($format, $rawValue);
+            $errors = \DateTimeImmutable::getLastErrors();
+            if ($date !== false && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
+                return $date->format('Y-m-d');
+            }
         }
+
+        return null;
     }
 }

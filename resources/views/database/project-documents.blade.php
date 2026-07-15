@@ -485,13 +485,14 @@
             <span style="font-size: 0.8rem; color: var(--slate-500);">Menampilkan {{ $pagedRows->firstItem() }}–{{ $pagedRows->lastItem() }} dari {{ $pagedRows->total() }} data</span>
         </div>
         <div class="material-table-container">
-            <table class="data-table" id="docProjectTable" style="min-width: 1820px;">
+            <table class="data-table" id="docProjectTable" style="min-width: 1940px;">
                 <thead>
                     <tr>
                         <th style="width: 40px;">No.</th>
                         <th>Customer</th>
                         <th>Model</th>
                         <th>Part Name</th>
+                        <th>Part No</th>
                         <th>Revisi</th>
                         <th class="th-a00" style="text-align: center;">A00</th>
                         <th class="th-a00">Tgl Diterima A00</th>
@@ -549,6 +550,8 @@
                             $costing->model ?? '',
                             $project->part_name ?? '',
                             $costing->assy_name ?? '',
+                            $project->part_number ?? '',
+                            $costing->assy_no ?? '',
                             $rev->version_label ?? '',
                         ]))) }}"
                         data-status="{{ $priorityStatus }}">
@@ -556,6 +559,7 @@
                             <td>{{ $costing->customer->name ?? $project->customer ?? '-' }}</td>
                             <td>{{ $costing->model ?? $project->model ?? '-' }}</td>
                             <td>{{ $costing->assy_name ?? $project->part_name ?? '-' }}</td>
+                            <td>{{ $costing->assy_no ?? $project->part_number ?? '-' }}</td>
                             <td>{{ $rev->version_label ?? '-' }}</td>
 
                             {{-- A00 --}}
@@ -734,7 +738,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="23" style="text-align: center; color: var(--slate-400); padding: 2rem;">
+                            <td colspan="24" style="text-align: center; color: var(--slate-400); padding: 2rem;">
                                 Belum ada data dokumen project.
                             </td>
                         </tr>

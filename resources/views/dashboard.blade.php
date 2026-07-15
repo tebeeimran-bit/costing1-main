@@ -148,7 +148,7 @@
     <!-- KPI Cards -->
     <div class="kpi-grid">
         <div class="kpi-card">
-            <div class="kpi-label">Total Project Tracking</div>
+            <div class="kpi-label">Total Project Tracking (Semua Periode)</div>
             <div class="kpi-value">{{ number_format($trackingProjectCount ?? 0, 0, ',', '.') }}</div>
             <div style="margin-top: 0.4rem; font-size: 0.72rem; color: rgba(255,255,255,0.7);">
                 Dari menu Project / Tracking
