@@ -1,0 +1,23 @@
+{
+  "name": "Laravel Costing",
+  "image": "mcr.microsoft.com/devcontainers/php:8.3",
+  "features": {
+    "ghcr.io/devcontainers/features/sqlite3:1": {}
+  },
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Laravel Dev Server",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bmewburn.vscode-intelephense-client",
+        "felixbecker.php-debug",
+        "bmewburn.vscode-intelephense-client"
+      ]
+    }
+  }
+}
