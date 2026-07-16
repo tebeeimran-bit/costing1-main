@@ -205,7 +205,7 @@
                 </div>
                 <div style="margin-bottom: 1rem;">
                     <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.375rem;">Password</label>
-                    <input type="password" name="password" required minlength="6" style="width: 100%; padding: 0.5rem 0.75rem; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.875rem; font-family: inherit; outline: none;" placeholder="Minimal 6 karakter">
+                    <input type="password" name="password" required minlength="10" autocomplete="new-password" style="width: 100%; padding: 0.5rem 0.75rem; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.875rem; font-family: inherit; outline: none;" placeholder="Minimal 10 karakter">
                 </div>
                 <div style="margin-bottom: 0.5rem;">
                     <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.375rem;">Role</label>
@@ -245,7 +245,7 @@
                 </div>
                 <div style="margin-bottom: 1rem;">
                     <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.375rem;">Password <span style="color: #94a3b8; font-weight: 400;">(kosongkan jika tidak diubah)</span></label>
-                    <input type="password" name="password" minlength="6" style="width: 100%; padding: 0.5rem 0.75rem; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.875rem; font-family: inherit; outline: none;" placeholder="Password baru">
+                    <input type="password" name="password" minlength="10" autocomplete="new-password" style="width: 100%; padding: 0.5rem 0.75rem; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.875rem; font-family: inherit; outline: none;" placeholder="Password baru, minimal 10 karakter">
                 </div>
                 <div style="margin-bottom: 0.5rem;">
                     <label style="display: block; font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.375rem;">Role</label>

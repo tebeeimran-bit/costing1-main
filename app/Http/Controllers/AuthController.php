@@ -144,6 +144,15 @@ class AuthController extends Controller
             'password' => ['nullable', 'string', 'min:10'],
         ]);
 
+        if ($user->role === 'admin' && $validated['role'] !== 'admin') {
+            if ($user->id === Auth::id()) {
+                return redirect()->route('permissions')->with('error', 'Role akun Admin yang sedang digunakan tidak dapat diturunkan. Gunakan akun Admin lain.');
+            }
+            if (User::where('role', 'admin')->count() <= 1) {
+                return redirect()->route('permissions')->with('error', 'Minimal satu akun Admin harus tetap tersedia.');
+            }
+        }
+
         $user->name = $validated['name'];
         $user->email = $validated['email'];
         $user->role = $validated['role'];
@@ -163,6 +172,10 @@ class AuthController extends Controller
 
         if ($user->id === Auth::id()) {
             return redirect()->route('permissions')->with('error', 'Tidak dapat menghapus akun sendiri.');
+        }
+
+        if ($user->role === 'admin' && User::where('role', 'admin')->count() <= 1) {
+            return redirect()->route('permissions')->with('error', 'Admin terakhir tidak dapat dihapus.');
         }
 
         $user->delete();

@@ -370,7 +370,7 @@
                 <div class="sidebar-nav-section" data-tour="administration">
                     <div class="sidebar-nav-title">Administrasi</div>
                     <a href="{{ route('permissions', absolute: false) }}"
-                        class="sidebar-nav-item {{ request()->routeIs('permissions') ? 'active' : '' }}">
+                        class="sidebar-nav-item {{ request()->routeIs('permissions*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                             <circle cx="8.5" cy="7" r="4"/>
@@ -918,6 +918,21 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+            const sidebarNav = document.querySelector('.sidebar-nav');
+            const activeSidebarItem = sidebarNav?.querySelector('.sidebar-nav-item.active');
+            if (sidebarNav && activeSidebarItem) {
+                window.requestAnimationFrame(() => {
+                    const navRect = sidebarNav.getBoundingClientRect();
+                    const itemRect = activeSidebarItem.getBoundingClientRect();
+                    if (itemRect.top < navRect.top || itemRect.bottom > navRect.bottom) {
+                        sidebarNav.scrollTo({
+                            top: activeSidebarItem.offsetTop - (sidebarNav.clientHeight / 2) + (activeSidebarItem.offsetHeight / 2),
+                            behavior: 'auto',
+                        });
+                    }
+                });
+            }
+
             const okButton = document.getElementById('app-confirm-ok');
             const notifyOkButton = document.getElementById('app-notify-ok');
 

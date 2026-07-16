@@ -78,6 +78,21 @@ test('login remains accessible on a mobile viewport', async ({ page }) => {
     expect(overflow).toBeFalsy();
 });
 
+test('permission menu remains active and visible in the sidebar', async ({ page }) => {
+    await login(page);
+    await page.goto('/permissions');
+    await dismissTour(page);
+    const nav = page.locator('.sidebar-nav');
+    const active = nav.locator('.sidebar-nav-item.active');
+    await expect(active).toContainText('Permission');
+    const visible = await active.evaluate((item) => {
+        const itemRect = item.getBoundingClientRect();
+        const navRect = item.closest('.sidebar-nav').getBoundingClientRect();
+        return itemRect.top >= navRect.top && itemRect.bottom <= navRect.bottom;
+    });
+    expect(visible).toBeTruthy();
+});
+
 test('project and costing pages stay inside the browser performance budget', async ({ page }) => {
     await login(page);
     const response = await page.goto('/project?search=E2E-APPROVAL-001');
