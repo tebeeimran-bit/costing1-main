@@ -6,11 +6,12 @@ use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Services\Project\ProjectWorkflowService;
 use App\Services\Project\ProjectDeadlineService;
+use App\Services\Project\ProjectCompletenessService;
 use Illuminate\Http\Request;
 
 class MyTaskController extends Controller
 {
-    public function index(Request $request, ProjectWorkflowService $workflowService, ProjectDeadlineService $deadlineService)
+    public function index(Request $request, ProjectWorkflowService $workflowService, ProjectDeadlineService $deadlineService, ProjectCompletenessService $completenessService)
     {
         $role = (string) ($request->user()?->role ?? 'viewer');
         $category = trim((string) $request->query('category', 'all'));
@@ -20,16 +21,17 @@ class MyTaskController extends Controller
             ->latest('updated_at')
             ->get();
 
-        $costingByRevision = CostingData::query()
+        $costingByRevision = CostingData::query()->withCount('materialBreakdowns')
             ->with('customer')
             ->whereNotNull('tracking_revision_id')
             ->get()
             ->keyBy('tracking_revision_id');
 
-        $tasks = $revisions->map(function (DocumentRevision $revision) use ($costingByRevision, $workflowService, $deadlineService, $role) {
+        $tasks = $revisions->map(function (DocumentRevision $revision) use ($costingByRevision, $workflowService, $deadlineService, $completenessService, $role) {
             $costing = $costingByRevision->get($revision->id);
             $workflow = $workflowService->build($revision, $costing, $role);
             $deadline = $deadlineService->resolve($revision, $workflow);
+            $completeness = $completenessService->build($revision, $costing);
             $step = collect($workflow['steps'])->first(fn ($item) => !$item['complete']);
             $taskCategory = $step['key'] ?? 'marketing';
 
@@ -65,6 +67,7 @@ class MyTaskController extends Controller
                 'status' => $revision->status_label,
                 'progress' => $workflow['progress'],
                 'deadline' => $deadline,
+                'completeness' => $completeness,
                 'updated_at' => $revision->updated_at,
             ];
         })->filter()->values();

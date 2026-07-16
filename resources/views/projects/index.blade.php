@@ -599,6 +599,19 @@
         </form>
     </div>
 
+    @if(session('success'))<div class="bulk-flash">{{ session('success') }}</div>@endif
+    @if($errors->has('bulk_value'))<div class="bulk-flash error">{{ $errors->first('bulk_value') }}</div>@endif
+    <form method="POST" action="{{ route('project.bulk-action', absolute:false) }}" class="bulk-toolbar" id="bulkProjectForm" hidden>
+        @csrf
+        <div><strong><span id="bulkSelectedCount">0</span> revisi dipilih</strong><button type="button" id="bulkClearSelection">Batalkan Pilihan</button></div>
+        <div id="bulkRevisionInputs"></div>
+        <select name="bulk_action" id="bulkActionSelect" required>
+            <option value="">Pilih bulk action...</option><option value="deadline">Update Deadline</option><option value="pic_engineering">Update PIC Engineering</option><option value="pic_marketing">Update PIC Marketing</option><option value="export">Export CSV</option>
+        </select>
+        <input type="text" name="bulk_value" id="bulkActionValue" placeholder="Pilih action terlebih dahulu" disabled>
+        <button type="submit">Terapkan</button>
+    </form>
+
     <div class="project-table-wrap">
         <table class="project-table">
             <thead>
@@ -751,6 +764,7 @@
                                 <table class="child-table">
                                     <thead>
                                         <tr>
+                                            <th style="width:38px;"><input type="checkbox" class="bulk-group-toggle" aria-label="Pilih semua revisi dalam group"></th>
                                             <th>Part Number</th>
                                             <th>Part Name</th>
                                             <th>Rev</th>
@@ -765,6 +779,7 @@
                                     <tbody>
                                         @foreach($group->items as $item)
                                             <tr>
+                                                <td><input type="checkbox" class="bulk-revision-checkbox" value="{{ $item->revision->id }}" aria-label="Pilih {{ $item->part_number }} {{ $item->revision_label }}"></td>
                                                 <td>{{ $item->part_number }}</td>
                                                 <td>{{ $item->part_name }}</td>
                                                 <td>{{ $item->revision_label }} ({{ $item->revision_count }} revisi)</td>
@@ -810,6 +825,14 @@
                                                         <div class="workflow-progress-track">
                                                             <div class="workflow-progress-fill" style="width: {{ $item->workflow['progress'] }}%;"></div>
                                                         </div>
+                                                        <details class="completeness-mini level-{{ $item->completeness['level'] }}">
+                                                            <summary><span>Kelengkapan Data</span><strong>{{ $item->completeness['score'] }}%</strong></summary>
+                                                            <div>
+                                                                @forelse($item->completeness['missing'] as $missing)
+                                                                    <a href="{{ $missing['url'] }}"><span>{{ $missing['label'] }}</span><small>{{ $missing['description'] }}</small></a>
+                                                                @empty<span class="completeness-done">Semua data wajib sudah lengkap.</span>@endforelse
+                                                            </div>
+                                                        </details>
                                                         <div class="workflow-steps">
                                                             @foreach($item->workflow['steps'] as $workflowStep)
                                                                 <div class="workflow-step {{ $workflowStep['state'] }}">
@@ -924,6 +947,10 @@
     </div>
 </div>
 
+<style>
+    .completeness-mini{margin-top:8px;border:1px solid #d8e4ef;border-radius:8px;background:#f8fafc}.completeness-mini summary{display:flex;justify-content:space-between;padding:7px 9px;cursor:pointer;color:#587087;font-size:9px;font-weight:800}.completeness-mini summary strong{color:#1670cf}.completeness-mini.level-danger summary strong{color:#dc2626}.completeness-mini.level-warning summary strong{color:#d97706}.completeness-mini>div{display:grid;gap:4px;padding:0 7px 7px}.completeness-mini a{display:block;padding:6px;border-radius:6px;background:#fff;color:#315779;text-decoration:none}.completeness-mini a span,.completeness-mini a small{display:block}.completeness-mini a span{font-size:9px;font-weight:800}.completeness-mini a small{margin-top:2px;color:#788a9d;font-size:8px}.completeness-done{padding:6px;color:#16834a;font-size:9px;font-weight:800}
+    .bulk-toolbar{display:flex;align-items:center;gap:8px;margin:0 16px 12px;padding:10px 12px;border:1px solid #bcd8f5;border-radius:10px;background:#eef7ff}.bulk-toolbar[hidden]{display:none}.bulk-toolbar>div:first-child{display:flex;align-items:center;gap:7px;margin-right:auto;color:#174e82;font-size:10px}.bulk-toolbar>div:first-child button{border:0;background:transparent;color:#d14343;font-size:9px;font-weight:800;cursor:pointer}.bulk-toolbar select,.bulk-toolbar input{padding:7px 9px;border:1px solid #c7d8e8;border-radius:7px;background:#fff;font-size:10px}.bulk-toolbar input{width:190px}.bulk-toolbar>button{padding:8px 11px;border:0;border-radius:7px;background:#086fdc;color:#fff;font-size:10px;font-weight:800;cursor:pointer}.bulk-flash{margin:0 16px 10px;padding:9px 11px;border-radius:8px;background:#ebfff3;color:#14723d;font-size:10px;font-weight:800}.bulk-flash.error{background:#fff0f0;color:#b42318}@media(max-width:800px){.bulk-toolbar{align-items:stretch;flex-direction:column}.bulk-toolbar input{width:auto}}
+</style>
 <script>
     function toggleProjectGroup(rowId) {
         const child = document.getElementById(rowId + 'Child');
@@ -938,5 +965,27 @@
         main?.classList.toggle('is-open');
         button?.classList.toggle('is-open');
     }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('bulkProjectForm');
+        const checkboxes = Array.from(document.querySelectorAll('.bulk-revision-checkbox'));
+        const inputs = document.getElementById('bulkRevisionInputs');
+        const count = document.getElementById('bulkSelectedCount');
+        const action = document.getElementById('bulkActionSelect');
+        const value = document.getElementById('bulkActionValue');
+        const sync = () => {
+            const selected = checkboxes.filter(box => box.checked);
+            form.hidden = selected.length === 0;
+            count.textContent = selected.length;
+            inputs.replaceChildren();
+            selected.forEach(box => { const hidden=document.createElement('input'); hidden.type='hidden'; hidden.name='revision_ids[]'; hidden.value=box.value; inputs.append(hidden); });
+            document.querySelectorAll('.bulk-group-toggle').forEach(toggle => { const boxes=Array.from(toggle.closest('table').querySelectorAll('.bulk-revision-checkbox')); toggle.checked=boxes.length>0&&boxes.every(box=>box.checked); toggle.indeterminate=boxes.some(box=>box.checked)&&!toggle.checked; });
+        };
+        checkboxes.forEach(box => box.addEventListener('change', sync));
+        document.querySelectorAll('.bulk-group-toggle').forEach(toggle => toggle.addEventListener('change', () => { toggle.closest('table').querySelectorAll('.bulk-revision-checkbox').forEach(box => box.checked=toggle.checked); sync(); }));
+        document.getElementById('bulkClearSelection')?.addEventListener('click', () => { checkboxes.forEach(box=>box.checked=false); sync(); });
+        action?.addEventListener('change', () => { const exportOnly=action.value==='export', deadline=action.value==='deadline'; value.disabled=exportOnly||!action.value; value.required=!exportOnly&&Boolean(action.value); value.type=deadline?'date':'text'; value.value=''; value.placeholder=deadline?'Pilih tanggal deadline':(action.value?'Masukkan nama PIC':'Pilih action terlebih dahulu'); });
+        form?.addEventListener('submit', event => { form.dataset.skipLoadingOverlay=action.value==='export'?'true':'false'; if (!confirm(`Terapkan action ke ${count.textContent} revisi terpilih?`)) event.preventDefault(); });
+    });
 </script>
 @endsection

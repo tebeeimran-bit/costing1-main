@@ -5,6 +5,7 @@
     $canDatabase = RolePermission::hasAccess($productivityRole, 'database');
     $productivityActions = collect([
         ['label' => 'Open My Tasks', 'hint' => 'Role-based assignments', 'url' => route('my-tasks', absolute: false), 'key' => 'G T'],
+        ['label' => 'Notification Center', 'hint' => 'Baca dan atur notifikasi', 'url' => route('notifications.index', absolute: false), 'key' => ''],
         ['label' => 'Buka Project', 'hint' => 'Cari dan pantau workflow', 'url' => route('project', absolute: false), 'key' => 'G P'],
         ['label' => 'Dashboard', 'hint' => 'Ringkasan seluruh project', 'url' => route('dashboard', absolute: false), 'key' => 'G D'],
         $canInputData ? ['label' => 'Buat Project Baru', 'hint' => 'Mulai penerimaan dokumen', 'url' => route('tracking-documents.create', absolute: false), 'key' => ''] : null,

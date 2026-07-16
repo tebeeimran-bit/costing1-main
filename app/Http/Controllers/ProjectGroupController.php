@@ -6,13 +6,14 @@ use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Models\MaterialBreakdown;
 use App\Services\Project\ProjectWorkflowService;
+use App\Services\Project\ProjectCompletenessService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 class ProjectGroupController extends Controller
 {
-    public function index(Request $request, ProjectWorkflowService $workflowService)
+    public function index(Request $request, ProjectWorkflowService $workflowService, ProjectCompletenessService $completenessService)
     {
         $search = trim((string) $request->query('search', ''));
         $perPage = (int) $request->query('per_page', 10);
@@ -33,20 +34,21 @@ class ProjectGroupController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $costingByRevisionId = CostingData::with(['customer', 'product'])
+        $costingByRevisionId = CostingData::with(['customer', 'product'])->withCount('materialBreakdowns')
             ->whereNotNull('tracking_revision_id')
             ->get()
             ->keyBy('tracking_revision_id');
 
         $userRole = (string) optional($request->user())->role;
 
-        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $userRole, $workflowService) {
+        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $userRole, $workflowService, $completenessService) {
             $project = $revision->project;
             $costing = $costingByRevisionId->get($revision->id);
             $latestApproval = $revision->latestApproval;
             $latestSubmission = $revision->latestSubmission;
             $cogmValue = $costing ? $this->cogmValue($costing) : null;
             $workflow = $workflowService->build($revision, $costing, $userRole);
+            $completeness = $completenessService->build($revision, $costing);
 
             $businessCategory = $this->cleanText(
                 $project->product->name
@@ -88,6 +90,7 @@ class ProjectGroupController extends Controller
                 'latest_submission' => $latestSubmission,
                 'cogm_value' => $cogmValue,
                 'workflow' => $workflow,
+                'completeness' => $completeness,
 
                 'business_category' => $businessCategory,
                 'customer' => $customer,

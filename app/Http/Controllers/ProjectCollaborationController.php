@@ -10,18 +10,20 @@ use App\Models\User;
 use App\Services\Project\ProjectActivityService;
 use App\Services\Project\ProjectDeadlineService;
 use App\Services\Project\ProjectWorkflowService;
+use App\Services\Project\ProjectCompletenessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 
 class ProjectCollaborationController extends Controller
 {
-    public function show(Request $request, DocumentRevision $revision, ProjectWorkflowService $workflows, ProjectDeadlineService $deadlines)
+    public function show(Request $request, DocumentRevision $revision, ProjectWorkflowService $workflows, ProjectDeadlineService $deadlines, ProjectCompletenessService $completenessService)
     {
         $revision->load(['project.product', 'unpricedParts:id,document_revision_id,resolved_at', 'taskSetting.setBy', 'activities.user', 'comments.user']);
-        $costing = CostingData::with('customer')->where('tracking_revision_id', $revision->id)->latest('id')->first();
+        $costing = CostingData::with('customer')->withCount('materialBreakdowns')->where('tracking_revision_id', $revision->id)->latest('id')->first();
         $workflow = $workflows->build($revision, $costing, (string) $request->user()->role);
         $deadline = $deadlines->resolve($revision, $workflow);
+        $completeness = $completenessService->build($revision, $costing);
         $mentionUsers = User::query()->orderBy('name')->get(['id', 'name', 'email', 'role'])->map(fn (User $user) => (object) [
             'id' => $user->id,
             'name' => $user->name,
@@ -30,7 +32,7 @@ class ProjectCollaborationController extends Controller
         ]);
         $canManageDeadline = in_array($request->user()->role, ['admin', 'admin_costing', 'coordinator_costing', 'editor'], true);
 
-        return view('projects.collaboration', compact('revision', 'costing', 'workflow', 'deadline', 'mentionUsers', 'canManageDeadline'));
+        return view('projects.collaboration', compact('revision', 'costing', 'workflow', 'deadline', 'completeness', 'mentionUsers', 'canManageDeadline'));
     }
 
     public function updateDeadline(Request $request, DocumentRevision $revision, ProjectActivityService $activities)

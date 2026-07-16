@@ -134,14 +134,21 @@
             { selector: '.task-filters', title: 'Filter Tahapan', description: 'Saring pekerjaan berdasarkan Dokumen, Harga Part, Costing, Approval, atau Marketing.' },
             { selector: '.task-card', title: 'Task Details', description: 'Each card shows its priority, project, progress, status, and next action.' },
             { selector: '.task-deadline', title: 'Deadline & SLA', description: 'Review the due date, remaining time, and task aging. Overdue work is highlighted in red.' },
+            { selector: '.task-completeness', title: 'Kelengkapan Data', description: 'Skor ini menunjukkan persentase data yang sudah lengkap dan jumlah item yang masih harus diperbaiki.' },
             { selector: '.task-action', title: 'Buka Tugas', description: 'Klik tombol ini untuk langsung menuju halaman tempat pekerjaan diselesaikan.' }
         ],
         'project-collaboration.show': [
             { selector: '.collab-hero', title: 'Project Workspace', description: 'Confirm the part, customer, model, and revision before collaborating.' },
             { selector: '.collab-kpis', title: 'Workflow & SLA', description: 'Review progress, status, deadline, remaining time, and aging.' },
+            { selector: '.collab-missing', title: 'Data Belum Lengkap', description: 'Gunakan tautan pada setiap item untuk melengkapi data dan menaikkan skor hingga 100%.' },
             { selector: '.deadline-panel', title: 'Custom Deadline', description: 'Set a custom due date or leave it empty to use the default workflow SLA.' },
             { selector: '.activity-panel', title: 'Activity Timeline', description: 'See who changed the revision, costing, deadline, or workflow status and when.' },
             { selector: '.comment-panel', title: 'Comments & Mentions', description: 'Discuss the project and mention teammates with their @handle.' }
+        ],
+        'notifications.index': [
+            { selector: '.notification-hero', title: 'Notification Center', description: 'Lihat jumlah notifikasi yang belum dibaca dan pekerjaan yang membutuhkan perhatian.' },
+            { selector: '.notification-list', title: 'Notifikasi Aktif', description: 'Buka tindakan terkait atau sembunyikan notifikasi yang tidak lagi diperlukan.' },
+            { selector: '.preferences', title: 'Preferensi Notifikasi', description: 'Pilih kategori notifikasi yang ingin ditampilkan pada akun Anda.' }
         ],
         dashboard: [
             { selector: '.header-title', title: 'Dashboard Costing', description: 'Halaman ini merangkum kondisi project dan hasil costing yang sudah tersimpan.' },
@@ -157,6 +164,7 @@
             { selector: '.project-table', title: 'Informasi Project', description: 'Tabel menampilkan identitas project, PIC, jumlah part, status proses, dan waktu pembaruan terakhir.' },
             { selector: '.workflow-summary', title: 'Progress Workflow', description: 'Progress menunjukkan berapa tahap yang sudah selesai dan berapa item yang masih memerlukan tindakan.' },
             { selector: '.expand-btn', title: 'Lihat Detail Part', description: 'Klik tombol panah untuk membuka daftar part number, revisi dokumen, status costing, dan status approval.' },
+            { selector: '.bulk-group-toggle', title: 'Bulk Actions', description: 'Centang revisi yang ingin diproses bersama untuk memperbarui deadline, PIC, atau export CSV.' },
             { selector: '.action-stack', title: 'Aksi Project', description: 'Gunakan aksi di kolom kanan untuk menambah project, melihat part, membuka dokumen, atau melanjutkan proses costing.' }
         ],
         'database.project-documents': [

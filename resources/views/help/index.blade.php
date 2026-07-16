@@ -102,6 +102,18 @@
             <h3>Komentar dan mention</h3>
             <p>Gunakan @handle dalam diskusi project untuk menyebut anggota tim. Mention terbaru muncul pada lonceng notifikasi mereka dan langsung mengarah ke diskusi.</p>
         </article>
+        <article class="help-topic" data-help-text="notification center read unread sembunyikan preferensi notifikasi">
+            <h3>Notification Center</h3>
+            <p>Klik lonceng di header lalu pilih Lihat Semua. Anda dapat menandai notifikasi sudah dibaca, menyembunyikannya, atau memilih kategori notifikasi melalui bagian Preferensi.</p>
+        </article>
+        <article class="help-topic" data-help-text="kelengkapan data score skor missing item perbaikan project">
+            <h3>Skor kelengkapan data</h3>
+            <p>Skor 0–100% menunjukkan seberapa lengkap identitas, PIC, dokumen, material, harga, dan Cycle Time sebuah project. Buka daftar item yang kurang untuk langsung menuju halaman perbaikan.</p>
+        </article>
+        <article class="help-topic" data-help-text="bulk actions update massal deadline pic export csv pilihan revisi">
+            <h3>Bulk Actions</h3>
+            <p>Pada halaman Project, buka detail group lalu centang beberapa revisi. Gunakan toolbar untuk memperbarui deadline atau PIC secara massal, maupun mengunduh revisi terpilih sebagai CSV.</p>
+        </article>
     </section>
 
     <section class="help-faq help-topic" data-help-text="faq pertanyaan draft harga approval akses permission">

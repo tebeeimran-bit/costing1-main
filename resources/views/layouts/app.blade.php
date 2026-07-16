@@ -589,7 +589,7 @@
                             </svg>
                             <span>Menu Utama</span>
                         </a>
-                        @include('partials.top-notification-bell')
+                        @include('partials.top-notification-bell-v2')
                         <nav class="nav-tabs">
                             <a href="{{ route('dashboard', absolute: false) }}"
                                 class="nav-tab {{ request()->routeIs('dashboard') ? 'active' : '' }}">

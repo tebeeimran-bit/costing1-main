@@ -15,6 +15,8 @@ use App\Http\Controllers\MyTaskController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\HelpCenterController;
 use App\Http\Controllers\ProjectCollaborationController;
+use App\Http\Controllers\NotificationCenterController;
+use App\Http\Controllers\BulkProjectActionController;
 use App\Http\Controllers\TubesController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,6 +41,12 @@ Route::middleware('auth')->group(function () {
     Route::patch('/projects/revisions/{revision}/deadline', [ProjectCollaborationController::class, 'updateDeadline'])->name('project-collaboration.deadline');
     Route::post('/projects/revisions/{revision}/comments', [ProjectCollaborationController::class, 'storeComment'])->name('project-collaboration.comments.store');
     Route::delete('/projects/revisions/{revision}/comments/{comment}', [ProjectCollaborationController::class, 'destroyComment'])->name('project-collaboration.comments.destroy');
+    Route::get('/notifications', [NotificationCenterController::class, 'index'])->name('notifications.index');
+    Route::patch('/notifications/read', [NotificationCenterController::class, 'markRead'])->name('notifications.read');
+    Route::post('/notifications/read-all', [NotificationCenterController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::post('/notifications/dismiss', [NotificationCenterController::class, 'dismiss'])->name('notifications.dismiss');
+    Route::put('/notifications/preferences', [NotificationCenterController::class, 'updatePreferences'])->name('notifications.preferences');
+    Route::post('/projects/bulk-action', BulkProjectActionController::class)->name('project.bulk-action');
     Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
 
     Route::post('/costing-approvals/{revision}/submit', [CostingApprovalController::class, 'submit'])->name('costing-approvals.submit');

@@ -45,8 +45,8 @@ class ProjectCollaborationTest extends TestCase
 
         $this->actingAs($mentioned)->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('You were mentioned')
-            ->assertSee('Open Discussion');
+            ->assertSee('Anda disebut dalam komentar')
+            ->assertSee('Buka Diskusi');
     }
 
     public function test_viewer_cannot_change_deadline_or_delete_another_users_comment(): void
