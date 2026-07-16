@@ -5,13 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Models\MaterialBreakdown;
+use App\Services\Project\ProjectWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 class ProjectGroupController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ProjectWorkflowService $workflowService)
     {
         $search = trim((string) $request->query('search', ''));
         $perPage = (int) $request->query('per_page', 10);
@@ -26,6 +27,7 @@ class ProjectGroupController extends Controller
             'latestApproval.approver',
             'latestApproval.rejecter',
             'latestSubmission',
+            'unpricedParts:id,document_revision_id,resolved_at',
         ])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -38,12 +40,13 @@ class ProjectGroupController extends Controller
 
         $userRole = (string) optional($request->user())->role;
 
-        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $userRole) {
+        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $userRole, $workflowService) {
             $project = $revision->project;
             $costing = $costingByRevisionId->get($revision->id);
             $latestApproval = $revision->latestApproval;
             $latestSubmission = $revision->latestSubmission;
             $cogmValue = $costing ? $this->cogmValue($costing) : null;
+            $workflow = $workflowService->build($revision, $costing, $userRole);
 
             $businessCategory = $this->cleanText(
                 $project->product->name
@@ -84,6 +87,7 @@ class ProjectGroupController extends Controller
                 'latest_approval' => $latestApproval,
                 'latest_submission' => $latestSubmission,
                 'cogm_value' => $cogmValue,
+                'workflow' => $workflow,
 
                 'business_category' => $businessCategory,
                 'customer' => $customer,
@@ -163,6 +167,15 @@ class ProjectGroupController extends Controller
             ->groupBy(fn ($item) => $this->groupKey($item->business_category, $item->customer, $item->model))
             ->map(function (Collection $items) {
                 $first = $items->first();
+                $sortedItems = $items
+                    ->sortBy([
+                        ['part_number', 'asc'],
+                        ['revision_label', 'asc'],
+                    ])
+                    ->values();
+                $workflowAverage = (int) round($items->avg(fn ($item) => $item->workflow['progress']));
+                $workflowCompleted = $items->filter(fn ($item) => $item->workflow['is_complete'])->count();
+                $workflowAttention = $items->count() - $workflowCompleted;
 
                 return (object) [
                     'key' => $this->groupKey($first->business_category, $first->customer, $first->model),
@@ -176,6 +189,9 @@ class ProjectGroupController extends Controller
                     'updated_at' => $items->sortByDesc('updated_at')->first()->updated_at,
                     'total_part_number' => $items->pluck('part_number')->filter()->unique()->count(),
                     'total_items' => $items->count(),
+                    'workflow_progress' => $workflowAverage,
+                    'workflow_completed' => $workflowCompleted,
+                    'workflow_attention' => $workflowAttention,
                     'status_summary' => $items
                         ->groupBy('status_label')
                         ->map(fn (Collection $statusItems) => (object) [
@@ -184,12 +200,7 @@ class ProjectGroupController extends Controller
                             'count' => $statusItems->count(),
                         ])
                         ->values(),
-                    'items' => $items
-                        ->sortBy([
-                            ['part_number', 'asc'],
-                            ['revision_label', 'asc'],
-                        ])
-                        ->values(),
+                    'items' => $sortedItems,
                 ];
             })
             ->sortByDesc('updated_at')

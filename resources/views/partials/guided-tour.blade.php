@@ -104,6 +104,9 @@
 
     const mainSteps = [
         { selector: '[data-tour="dashboard"]', title: 'Dashboard', description: 'Pantau ringkasan project, progress costing, status dokumen, approval, dan data penting lainnya dari halaman ini.' },
+        { selector: '[data-tour="my-tasks"]', title: 'My Tasks', description: 'View the work that needs your attention. The task list automatically follows your role and workflow status.' },
+        { selector: '[data-productivity-open]', title: 'Pencarian Cepat', description: 'Cari project, part, customer, dan material atau buka aksi cepat dengan Ctrl+K.' },
+        { selector: '[data-tour="help-center"]', title: 'Help Center', description: 'Pelajari workflow, autosave, validasi, pencarian, shortcut, dan pertanyaan yang sering diajukan.' },
         { selector: '[data-tour="project"]', title: 'Project', description: 'Mulai pekerjaan di sini: buat project, unggah dokumen engineering, kelola revisi, lalu proses data menuju form costing.' },
         { selector: '[data-tour="project-document"]', title: 'Project Document', description: 'Lihat rekap, status, dan revisi seluruh dokumen project yang tersimpan di sistem.' },
         { selector: '[data-tour="cogm-resume"]', title: 'COGM Resume Analysis', description: 'Periksa rangkuman material, process, overhead, administration cost, total COGM, dan status approval.' },
@@ -117,6 +120,29 @@
     ];
 
     const pageGuides = {
+        'help-center': [
+            { selector: '.help-hero', title: 'Cari Bantuan', description: 'Masukkan topik untuk menyaring seluruh materi bantuan yang tersedia.' },
+            { selector: '.help-shortcuts', title: 'Shortcut Keyboard', description: 'Gunakan shortcut ini untuk berpindah halaman dan mencari data lebih cepat.' },
+            { selector: '.help-workflow', title: 'Alur Kerja Utama', description: 'Ikuti urutan dari Project sampai Marketing agar tidak ada tahap yang terlewat.' },
+            { selector: '.help-sla-explainer', title: 'Deadline, SLA & Aging', description: 'Pelajari arti setiap indikator waktu, cara menghitung keterlambatan, dan SLA default setiap tahap workflow.' },
+            { selector: '.help-guides', title: 'Panduan Fitur', description: 'Baca petunjuk praktis untuk tugas, autosave, validasi, pencarian, favorit, dan tur interaktif.' },
+            { selector: '.help-faq', title: 'Pertanyaan Umum', description: 'Temukan jawaban mengenai approval, autosave, dan hak akses.' }
+        ],
+        'my-tasks': [
+            { selector: '.header-title', title: 'My Tasks', description: 'This page gathers active work that matches your role.' },
+            { selector: '.task-hero', title: 'Ringkasan Pekerjaan', description: 'Lihat jumlah tugas aktif dan tujuan halaman kerja personal Anda.' },
+            { selector: '.task-filters', title: 'Filter Tahapan', description: 'Saring pekerjaan berdasarkan Dokumen, Harga Part, Costing, Approval, atau Marketing.' },
+            { selector: '.task-card', title: 'Task Details', description: 'Each card shows its priority, project, progress, status, and next action.' },
+            { selector: '.task-deadline', title: 'Deadline & SLA', description: 'Review the due date, remaining time, and task aging. Overdue work is highlighted in red.' },
+            { selector: '.task-action', title: 'Buka Tugas', description: 'Klik tombol ini untuk langsung menuju halaman tempat pekerjaan diselesaikan.' }
+        ],
+        'project-collaboration.show': [
+            { selector: '.collab-hero', title: 'Project Workspace', description: 'Confirm the part, customer, model, and revision before collaborating.' },
+            { selector: '.collab-kpis', title: 'Workflow & SLA', description: 'Review progress, status, deadline, remaining time, and aging.' },
+            { selector: '.deadline-panel', title: 'Custom Deadline', description: 'Set a custom due date or leave it empty to use the default workflow SLA.' },
+            { selector: '.activity-panel', title: 'Activity Timeline', description: 'See who changed the revision, costing, deadline, or workflow status and when.' },
+            { selector: '.comment-panel', title: 'Comments & Mentions', description: 'Discuss the project and mention teammates with their @handle.' }
+        ],
         dashboard: [
             { selector: '.header-title', title: 'Dashboard Costing', description: 'Halaman ini merangkum kondisi project dan hasil costing yang sudah tersimpan.' },
             { selector: '.dashboard-filter-card', title: 'Filter Dashboard', description: 'Pilih periode, business category, customer, dan model, lalu tekan Terapkan untuk memperbarui analisis.' },
@@ -129,6 +155,7 @@
             { selector: '.header-title', title: 'Daftar Project', description: 'Halaman Project digunakan untuk membuat, mencari, membuka, dan memantau seluruh project costing.' },
             { selector: '.project-toolbar', title: 'Cari atau Buat Project', description: 'Cari berdasarkan project, customer, model, atau part number. Klik New Project untuk membuat project baru.' },
             { selector: '.project-table', title: 'Informasi Project', description: 'Tabel menampilkan identitas project, PIC, jumlah part, status proses, dan waktu pembaruan terakhir.' },
+            { selector: '.workflow-summary', title: 'Progress Workflow', description: 'Progress menunjukkan berapa tahap yang sudah selesai dan berapa item yang masih memerlukan tindakan.' },
             { selector: '.expand-btn', title: 'Lihat Detail Part', description: 'Klik tombol panah untuk membuka daftar part number, revisi dokumen, status costing, dan status approval.' },
             { selector: '.action-stack', title: 'Aksi Project', description: 'Gunakan aksi di kolom kanan untuk menambah project, melihat part, membuka dokumen, atau melanjutkan proses costing.' }
         ],

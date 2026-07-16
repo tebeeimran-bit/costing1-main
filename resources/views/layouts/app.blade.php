@@ -134,6 +134,14 @@
                         </svg>
                         <span>Dashboard</span>
                     </a>
+                    <a href="{{ route('my-tasks', absolute: false) }}" data-tour="my-tasks"
+                        class="sidebar-nav-item {{ request()->routeIs('my-tasks') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 11l3 3L22 4" />
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                        </svg>
+                        <span>My Tasks</span>
+                    </a>
                         <a href="{{ route('project', absolute: false) }}" data-tour="project"
                         class="sidebar-nav-item {{ request()->routeIs('tracking-documents.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -192,6 +200,18 @@
                             <span>Compare Costing</span>
                         </a>
                     </div>
+                <div class="sidebar-nav-section">
+                    <div class="sidebar-nav-title">Help &amp; Support</div>
+                    <a href="{{ route('help-center', absolute: false) }}" data-tour="help-center"
+                        class="sidebar-nav-item {{ request()->routeIs('help-center') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M9.8 9a2.4 2.4 0 1 1 3.5 2.15c-.8.4-1.3 1-1.3 1.85"/>
+                            <path d="M12 17h.01"/>
+                        </svg>
+                        <span>Help Center</span>
+                    </a>
+                </div>
                 <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Input Data</div>
 <div class="sidebar-dropdown">
@@ -548,6 +568,10 @@
                     </div>
                     <div class="header-right">
                         @yield('header-filters')
+                        <button type="button" class="project-selection-button productivity-search-launch" data-productivity-open title="Cari cepat (Ctrl+K)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                            <span>Cari</span><kbd>Ctrl K</kbd>
+                        </button>
                         <button type="button" class="project-selection-button tour-launch-button" onclick="window.CostingTour?.start()" title="Mulai panduan aplikasi">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15">
                                 <circle cx="12" cy="12" r="9" />
@@ -975,6 +999,7 @@
         setTimeout(forceHideAllLoadingOverlays, 1500);
     </script>
 
+    @include('partials.productivity-center')
     @include('partials.guided-tour', ['tourContext' => 'main'])
     @yield('scripts')
 </body>

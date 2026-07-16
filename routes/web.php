@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CostingController;
+use App\Http\Controllers\CostingDraftController;
 use App\Http\Controllers\CostingApprovalController;
 use App\Http\Controllers\CostingAssistantController;
 use App\Http\Controllers\Database\DocumentRecapController;
@@ -10,6 +11,10 @@ use App\Http\Controllers\DocumentReceiptController;
 use App\Http\Controllers\ProjectGroupController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TrackingDocumentController;
+use App\Http\Controllers\MyTaskController;
+use App\Http\Controllers\GlobalSearchController;
+use App\Http\Controllers\HelpCenterController;
+use App\Http\Controllers\ProjectCollaborationController;
 use App\Http\Controllers\TubesController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +32,13 @@ Route::middleware('auth')->group(function () {
     // Parent = Business Category + Customer + Model
     // Child = Part Number / Part Name / Revision
     Route::get('/project', [ProjectGroupController::class, 'index'])->name('project');
+    Route::get('/my-tasks', [MyTaskController::class, 'index'])->name('my-tasks');
+    Route::get('/global-search', GlobalSearchController::class)->name('global-search');
+    Route::get('/help-center', HelpCenterController::class)->name('help-center');
+    Route::get('/projects/revisions/{revision}/collaboration', [ProjectCollaborationController::class, 'show'])->name('project-collaboration.show');
+    Route::patch('/projects/revisions/{revision}/deadline', [ProjectCollaborationController::class, 'updateDeadline'])->name('project-collaboration.deadline');
+    Route::post('/projects/revisions/{revision}/comments', [ProjectCollaborationController::class, 'storeComment'])->name('project-collaboration.comments.store');
+    Route::delete('/projects/revisions/{revision}/comments/{comment}', [ProjectCollaborationController::class, 'destroyComment'])->name('project-collaboration.comments.destroy');
     Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
 
     Route::post('/costing-approvals/{revision}/submit', [CostingApprovalController::class, 'submit'])->name('costing-approvals.submit');
@@ -150,6 +162,9 @@ Route::middleware('auth')->group(function () {
         // Form Costing
         Route::get('/form', [CostingController::class, 'form'])->name('form');
         Route::post('/costing/store', [CostingController::class, 'store'])->name('costing.store');
+        Route::get('/costing/draft', [CostingDraftController::class, 'show'])->name('costing.draft.show');
+        Route::post('/costing/draft', [CostingDraftController::class, 'store'])->name('costing.draft.store');
+        Route::delete('/costing/draft', [CostingDraftController::class, 'destroy'])->name('costing.draft.destroy');
         Route::post('/costing/material-quick-update', [CostingController::class, 'quickUpdateMaterial'])->name('costing.material-quick-update');
         Route::post('/costing/material-recalculate', [CostingController::class, 'recalculateMaterial'])->name('costing.material-recalculate');
         Route::get('/costing/store', function () {

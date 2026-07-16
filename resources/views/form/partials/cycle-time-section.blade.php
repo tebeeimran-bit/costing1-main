@@ -1,5 +1,5 @@
         <!-- Section E: Cycle Time -->
-        <div class="card form-section">
+        <div class="card form-section" id="cycleTimeFormSection">
             <div class="form-section-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 8v4l3 3" />

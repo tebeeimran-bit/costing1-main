@@ -16,6 +16,7 @@
 @include('form.partials.toast-script')
 
     @include('form.partials.unpriced-top-banner')
+    @include('form.partials.autosave')
 
 <div class="form-page">
     <form action="{{ route('costing.store', absolute: false) }}" method="POST" id="costingForm" enctype="multipart/form-data" autocomplete="off">
@@ -349,7 +350,7 @@
 
         </div>
 
-        <div class="card form-section">
+        <div class="card form-section" id="unpricedFormSection">
             <div class="form-section-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 3h18v18H3z" />
@@ -601,7 +602,7 @@
         @include('form.partials.cycle-time-section')
 
         <!-- Section C: Resume COGM -->
-        <div class="card form-section">
+        <div class="card form-section" id="costingResumeSection">
             <div class="form-section-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 1v22" />

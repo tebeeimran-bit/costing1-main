@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\CogmSubmission;
 use App\Models\Material;
 use App\Models\CostingData;
+use App\Models\CostingDraft;
 use App\Models\UnpricedPart;
 use App\Models\DocumentRevision;
 use App\Models\CycleTimeTemplate;
@@ -1701,6 +1702,17 @@ class CostingController extends Controller
             }
 
             DB::commit();
+
+            if ($updateSection === '') {
+                $draftKey = $trackingRevisionId
+                    ? 'revision:' . $trackingRevisionId
+                    : 'costing:' . $costingData->id;
+
+                CostingDraft::query()
+                    ->where('user_id', $request->user()->id)
+                    ->whereIn('draft_key', array_unique([$draftKey, 'new']))
+                    ->delete();
+            }
 
             /*
              * Tombol utama "Simpan Data Costing" dianggap sebagai final submit.

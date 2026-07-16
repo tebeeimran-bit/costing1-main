@@ -223,7 +223,7 @@
         border: 1px solid #dbe5f2;
         border-radius: 12px;
         background: #fff;
-        overflow: hidden;
+        overflow-x: auto;
     }
 
     .child-panel-head {
@@ -240,6 +240,7 @@
 
     .child-table {
         width: 100%;
+        min-width: 1500px;
         border-collapse: collapse;
     }
 
@@ -393,6 +394,142 @@
         color: #dc2626;
     }
 
+    .workflow-summary {
+        display: grid;
+        gap: 0.42rem;
+        width: 100%;
+        min-width: 0;
+        margin-top: 0.55rem;
+        padding-top: 0.55rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .workflow-summary-head,
+    .workflow-card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.65rem;
+        color: #334155;
+        font-size: 0.68rem;
+        font-weight: 850;
+    }
+
+    .workflow-progress-track {
+        height: 7px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e2e8f0;
+    }
+
+    .workflow-progress-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #2563eb, #0ea5e9);
+    }
+
+    .workflow-summary-meta {
+        color: #64748b;
+        font-size: 0.64rem;
+        font-weight: 750;
+        line-height: 1.35;
+    }
+
+    .workflow-summary-meta.complete { color: #15803d; }
+    .workflow-summary-meta.attention { color: #b45309; }
+
+    .workflow-card {
+        display: grid;
+        gap: 0.65rem;
+        min-width: 330px;
+        padding: 0.72rem;
+        border: 1px solid #dbe5f2;
+        border-radius: 10px;
+        background: #f8fafc;
+    }
+
+    .workflow-steps {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(42px, 1fr));
+        gap: 0.25rem;
+    }
+
+    .workflow-step {
+        display: grid;
+        justify-items: center;
+        gap: 0.25rem;
+        position: relative;
+        color: #94a3b8;
+        font-size: 0.56rem;
+        font-weight: 800;
+        text-align: center;
+    }
+
+    .workflow-step:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        top: 10px;
+        left: calc(50% + 12px);
+        width: calc(100% - 20px);
+        height: 2px;
+        background: #dbe5f2;
+    }
+
+    .workflow-step-dot {
+        width: 21px;
+        height: 21px;
+        z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #cbd5e1;
+        border-radius: 999px;
+        background: #fff;
+        color: #94a3b8;
+        font-size: 0.62rem;
+        font-weight: 950;
+    }
+
+    .workflow-step.complete { color: #15803d; }
+    .workflow-step.complete .workflow-step-dot { border-color: #22c55e; background: #dcfce7; color: #15803d; }
+    .workflow-step.complete:not(:last-child)::after { background: #86efac; }
+    .workflow-step.current { color: #1d4ed8; }
+    .workflow-step.current .workflow-step-dot { border-color: #3b82f6; background: #dbeafe; color: #1d4ed8; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .workflow-step.issue { color: #b45309; }
+    .workflow-step.issue .workflow-step-dot { border-color: #f59e0b; background: #fef3c7; color: #b45309; }
+
+    .workflow-next {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.65rem;
+        padding-top: 0.55rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .workflow-next-copy { min-width: 0; }
+    .workflow-next-label { color: #0f172a; font-size: 0.68rem; font-weight: 900; }
+    .workflow-next-description { color: #64748b; font-size: 0.60rem; font-weight: 650; line-height: 1.35; margin-top: 0.12rem; }
+    .workflow-next-link {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 29px;
+        padding: 0.3rem 0.55rem;
+        border: 1px solid #bfdbfe;
+        border-radius: 7px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.62rem;
+        font-weight: 850;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .workflow-next-link.issue { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+    .workflow-next-link.complete { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
+    .workflow-next-waiting { color: #64748b; font-size: 0.62rem; font-weight: 800; white-space: nowrap; }
+
     .empty-state {
         padding: 2rem;
         text-align: center;
@@ -472,7 +609,7 @@
                     <th style="width:130px;">Total Part Number</th>
                     <th style="width:130px;">PIC Engineering</th>
                     <th style="width:130px;">PIC Marketing</th>
-                    <th style="width:150px;">Status Summary</th>
+                    <th style="width:200px;">Status & Workflow</th>
                     <th style="width:120px;">Last Updated</th>
                     <th style="width:220px;">Action</th>
                 </tr>
@@ -561,6 +698,22 @@
                                     <span class="status-pill {{ $status->class }}">{{ $status->count }} {{ $status->label }}</span>
                                 @endforeach
                             </div>
+                            <div class="workflow-summary">
+                                <div class="workflow-summary-head">
+                                    <span>Progress</span>
+                                    <strong>{{ $group->workflow_progress }}%</strong>
+                                </div>
+                                <div class="workflow-progress-track">
+                                    <div class="workflow-progress-fill" style="width: {{ $group->workflow_progress }}%;"></div>
+                                </div>
+                                @if($group->workflow_attention > 0)
+                                    <div class="workflow-summary-meta attention">
+                                        {{ $group->workflow_attention }} item perlu tindakan berikutnya
+                                    </div>
+                                @else
+                                    <div class="workflow-summary-meta complete">Semua item sudah dikirim ke Marketing</div>
+                                @endif
+                            </div>
                         </td>
                         <td>
                             {{ $group->updated_at ? \Carbon\Carbon::parse($group->updated_at)->format('d/m/Y H:i') : '-' }}
@@ -604,6 +757,7 @@
                                             <th>PIC Engineering</th>
                                             <th>PIC Marketing</th>
                                             <th>Status Dokumen</th>
+                                            <th style="width:380px;">Workflow & Langkah Berikutnya</th>
                                             <th>Last Updated</th>
                                             <th style="width:220px;">Action</th>
                                         </tr>
@@ -647,9 +801,46 @@
                                                         @endif
                                                     </div>
                                                 </td>
+                                                <td>
+                                                    <div class="workflow-card">
+                                                        <div class="workflow-card-head">
+                                                            <span>{{ $item->workflow['completed_count'] }}/{{ $item->workflow['total_count'] }} tahap selesai</span>
+                                                            <strong>{{ $item->workflow['progress'] }}%</strong>
+                                                        </div>
+                                                        <div class="workflow-progress-track">
+                                                            <div class="workflow-progress-fill" style="width: {{ $item->workflow['progress'] }}%;"></div>
+                                                        </div>
+                                                        <div class="workflow-steps">
+                                                            @foreach($item->workflow['steps'] as $workflowStep)
+                                                                <div class="workflow-step {{ $workflowStep['state'] }}">
+                                                                    <span class="workflow-step-dot">
+                                                                        {{ $workflowStep['complete'] ? '✓' : $loop->iteration }}
+                                                                    </span>
+                                                                    <span>{{ $workflowStep['label'] }}</span>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                        @php($nextAction = $item->workflow['next_action'])
+                                                        <div class="workflow-next">
+                                                            <div class="workflow-next-copy">
+                                                                <div class="workflow-next-label">{{ $nextAction['label'] }}</div>
+                                                                <div class="workflow-next-description">{{ $nextAction['description'] }}</div>
+                                                            </div>
+                                                            @if($nextAction['url'])
+                                                                <a href="{{ $nextAction['url'] }}" class="workflow-next-link {{ $nextAction['type'] === 'issue' ? 'issue' : '' }}">
+                                                                    Buka
+                                                                </a>
+                                                            @elseif($nextAction['type'] === 'complete')
+                                                                <span class="workflow-next-link complete">Selesai</span>
+                                                            @else
+                                                                <span class="workflow-next-waiting">Menunggu</span>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                </td>
                                                 <td>{{ $item->updated_at ? \Carbon\Carbon::parse($item->updated_at)->format('d/m/Y H:i') : '-' }}</td>
                                                 <td>
-                                                    <div class="action-stack">
+                                                    <div class="action-stack" id="workflow-actions-{{ $item->revision->id }}">
                                                         @if($item->project)
                                                             <form action="{{ route('tracking-documents.destroy-project', ['project' => $item->project->id], false) }}" method="POST"
                                                                 onsubmit="return confirm('Hapus semua data project {{ $item->customer }} / {{ $item->model }} / {{ $item->part_number }}?');">
@@ -665,6 +856,9 @@
                                                         </a>
                                                         <a class="action-link" href="{{ url('/form') }}?tracking_revision_id={{ $item->revision->id }}">
                                                             Form Costing
+                                                        </a>
+                                                        <a class="action-link" href="{{ route('project-collaboration.show', $item->revision, false) }}">
+                                                            Activity &amp; Comments
                                                         </a>
 
                                                         @if($item->can_submit_approval)

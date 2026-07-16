@@ -90,6 +90,10 @@ class DocumentRevision extends Model
         return $this->hasMany(UnpricedPart::class, 'document_revision_id');
     }
 
+    public function taskSetting() { return $this->hasOne(ProjectTaskSetting::class); }
+    public function activities() { return $this->hasMany(ProjectActivity::class)->latest('occurred_at'); }
+    public function comments() { return $this->hasMany(ProjectComment::class)->latest(); }
+
     public function getVersionLabelAttribute(): string
     {
         $displayVersion = max(0, (int) $this->version_number - 1);

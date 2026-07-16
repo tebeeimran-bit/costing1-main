@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\CostingData;
+use App\Models\DocumentRevision;
+use App\Observers\CostingDataObserver;
+use App\Observers\DocumentRevisionObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +23,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        DocumentRevision::observe(DocumentRevisionObserver::class);
+        CostingData::observe(CostingDataObserver::class);
     }
 }
