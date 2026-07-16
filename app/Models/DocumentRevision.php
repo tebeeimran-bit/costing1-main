@@ -10,12 +10,19 @@ class DocumentRevision extends Model
     use HasFactory;
 
     public const STATUS_PENDING_FORM_INPUT = 'pending_form_input';
+
     public const STATUS_SUDAH_COSTING = 'sudah_costing';
+
     public const STATUS_PENDING_PRICING = 'pending_pricing';
+
     public const STATUS_COGM_GENERATED = 'cogm_generated';
+
     public const STATUS_WAITING_COORDINATOR_APPROVAL = 'waiting_coordinator_approval';
+
     public const STATUS_APPROVED_BY_COORDINATOR = 'approved_by_coordinator';
+
     public const STATUS_REJECTED_BY_COORDINATOR = 'rejected_by_coordinator';
+
     public const STATUS_SUBMITTED_TO_MARKETING = 'submitted_to_marketing';
 
     protected $fillable = [
@@ -90,14 +97,42 @@ class DocumentRevision extends Model
         return $this->hasMany(UnpricedPart::class, 'document_revision_id');
     }
 
-    public function taskSetting() { return $this->hasOne(ProjectTaskSetting::class); }
-    public function activities() { return $this->hasMany(ProjectActivity::class)->latest('occurred_at'); }
-    public function comments() { return $this->hasMany(ProjectComment::class)->latest(); }
+    public function taskSetting()
+    {
+        return $this->hasOne(ProjectTaskSetting::class);
+    }
+
+    public function activities()
+    {
+        return $this->hasMany(ProjectActivity::class)->latest('occurred_at');
+    }
+
+    public function comments()
+    {
+        return $this->hasMany(ProjectComment::class)->latest();
+    }
+
+    public function scopeLatestPerProject($query)
+    {
+        return $query->whereNotExists(function ($subquery) {
+            $subquery->selectRaw('1')
+                ->from('document_revisions as newer_revision')
+                ->whereColumn('newer_revision.document_project_id', 'document_revisions.document_project_id')
+                ->where(function ($comparison) {
+                    $comparison->whereColumn('newer_revision.version_number', '>', 'document_revisions.version_number')
+                        ->orWhere(function ($sameVersion) {
+                            $sameVersion->whereColumn('newer_revision.version_number', 'document_revisions.version_number')
+                                ->whereColumn('newer_revision.id', '>', 'document_revisions.id');
+                        });
+                });
+        });
+    }
 
     public function getVersionLabelAttribute(): string
     {
         $displayVersion = max(0, (int) $this->version_number - 1);
-        return 'V' . $displayVersion;
+
+        return 'V'.$displayVersion;
     }
 
     public function getStatusLabelAttribute(): string

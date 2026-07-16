@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
-use App\Services\Project\ProjectWorkflowService;
-use App\Services\Project\ProjectDeadlineService;
 use App\Services\Project\ProjectCompletenessService;
+use App\Services\Project\ProjectDeadlineService;
+use App\Services\Project\ProjectWorkflowService;
 use Illuminate\Http\Request;
 
 class MyTaskController extends Controller
@@ -17,6 +17,7 @@ class MyTaskController extends Controller
         $category = trim((string) $request->query('category', 'all'));
 
         $revisions = DocumentRevision::query()
+            ->latestPerProject()
             ->with(['project.product', 'unpricedParts:id,document_revision_id,resolved_at', 'taskSetting'])
             ->latest('updated_at')
             ->get();
@@ -24,7 +25,9 @@ class MyTaskController extends Controller
         $costingByRevision = CostingData::query()->withCount('materialBreakdowns')
             ->with('customer')
             ->whereNotNull('tracking_revision_id')
+            ->latest('id')
             ->get()
+            ->unique('tracking_revision_id')
             ->keyBy('tracking_revision_id');
 
         $tasks = $revisions->map(function (DocumentRevision $revision) use ($costingByRevision, $workflowService, $deadlineService, $completenessService, $role) {
@@ -32,10 +35,10 @@ class MyTaskController extends Controller
             $workflow = $workflowService->build($revision, $costing, $role);
             $deadline = $deadlineService->resolve($revision, $workflow);
             $completeness = $completenessService->build($revision, $costing);
-            $step = collect($workflow['steps'])->first(fn ($item) => !$item['complete']);
+            $step = collect($workflow['steps'])->first(fn ($item) => ! $item['complete']);
             $taskCategory = $step['key'] ?? 'marketing';
 
-            if (!$this->isRelevantToRole($role, $revision, $taskCategory, $workflow['next_action']['type'])) {
+            if (! $this->isRelevantToRole($role, $revision, $taskCategory, $workflow['next_action']['type'])) {
                 return null;
             }
 
@@ -43,7 +46,7 @@ class MyTaskController extends Controller
             $partNumber = $costing?->assy_no ?: $project?->part_number ?: '-';
             $url = $workflow['next_action']['url'];
             if ($url === null || str_starts_with($url, '#')) {
-                $url = route('project', ['search' => $partNumber], false) . ($url ?: '');
+                $url = route('project', ['search' => $partNumber], false).($url ?: '');
             }
             if ($role === 'marketing' && $revision->status === DocumentRevision::STATUS_SUBMITTED_TO_MARKETING) {
                 $url = route('marketing.cogm-inbox', absolute: false);

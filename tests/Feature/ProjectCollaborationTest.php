@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\CostingData;
+use App\Models\Customer;
 use App\Models\DocumentProject;
 use App\Models\DocumentRevision;
+use App\Models\Product;
 use App\Models\ProjectComment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -79,6 +82,35 @@ class ProjectCollaborationTest extends TestCase
             'event_type' => 'status_changed',
             'user_id' => $admin->id,
         ]);
+    }
+
+    public function test_revision_comparison_uses_latest_costing_from_immediately_previous_revision(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $previous = $this->revision($admin);
+        $previous->update(['version_number' => 1]);
+        $product = Product::create(['code' => 'TEST', 'name' => 'Test Product']);
+        $customer = Customer::create(['code' => 'CUST', 'name' => 'Test Customer']);
+        $baseCosting = ['product_id' => $product->id, 'customer_id' => $customer->id, 'period' => '2026-07'];
+        CostingData::create($baseCosting + ['tracking_revision_id' => $previous->id, 'material_cost' => 100]);
+        $latestPreviousCosting = CostingData::create($baseCosting + ['tracking_revision_id' => $previous->id, 'material_cost' => 200]);
+
+        $current = DocumentRevision::create([
+            'document_project_id' => $previous->document_project_id,
+            'version_number' => 2,
+            'received_date' => '2026-07-16',
+            'pic_engineering' => 'Engineering PIC',
+            'partlist_original_name' => 'partlist.xlsx', 'partlist_file_path' => 'testing/partlist.xlsx',
+            'umh_original_name' => 'umh.xlsx', 'umh_file_path' => 'testing/umh.xlsx',
+            'status' => DocumentRevision::STATUS_PENDING_FORM_INPUT,
+        ]);
+        CostingData::create($baseCosting + ['tracking_revision_id' => $current->id, 'material_cost' => 250]);
+
+        $response = $this->actingAs($admin)->get(route('project-collaboration.show', $current));
+
+        $response->assertOk();
+        $this->assertSame($latestPreviousCosting->id, $response->viewData('previousCosting')->id);
+        $this->assertSame(50.0, $response->viewData('revisionComparison')['total_delta']);
     }
 
     private function revision(User $actor): DocumentRevision

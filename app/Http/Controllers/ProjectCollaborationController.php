@@ -25,8 +25,18 @@ class ProjectCollaborationController extends Controller
         $workflow = $workflows->build($revision, $costing, (string) $request->user()->role);
         $deadline = $deadlines->resolve($revision, $workflow);
         $completeness = $completenessService->build($revision, $costing);
-        $previousRevisionIds = DocumentRevision::query()->where('document_project_id', $revision->document_project_id)->where('version_number', '<', $revision->version_number)->orderByDesc('version_number')->pluck('id');
-        $previousCosting = $previousRevisionIds->isEmpty() ? null : CostingData::with(['trackingRevision', 'materialBreakdowns'])->whereIn('tracking_revision_id', $previousRevisionIds)->get()->sortByDesc(fn ($item) => (int) ($item->trackingRevision?->version_number ?? 0))->first();
+        $previousRevision = DocumentRevision::query()
+            ->where('document_project_id', $revision->document_project_id)
+            ->where('version_number', '<', $revision->version_number)
+            ->orderByDesc('version_number')
+            ->orderByDesc('id')
+            ->first();
+        $previousCosting = $previousRevision
+            ? CostingData::with(['trackingRevision', 'materialBreakdowns'])
+                ->where('tracking_revision_id', $previousRevision->id)
+                ->latest('id')
+                ->first()
+            : null;
         $revisionComparison = $costing ? $comparisonService->build($costing, $previousCosting) : ['available' => false, 'components' => [], 'material_changes' => 0];
         $mentionUsers = User::query()->orderBy('name')->get(['id', 'name', 'email', 'role'])->map(fn (User $user) => (object) [
             'id' => $user->id,

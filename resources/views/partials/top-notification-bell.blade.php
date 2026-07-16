@@ -13,13 +13,8 @@
      *   part yang belum ada harga atau masih estimate.
      */
 
-    $latestRevisionIds = DocumentRevision::query()
-        ->selectRaw('MAX(id) as id')
-        ->whereNotNull('document_project_id')
-        ->groupBy('document_project_id');
-
     $latestProjectRevisions = DocumentRevision::with('project')
-        ->whereIn('id', $latestRevisionIds)
+        ->latestPerProject()
         ->get();
 
     $notificationItems = collect();

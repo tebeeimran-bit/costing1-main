@@ -20,6 +20,7 @@ class SlaPerformanceController extends Controller
         $statusFilter = trim((string) $request->query('status', 'all'));
 
         $revisions = DocumentRevision::query()
+            ->latestPerProject()
             ->with(['project.product', 'unpricedParts:id,document_revision_id,resolved_at', 'taskSetting'])
             ->latest('updated_at')
             ->get();
@@ -27,7 +28,9 @@ class SlaPerformanceController extends Controller
         $costingByRevision = CostingData::query()
             ->with('customer')
             ->whereNotNull('tracking_revision_id')
+            ->latest('id')
             ->get()
+            ->unique('tracking_revision_id')
             ->keyBy('tracking_revision_id');
 
         $rows = $revisions->map(function (DocumentRevision $revision) use ($costingByRevision, $workflowService, $deadlineService, $role) {

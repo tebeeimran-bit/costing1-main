@@ -19,12 +19,22 @@ class UatFeedbackController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate(['category' => ['required', 'in:bug,usability,data,performance,suggestion'], 'severity' => ['required', 'in:low,medium,high,critical'], 'title' => ['required', 'string', 'max:255'], 'description' => ['required', 'string', 'max:5000'], 'page_url' => ['nullable', 'string', 'max:2000'], 'route_name' => ['nullable', 'string', 'max:255'], 'browser' => ['nullable', 'string', 'max:1000'], 'screenshot' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:5120']]);
+        $validated = $request->validateWithBag('uatFeedback', [
+            'category' => ['required', 'in:bug,usability,data,performance,suggestion'],
+            'severity' => ['required', 'in:low,medium,high,critical'],
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['required', 'string', 'max:5000'],
+            'page_url' => ['nullable', 'string', 'max:2000'],
+            'route_name' => ['nullable', 'string', 'max:255'],
+            'browser' => ['nullable', 'string', 'max:1000'],
+            'screenshot' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:5120'],
+        ]);
+        $validated['page_url'] = $this->safePageUrl($request, $validated['page_url'] ?? null);
         $path = $request->file('screenshot')?->store('uat-feedback', 'public');
         unset($validated['screenshot']);
         UatFeedback::create($validated + ['user_id' => $request->user()->id, 'screenshot_path' => $path, 'status' => 'open']);
 
-        return back()->with('success', 'Laporan UAT berhasil dikirim. Terima kasih atas masukannya.');
+        return back()->with('uat_success', 'Laporan berhasil dikirim. Terima kasih atas masukannya.');
     }
 
     public function update(Request $request, UatFeedback $feedback)
@@ -34,6 +44,29 @@ class UatFeedbackController extends Controller
         $resolved = in_array($validated['status'], ['resolved', 'rejected'], true);
         $feedback->update($validated + ['resolved_by_id' => $resolved ? $request->user()->id : null, 'resolved_at' => $resolved ? now() : null]);
 
-        return back()->with('success','Status feedback berhasil diperbarui.');
+        return back()->with('success', 'Status feedback berhasil diperbarui.');
+    }
+
+    private function safePageUrl(Request $request, ?string $url): ?string
+    {
+        if (! $url) {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)) {
+            return null;
+        }
+
+        if (strcasecmp((string) ($parts['host'] ?? ''), $request->getHost()) !== 0) {
+            return null;
+        }
+
+        $urlPort = (int) ($parts['port'] ?? (($parts['scheme'] ?? '') === 'https' ? 443 : 80));
+        if ($urlPort !== $request->getPort()) {
+            return null;
+        }
+
+        return $url;
     }
 }

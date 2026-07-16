@@ -31,6 +31,23 @@ class UatFeedbackTest extends TestCase
             'severity' => 'high',
             'status' => 'open',
         ]);
+        $this->assertSame('http://localhost/project', UatFeedback::latest()->value('page_url'));
+    }
+
+    public function test_external_context_url_is_discarded_and_validation_uses_uat_error_bag(): void
+    {
+        $user = User::factory()->create(['role' => 'viewer']);
+
+        $this->actingAs($user)->post(route('uat-feedback.store'), [
+            'category' => 'bug', 'severity' => 'medium', 'title' => 'External URL',
+            'description' => 'Testing context sanitization.', 'page_url' => 'javascript:alert(1)',
+        ])->assertRedirect();
+
+        $this->assertNull(UatFeedback::latest()->value('page_url'));
+
+        $this->actingAs($user)->post(route('uat-feedback.store'), [
+            'category' => 'bug', 'severity' => 'medium', 'description' => 'Judul kosong.',
+        ])->assertSessionHasErrorsIn('uatFeedback', ['title']);
     }
 
     public function test_only_admin_can_review_and_resolve_feedback(): void
