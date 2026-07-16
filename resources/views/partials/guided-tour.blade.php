@@ -117,6 +117,8 @@
         { selector: '[data-tour="reports"]', title: 'Laporan & Export', description: 'Buka laporan operasional dan ekspor data costing sesuai kebutuhan.' },
         { selector: '[data-tour="sla-performance"]', title: 'SLA Performance', description: 'Pantau kepatuhan deadline, pekerjaan overdue, aging, dan performa setiap PIC.' },
         { selector: '[data-tour="operations-center"]', title: 'Operations Center', description: 'Kelola checklist kesiapan rilis, kalender hari kerja SLA, serta backup dan restore terverifikasi.' },
+        { selector: '[data-tour="system-center"]', title: 'System Center', description: 'Pantau error, performa, keamanan login, announcement, dan delegasi approval.' },
+        { selector: '[data-tour="export-center"]', title: 'Export Center', description: 'Buat dan jadwalkan export data serta unduh kembali dari riwayat.' },
         { selector: '[data-tour="administration"]', title: 'Administrasi', description: 'Khusus Admin: atur permission pengguna dan materi Costing Assistant melalui Assistant Training.' },
         { selector: '[data-tour="account"]', title: 'Akun Pengguna', description: 'Lihat identitas dan role pengguna, buka profil, atau keluar dari aplikasi melalui bagian ini.' }
     ];

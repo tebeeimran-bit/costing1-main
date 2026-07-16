@@ -150,6 +150,18 @@
             <h3>SLA Escalation &amp; Trend</h3>
             <p>Notification Center memberi peringatan saat deadline tersisa satu hari, jatuh tempo hari ini, atau overdue. SLA Performance menyimpan snapshot harian agar tren kepatuhan 30 hari dapat dibandingkan.</p>
         </article>
+        <article class="help-topic" data-help-text="system center error performance slow request login security monitoring admin">
+            <h3>System Center</h3><p>Admin memantau error, request lambat, histori login gagal, announcement, dan delegasi approval. Event kritis harus diperiksa sebelum release dinyatakan Ready.</p>
+        </article>
+        <article class="help-topic" data-help-text="digital sign off delegation approval approve reject coordinator cuti">
+            <h3>Digital Sign-off &amp; Delegation</h3><p>Approval memerlukan konfirmasi APPROVE dan menghasilkan signature hash. Coordinator dapat memberi mandat sementara; sistem tetap mencatat penerima dan pemberi delegasi.</p>
+        </article>
+        <article class="help-topic" data-help-text="export center csv jadwal daily weekly monthly download riwayat">
+            <h3>Export Center</h3><p>Buat export CSV sekali jalan atau jadwalkan harian, mingguan, maupun bulanan. Riwayat mencatat pembuat, jumlah baris, file, dan waktu terakhir dijalankan.</p>
+        </article>
+        <article class="help-topic" data-help-text="security session timeout login gagal rate limit keamanan">
+            <h3>Keamanan Sesi &amp; Login</h3><p>Sesi berakhir otomatis setelah tidak aktif sesuai batas sistem. Percobaan login gagal dibatasi dan dicatat bersama IP serta informasi perangkat untuk pemeriksaan Admin.</p>
+        </article>
     </section>
 
     <section class="help-faq help-topic" data-help-text="faq pertanyaan draft harga approval akses permission">

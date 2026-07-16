@@ -26,10 +26,13 @@ use App\Services\Costing\CostingPersistenceService;
 use App\Services\Costing\CostingResponseService;
 use App\Services\Costing\CostingStatusService;
 use App\Services\Costing\MissingProjectInformationException;
+use App\Services\Dashboard\RoleDashboardService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -43,6 +46,7 @@ class CostingController extends Controller
 {
     public function dashboard(Request $request)
     {
+        $roleWorkspace = app(RoleDashboardService::class)->build($request->user());
         $periods = CostingData::query()
             ->select('period')
             ->distinct()
@@ -169,13 +173,13 @@ class CostingController extends Controller
         if ($period === 'all') {
             $periodDisplayLabel = 'Semua Periode';
         } elseif (preg_match('/^\d{4}-\d{2}$/', (string) $period) === 1) {
-            $periodDisplayLabel = \Carbon\Carbon::createFromFormat('Y-m', (string) $period)->format('M Y');
+            $periodDisplayLabel = Carbon::createFromFormat('Y-m', (string) $period)->format('M Y');
         }
 
         $periodStart = null;
         $periodEnd = null;
         if (preg_match('/^\d{4}-\d{2}$/', (string) $period) === 1) {
-            $periodStart = \Carbon\Carbon::createFromFormat('Y-m', (string) $period)->startOfMonth();
+            $periodStart = Carbon::createFromFormat('Y-m', (string) $period)->startOfMonth();
             $periodEnd = $periodStart->copy()->endOfMonth();
         }
 
@@ -245,8 +249,8 @@ class CostingController extends Controller
             ->values();
 
         // Batch-fetch all monthly submit counts in one query.
-        $submitRangeStart = \Carbon\Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->first())->startOfMonth();
-        $submitRangeEnd = \Carbon\Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->last())->endOfMonth();
+        $submitRangeStart = Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->first())->startOfMonth();
+        $submitRangeEnd = Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->last())->endOfMonth();
         $submitMonthExpression = DB::connection()->getDriverName() === 'sqlite'
             ? "strftime('%Y-%m', submitted_at)"
             : "DATE_FORMAT(submitted_at, '%Y-%m')";
@@ -257,7 +261,7 @@ class CostingController extends Controller
             ->pluck('cnt', 'ym');
 
         $monthlySubmitCounts = $submitPeriodCandidates->map(function ($submitPeriod) use ($batchedSubmitCounts) {
-            $monthStart = \Carbon\Carbon::createFromFormat('Y-m', (string) $submitPeriod)->startOfMonth();
+            $monthStart = Carbon::createFromFormat('Y-m', (string) $submitPeriod)->startOfMonth();
 
             return [
                 'period' => $submitPeriod,
@@ -453,7 +457,7 @@ class CostingController extends Controller
 
             $label = $trendPeriod;
             if (preg_match('/^\d{4}-\d{2}$/', (string) $trendPeriod) === 1) {
-                $label = \Carbon\Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
+                $label = Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
             }
 
             return [
@@ -480,7 +484,7 @@ class CostingController extends Controller
 
             $label = $trendPeriod;
             if (preg_match('/^\d{4}-\d{2}$/', (string) $trendPeriod) === 1) {
-                $label = \Carbon\Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
+                $label = Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
             }
 
             return [
@@ -829,7 +833,7 @@ class CostingController extends Controller
             'statusProjectPieGradient',
             'totalSubmitCostingMonthly',
             'monthlySubmitCounts',
-            'maxMonthlySubmitCount'
+            'maxMonthlySubmitCount', 'roleWorkspace'
         ));
     }
 
@@ -1825,7 +1829,7 @@ class CostingController extends Controller
         DB::beginTransaction();
 
         try {
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns');
+            $columns = Schema::getColumnListing('material_breakdowns');
             $columnMap = array_fill_keys($columns, true);
             $now = now();
             $updatedRows = 0;
@@ -1940,7 +1944,7 @@ class CostingController extends Controller
                 ->orderBy('row_no')
                 ->get();
 
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns');
+            $columns = Schema::getColumnListing('material_breakdowns');
             $columnMap = array_fill_keys($columns, true);
             $now = now();
             $updatedRows = 0;
@@ -2102,7 +2106,7 @@ class CostingController extends Controller
 
             MaterialBreakdown::where('costing_data_id', $costingData->id)->delete();
 
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns');
+            $columns = Schema::getColumnListing('material_breakdowns');
             $columnMap = array_fill_keys($columns, true);
             $now = now();
 
@@ -2227,7 +2231,7 @@ class CostingController extends Controller
         }
 
         $businessCategory = BusinessCategory::findOrFail((int) $validated['business_category_id']);
-        $productColumns = array_fill_keys(\Illuminate\Support\Facades\Schema::getColumnListing('products'), true);
+        $productColumns = array_fill_keys(Schema::getColumnListing('products'), true);
 
         $productDefaults = [
             'name' => trim((string) $businessCategory->name),
@@ -2253,7 +2257,7 @@ class CostingController extends Controller
             $product->update($productUpdates);
         }
 
-        $costingColumns = array_fill_keys(\Illuminate\Support\Facades\Schema::getColumnListing('costing_data'), true);
+        $costingColumns = array_fill_keys(Schema::getColumnListing('costing_data'), true);
         $payload = [
             'product_id' => $product->id,
             'customer_id' => (int) $validated['customer_id'],
@@ -2364,7 +2368,7 @@ class CostingController extends Controller
             return (int) $material->id;
         }
 
-        $columns = \Illuminate\Support\Facades\Schema::getColumnListing('materials');
+        $columns = Schema::getColumnListing('materials');
         $columnMap = array_fill_keys($columns, true);
         $now = now();
 

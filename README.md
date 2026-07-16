@@ -11,6 +11,8 @@ Aplikasi web internal berbasis Laravel untuk mengelola proses costing manufaktur
 - Workflow approval costing ke coordinator dan pengiriman ke marketing.
 - Laporan resume COGM, analisis tren, unpriced parts, dan inbox marketing.
 - Import template Excel untuk parts, wires, part list, UMH, dan COGM.
+- Operations Center, System Center, role-based workspace, dan Export Center.
+- Release readiness, business-day SLA, monitoring, announcement, digital sign-off, delegation, dan backup/restore.
 
 ## Teknologi
 
@@ -71,6 +73,26 @@ npm run dev
 ```
 
 Aplikasi dapat dibuka melalui `http://localhost:8000`.
+
+## Quality Gate dan Staging
+
+Workflow `.github/workflows/ci.yml` otomatis menjalankan validasi dependency, audit production, migration, seluruh PHPUnit test, Blade cache, Vite build, serta Playwright browser/mobile test pada push dan pull request.
+
+Deployment staging menggunakan `.github/workflows/staging.yml` dan GitHub Environment bernama `staging`. Konfigurasikan:
+
+- environment variable `STAGING_URL`;
+- secret `STAGING_DEPLOY_WEBHOOK` bila server mempunyai deployment hook;
+- required reviewer pada environment untuk approval sebelum deployment.
+
+Gunakan `.env.staging.example` sebagai template tanpa memasukkan credential ke repository.
+
+Scheduler production wajib berjalan setiap menit:
+
+```cron
+* * * * * php /path/to/artisan schedule:run
+```
+
+Scheduler menjalankan backup terverifikasi, scheduled export, dan pembersihan telemetry lama.
 
 ## Struktur Folder Penting
 

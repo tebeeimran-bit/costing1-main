@@ -1,0 +1,41 @@
+name: Deploy Staging
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_WEBHOOK: ${{ secrets.STAGING_DEPLOY_WEBHOOK }}
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, sqlite3, pdo_sqlite, zip, gd
+          coverage: none
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+      - run: npm ci && npm run build
+      - name: Build release artifact
+        run: tar --exclude=.git --exclude=node_modules --exclude=tests --exclude=.env --exclude='costing-staging-*.tar.gz' -czf costing-staging-${{ github.sha }}.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costing-staging-${{ github.sha }}
+          path: costing-staging-${{ github.sha }}.tar.gz
+          retention-days: 14
+      - name: Trigger staging deployment hook
+        if: env.DEPLOY_WEBHOOK != ''
+        run: curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' -d '{"sha":"${{ github.sha }}","artifact":"costing-staging-${{ github.sha }}"}' "$DEPLOY_WEBHOOK"

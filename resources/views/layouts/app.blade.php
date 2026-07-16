@@ -105,6 +105,7 @@
 </head>
 
 <body>
+    <a class="skip-link" href="#main-content">Lewati ke konten utama</a>
     <!-- Page Loading Overlay -->
     <div id="page-loading-overlay">
         <div class="loading-card">
@@ -360,6 +361,10 @@
                         </svg>
                         <span>SLA Performance</span>
                     </a>
+                    <a href="{{ route('exports.index', absolute: false) }}" data-tour="export-center"
+                        class="sidebar-nav-item {{ request()->routeIs('exports.*') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>Export Center</span>
+                    </a>
 </div>
                 @if(auth()->check() && auth()->user()->role === 'admin')
                 <div class="sidebar-nav-section" data-tour="administration">
@@ -377,6 +382,10 @@
                         class="sidebar-nav-item {{ request()->routeIs('operations.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3v-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1h.09v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>
                         <span>Operations Center</span>
+                    </a>
+                    <a href="{{ route('system-center.index', absolute: false) }}" data-tour="system-center"
+                        class="sidebar-nav-item {{ request()->routeIs('system-center.*') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg><span>System Center</span>
                     </a>
                     <a href="{{ route('assistant.training', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('assistant.training') ? 'active' : '' }}">
@@ -670,6 +679,10 @@
                 </div>
             </header>
 
+            @if(($activeAnnouncements ?? collect())->isNotEmpty())
+                <section class="app-announcements" aria-label="Pengumuman aplikasi" aria-live="polite">@foreach($activeAnnouncements as $announcement)<article class="level-{{ $announcement->level }}"><strong>{{ $announcement->title }}</strong><span>{{ $announcement->body }}</span></article>@endforeach</section>
+            @endif
+
             <!-- Breadcrumb -->
             <div class="breadcrumb">
                 <div class="breadcrumb-content">
@@ -686,7 +699,7 @@
             </div>
 
             <!-- Main Content -->
-            <main class="main-content">
+            <main class="main-content" id="main-content" tabindex="-1">
                 @yield('content')
             </main>
 

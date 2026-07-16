@@ -894,8 +894,9 @@
 
                                                         @if($item->can_approve_approval)
                                                             <form action="{{ route('costing-approvals.approve', ['revision' => $item->revision->id], false) }}" method="POST"
-                                                                onsubmit="return confirm('Approve COGM {{ e($item->part_number) }}?');">
+                                                                onsubmit="const sign=prompt('Digital sign-off: ketik APPROVE untuk menyetujui COGM {{ e($item->part_number) }}');if(sign!=='APPROVE')return false;this.querySelector('[name=approval_confirmation]').value=sign;return true;">
                                                                 @csrf
+                                                                <input type="hidden" name="approval_confirmation" value="">
                                                                 <button type="submit" class="action-link action-approve">Approve COGM</button>
                                                             </form>
                                                         @endif

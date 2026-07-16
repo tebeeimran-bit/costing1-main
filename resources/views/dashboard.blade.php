@@ -11,6 +11,7 @@
 @endsection
 
 @section('content')
+    @include('partials.role-workspace')
     <style>
         .dashboard-filter-card {
             background: #ffffff;

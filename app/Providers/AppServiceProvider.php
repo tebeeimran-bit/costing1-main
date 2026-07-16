@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\Announcement;
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Observers\CostingDataObserver;
 use App\Observers\DocumentRevisionObserver;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -25,5 +27,8 @@ class AppServiceProvider extends ServiceProvider
     {
         DocumentRevision::observe(DocumentRevisionObserver::class);
         CostingData::observe(CostingDataObserver::class);
+        View::composer('layouts.app', function ($view) {
+            $view->with('activeAnnouncements', auth()->check() ? Announcement::visibleTo(auth()->user())->latest()->limit(3)->get() : collect());
+        });
     }
 }

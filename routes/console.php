@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\ExportCenterController;
+use App\Models\ExportJob;
+use App\Models\SystemEvent;
 use App\Services\Operations\DatabaseBackupService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -65,3 +68,19 @@ Artisan::command('costing:backup', function (DatabaseBackupService $service) {
 })->purpose('Create a verified Costing System backup');
 
 Schedule::command('costing:backup')->dailyAt('01:30')->withoutOverlapping();
+
+Artisan::command('exports:run-scheduled', function (ExportCenterController $controller) {
+    $jobs = ExportJob::whereNotNull('scheduled_for')->where('scheduled_for', '<=', now())->get();
+    foreach ($jobs as $job) {
+        $controller->generate($job);
+    }
+    $this->info($jobs->count().' scheduled export(s) generated.');
+})->purpose('Generate due scheduled exports');
+
+Artisan::command('system-events:prune', function () {
+    $count = SystemEvent::where('occurred_at', '<', now()->subDays(config('operations.retention_days', 30)))->delete();
+    $this->info($count.' old event(s) removed.');
+})->purpose('Prune old monitoring events');
+
+Schedule::command('exports:run-scheduled')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('system-events:prune')->dailyAt('02:15')->withoutOverlapping();

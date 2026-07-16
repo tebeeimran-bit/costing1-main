@@ -9,6 +9,7 @@ use App\Http\Controllers\CostingDraftController;
 use App\Http\Controllers\Database\DocumentRecapController;
 use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\DocumentReceiptController;
+use App\Http\Controllers\ExportCenterController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\HelpCenterController;
 use App\Http\Controllers\ImportSafetyController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\ProjectCollaborationController;
 use App\Http\Controllers\ProjectGroupController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SlaPerformanceController;
+use App\Http\Controllers\SystemCenterController;
 use App\Http\Controllers\TrackingDocumentController;
 use App\Http\Controllers\TubesController;
 use App\Http\Controllers\UatFeedbackController;
@@ -41,6 +43,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/my-tasks', [MyTaskController::class, 'index'])->name('my-tasks');
     Route::get('/global-search', GlobalSearchController::class)->name('global-search');
     Route::get('/help-center', HelpCenterController::class)->name('help-center');
+    Route::get('/export-center', [ExportCenterController::class, 'index'])->name('exports.index');
+    Route::post('/export-center', [ExportCenterController::class, 'store'])->name('exports.store');
+    Route::get('/export-center/{job}/download', [ExportCenterController::class, 'download'])->name('exports.download');
+    Route::delete('/export-center/{job}', [ExportCenterController::class, 'destroy'])->name('exports.destroy');
     Route::get('/projects/revisions/{revision}/collaboration', [ProjectCollaborationController::class, 'show'])->name('project-collaboration.show');
     Route::patch('/projects/revisions/{revision}/deadline', [ProjectCollaborationController::class, 'updateDeadline'])->name('project-collaboration.deadline');
     Route::post('/projects/revisions/{revision}/comments', [ProjectCollaborationController::class, 'storeComment'])->name('project-collaboration.comments.store');
@@ -225,6 +231,11 @@ Route::middleware('auth')->group(function () {
 
     // ── USER MANAGEMENT (admin only) ──────────────────────────────────────────
     Route::middleware('permission:user_management')->group(function () {
+        Route::get('/system-center', [SystemCenterController::class, 'index'])->name('system-center.index');
+        Route::post('/system-center/announcements', [SystemCenterController::class, 'storeAnnouncement'])->name('system-center.announcements.store');
+        Route::delete('/system-center/announcements/{announcement}', [SystemCenterController::class, 'destroyAnnouncement'])->name('system-center.announcements.destroy');
+        Route::post('/system-center/delegations', [SystemCenterController::class, 'storeDelegation'])->name('system-center.delegations.store');
+        Route::delete('/system-center/delegations/{delegation}', [SystemCenterController::class, 'destroyDelegation'])->name('system-center.delegations.destroy');
         Route::get('/operations-center', [OperationsCenterController::class, 'index'])->name('operations.index');
         Route::post('/operations-center/releases', [OperationsCenterController::class, 'storeRelease'])->name('operations.releases.store');
         Route::patch('/operations-center/releases/{release}', [OperationsCenterController::class, 'updateRelease'])->name('operations.releases.update');
