@@ -17,6 +17,8 @@ use App\Http\Controllers\HelpCenterController;
 use App\Http\Controllers\ProjectCollaborationController;
 use App\Http\Controllers\NotificationCenterController;
 use App\Http\Controllers\BulkProjectActionController;
+use App\Http\Controllers\UatFeedbackController;
+use App\Http\Controllers\SlaPerformanceController;
 use App\Http\Controllers\TubesController;
 use Illuminate\Support\Facades\Route;
 
@@ -47,6 +49,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/notifications/dismiss', [NotificationCenterController::class, 'dismiss'])->name('notifications.dismiss');
     Route::put('/notifications/preferences', [NotificationCenterController::class, 'updatePreferences'])->name('notifications.preferences');
     Route::post('/projects/bulk-action', BulkProjectActionController::class)->name('project.bulk-action');
+    Route::post('/uat-feedback', [UatFeedbackController::class,'store'])->name('uat-feedback.store');
+    Route::get('/uat-feedback', [UatFeedbackController::class,'index'])->name('uat-feedback.index');
+    Route::patch('/uat-feedback/{feedback}', [UatFeedbackController::class,'update'])->name('uat-feedback.update');
     Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
 
     Route::post('/costing-approvals/{revision}/submit', [CostingApprovalController::class, 'submit'])->name('costing-approvals.submit');
@@ -82,6 +87,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/analisis-tren/canceled-failed', [ReportController::class, 'analisisTrenCanceled'])->name('analisis-tren.canceled');
         Route::get('/analisis-tren/detail-dokumen-engineering', [ReportController::class, 'analisisTrenEngineering'])->name('analisis-tren.engineering');
         Route::get('/laporan', [ReportController::class, 'laporan'])->name('laporan');
+        Route::get('/sla-performance', SlaPerformanceController::class)->name('sla-performance');
     });
 
     // ── DATABASE ──────────────────────────────────────────────────────────────

@@ -8,22 +8,26 @@ use App\Models\ProjectComment;
 use App\Models\ProjectTaskSetting;
 use App\Models\User;
 use App\Services\Project\ProjectActivityService;
+use App\Services\Project\ProjectCompletenessService;
 use App\Services\Project\ProjectDeadlineService;
 use App\Services\Project\ProjectWorkflowService;
-use App\Services\Project\ProjectCompletenessService;
+use App\Services\Project\RevisionComparisonService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 class ProjectCollaborationController extends Controller
 {
-    public function show(Request $request, DocumentRevision $revision, ProjectWorkflowService $workflows, ProjectDeadlineService $deadlines, ProjectCompletenessService $completenessService)
+    public function show(Request $request, DocumentRevision $revision, ProjectWorkflowService $workflows, ProjectDeadlineService $deadlines, ProjectCompletenessService $completenessService, RevisionComparisonService $comparisonService)
     {
         $revision->load(['project.product', 'unpricedParts:id,document_revision_id,resolved_at', 'taskSetting.setBy', 'activities.user', 'comments.user']);
-        $costing = CostingData::with('customer')->withCount('materialBreakdowns')->where('tracking_revision_id', $revision->id)->latest('id')->first();
+        $costing = CostingData::with(['customer', 'materialBreakdowns'])->withCount('materialBreakdowns')->where('tracking_revision_id', $revision->id)->latest('id')->first();
         $workflow = $workflows->build($revision, $costing, (string) $request->user()->role);
         $deadline = $deadlines->resolve($revision, $workflow);
         $completeness = $completenessService->build($revision, $costing);
+        $previousRevisionIds = DocumentRevision::query()->where('document_project_id', $revision->document_project_id)->where('version_number', '<', $revision->version_number)->orderByDesc('version_number')->pluck('id');
+        $previousCosting = $previousRevisionIds->isEmpty() ? null : CostingData::with(['trackingRevision', 'materialBreakdowns'])->whereIn('tracking_revision_id', $previousRevisionIds)->get()->sortByDesc(fn ($item) => (int) ($item->trackingRevision?->version_number ?? 0))->first();
+        $revisionComparison = $costing ? $comparisonService->build($costing, $previousCosting) : ['available' => false, 'components' => [], 'material_changes' => 0];
         $mentionUsers = User::query()->orderBy('name')->get(['id', 'name', 'email', 'role'])->map(fn (User $user) => (object) [
             'id' => $user->id,
             'name' => $user->name,
@@ -32,7 +36,7 @@ class ProjectCollaborationController extends Controller
         ]);
         $canManageDeadline = in_array($request->user()->role, ['admin', 'admin_costing', 'coordinator_costing', 'editor'], true);
 
-        return view('projects.collaboration', compact('revision', 'costing', 'workflow', 'deadline', 'completeness', 'mentionUsers', 'canManageDeadline'));
+        return view('projects.collaboration', compact('revision', 'costing', 'previousCosting', 'revisionComparison', 'workflow', 'deadline', 'completeness', 'mentionUsers', 'canManageDeadline'));
     }
 
     public function updateDeadline(Request $request, DocumentRevision $revision, ProjectActivityService $activities)
@@ -45,7 +49,7 @@ class ProjectCollaborationController extends Controller
             ['document_revision_id' => $revision->id],
             ['due_at' => $dueAt, 'set_by_id' => $request->user()->id]
         );
-        $activities->record($revision->id, 'deadline_updated', $dueAt ? 'Deadline updated' : 'Custom deadline removed', $dueAt ? 'Due date set to ' . $dueAt->format('d M Y') . '.' : 'The workflow now uses its default SLA.');
+        $activities->record($revision->id, 'deadline_updated', $dueAt ? 'Deadline updated' : 'Custom deadline removed', $dueAt ? 'Due date set to '.$dueAt->format('d M Y').'.' : 'The workflow now uses its default SLA.');
 
         return back()->with('success', $dueAt ? 'Project deadline updated.' : 'Project deadline reset to the default SLA.');
     }
@@ -62,7 +66,7 @@ class ProjectCollaborationController extends Controller
             'body' => trim($validated['body']),
             'mentioned_user_ids' => $mentionedIds ?: null,
         ]);
-        $activities->record($revision->id, 'comment_added', 'Comment added', count($mentionedIds) ? count($mentionedIds) . ' team member(s) mentioned.' : null);
+        $activities->record($revision->id, 'comment_added', 'Comment added', count($mentionedIds) ? count($mentionedIds).' team member(s) mentioned.' : null);
 
         return back()->with('success', 'Comment posted.');
     }
@@ -80,6 +84,7 @@ class ProjectCollaborationController extends Controller
     private function handle(User $user): string
     {
         $emailHandle = Str::before((string) $user->email, '@');
+
         return Str::lower($emailHandle !== '' ? $emailHandle : Str::slug($user->name, '_'));
     }
 }

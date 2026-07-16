@@ -115,6 +115,7 @@
         { selector: '[data-tour="compare-costing"]', title: 'Compare Costing', description: 'Bandingkan komponen dan hasil costing antarproject, produk, atau revisi.' },
         { selector: '[data-tour="database"]', title: 'Database Master', description: 'Kelola Part, Wire, Tubes, Customer, Business Category, Plant, PIC, Cycle Time, Rate & Kurs, serta Unpriced Parts.' },
         { selector: '[data-tour="reports"]', title: 'Laporan & Export', description: 'Buka laporan operasional dan ekspor data costing sesuai kebutuhan.' },
+        { selector: '[data-tour="sla-performance"]', title: 'SLA Performance', description: 'Pantau kepatuhan deadline, pekerjaan overdue, aging, dan performa setiap PIC.' },
         { selector: '[data-tour="administration"]', title: 'Administrasi', description: 'Khusus Admin: atur permission pengguna dan materi Costing Assistant melalui Assistant Training.' },
         { selector: '[data-tour="account"]', title: 'Akun Pengguna', description: 'Lihat identitas dan role pengguna, buka profil, atau keluar dari aplikasi melalui bagian ini.' }
     ];
@@ -170,322 +171,4 @@
         'database.project-documents': [
             { selector: '.header-title', title: 'Project Document', description: 'Halaman ini memusatkan status dan kelengkapan dokumen engineering setiap project.' },
             { selector: '.doc-summary-cards', title: 'Ringkasan Status Dokumen', description: 'Kartu A00, A04, dan A05 menunjukkan jumlah project berdasarkan status terakhir.' },
-            { selector: '.engineering-doc-panel', title: 'Dokumen Engineering', description: 'Periksa partlist, drawing, quotation, dan dokumen engineering lain beserta status kelengkapannya.' },
-            { selector: ['.engineering-doc-actions', '.btn-folder-storage'], title: 'Penyimpanan Dokumen', description: 'Buka folder dokumen untuk melihat susunan file berdasarkan business category, customer, model, dan revisi.' },
-            { selector: ['.project-document-table', '.data-table', 'table'], title: 'Daftar Dokumen Project', description: 'Gunakan tabel untuk mencari, memeriksa, memperbarui, atau menghapus data dokumen sesuai hak akses.' }
-        ],
-        'resume-cogm': [
-            { selector: '.header-title', title: 'COGM Resume Analysis', description: 'Halaman ini menyajikan rangkuman dan analisis hasil COGM seluruh project.' },
-            { selector: '.resume-analytics-grid', title: 'Grafik Perkembangan COGM', description: 'Amati perubahan nilai COGM dan komposisi material, labor, serta overhead per periode.' },
-            { selector: '.resume-insight-card', title: 'Insight Utama', description: 'Bagian insight merangkum temuan penting yang perlu diperhatikan dari data costing.' },
-            { selector: '.resume-two-column', title: 'Ringkasan dan Detail', description: 'Bandingkan ringkasan per customer dengan detail COGM setiap project.' },
-            { selector: '.project-table', title: 'Detail COGM Project', description: 'Klik nomor assy untuk membuka Form Costing dan periksa status harga, forecast, serta potensial cost.' }
-        ],
-        'marketing.cogm-inbox': [
-            { selector: '.header-title', title: 'Marketing COGM Inbox', description: 'Halaman ini menampilkan COGM approved yang sudah dikirim kepada Marketing.' },
-            { selector: '.marketing-inbox-header', title: 'Ringkasan Inbox', description: 'Header menunjukkan fungsi inbox dan jumlah data yang siap ditinjau.' },
-            { selector: '.marketing-inbox-table', title: 'Daftar COGM Masuk', description: 'Periksa project, customer, assy, nilai COGM, pengirim, waktu pengiriman, dan status submission.' }
-        ],
-        'analisis-tren': [
-            { selector: '.header-title', title: 'Document Trend Analysis', description: 'Gunakan halaman ini untuk menganalisis alur project dan performa dokumen engineering.' },
-            { selector: ['.trend-filter-panel', '.trend-page form'], title: 'Filter Periode', description: 'Atur periode analisis agar seluruh KPI dan grafik mengikuti rentang data yang dibutuhkan.' },
-            { selector: ['.trend-kpi-grid', '.trend-card'], title: 'KPI Status Project', description: 'Kartu KPI merangkum project A00, A04, A05, cancellation rate, dan conversion rate.' },
-            { selector: '.trend-main-grid', title: 'Funnel Project', description: 'Funnel menunjukkan alur project masuk, tidak lanjut, dan berhasil masuk tahap costing.' },
-            { selector: '.engineering-summary-grid', title: 'Dokumen dan Insight', description: 'Periksa progress dokumen engineering serta insight yang dihasilkan dari tren project.' }
-        ],
-        'compare.costing': [
-            { selector: '.header-title', title: 'Compare Costing', description: 'Halaman ini membandingkan dua assy atau revisi costing secara berdampingan.' },
-            { selector: '#compareFilterForm', title: 'Pilih Data Pembanding', description: 'Pilih business category, customer, model, Assy A, dan Assy B, lalu klik Bandingkan Revisi.' },
-            { selector: '.kpi-grid', title: 'Identitas Pembanding', description: 'Pastikan Assy A dan Assy B yang ditampilkan sudah sesuai sebelum membaca hasil.' },
-            { selector: '.card', title: 'Resume Perbandingan', description: 'Lihat selisih COGM dan komponen biaya utama antara kedua assy.' },
-            { selector: '.material-compare-wrap', title: 'Material vs Material', description: 'Tabel membandingkan kebutuhan, harga, supplier, pajak, dan total material pada kedua costing.' }
-        ],
-        laporan: [
-            { selector: '.header-title', title: 'Laporan & Export', description: 'Halaman ini merangkum data costing untuk kebutuhan laporan operasional.' },
-            { selector: '.lap-grid', title: 'Rekap Utama', description: 'Bandingkan jumlah project dan komponen biaya berdasarkan customer serta business category.' },
-            { selector: '.lap-grid .card', title: 'Rekap per Customer', description: 'Bagian ini menunjukkan material, labor, overhead, dan total COGM setiap customer.' },
-            { selector: '.main-content > .card', title: 'Komposisi Biaya', description: 'Gunakan komposisi biaya untuk melihat proporsi komponen costing pada laporan.' }
-        ],
-        permissions: [
-            { selector: '.header-title', title: 'Permission', description: 'Khusus Admin: kelola role, hak akses modul, dan akun pengguna.' },
-            { selector: '.main-content .card:first-child', title: 'Role dan Hak Akses', description: 'Tentukan tingkat akses setiap role untuk Dashboard, Input Data, Database, Laporan, dan User Management.' },
-            { selector: '.main-content .card:nth-of-type(2)', title: 'Daftar Pengguna', description: 'Lihat role pengguna, edit data akun, atau hapus pengguna yang tidak lagi aktif.' },
-            { selector: '.main-content .btn-primary', title: 'Tambah Pengguna', description: 'Klik tombol ini untuk membuat akun baru dan menentukan role awalnya.' }
-        ],
-        'assistant.training': [
-            { selector: '.header-title', title: 'Assistant Training', description: 'Khusus Admin: kelola pengetahuan dan aturan yang digunakan Costing Assistant.' },
-            { selector: '.assistant-training-hero', title: 'Ringkasan Training', description: 'Lihat jumlah topic, rule, dan template file yang aktif.' },
-            { selector: '.assistant-training-grid', title: 'Tambah Materi Assistant', description: 'Tambahkan topic jawaban, rule validasi, dan template pemeriksaan file dari bagian ini.' },
-            { selector: '.assistant-training-list', title: 'Kelola Materi Tersimpan', description: 'Buka item untuk mengubah, mengaktifkan, menonaktifkan, atau menghapus materi training.' }
-        ],
-        'rate-kurs': [
-            { selector: '.header-title', title: 'Rate & Kurs', description: 'Kelola kurs dan rate yang digunakan dalam kalkulasi costing.' },
-            { selector: '.rate-cards', title: 'Rate Aktif', description: 'Periksa USD, JPY, dan LME terbaru sebelum melakukan perhitungan costing.' },
-            { selector: '.main-content form', title: 'Tambah Exchange Rate', description: 'Masukkan periode, nilai kurs, LME, dan sumber data lalu simpan.' },
-            { selector: '.rate-table', title: 'Riwayat Rate', description: 'Tabel menyimpan histori exchange rate dan wire rate per bulan.' }
-        ],
-        'unpriced-parts': [
-            { selector: '.header-title', title: 'Unpriced Parts', description: 'Pantau part yang belum memiliki harga dan berpotensi menghambat penyelesaian costing.' },
-            { selector: '.up-cards', title: 'Status Penyelesaian Harga', description: 'Lihat jumlah total part, part resolved, dan part yang masih unresolved.' },
-            { selector: '.up-table', title: 'Daftar Part Tanpa Harga', description: 'Gunakan daftar ini untuk menemukan part, project terkait, dan status tindak lanjut harga.' }
-        ],
-        form: [
-            { selector: '.header-title', title: 'Form Costing', description: 'Halaman ini digunakan untuk menghitung seluruh komponen biaya suatu part atau assy.' },
-            { selector: ['.project-info-section', '#project-info-section', '.main-content form'], title: 'Informasi Project', description: 'Pastikan customer, model, part number, revisi, dan informasi project sudah benar.' },
-            { selector: ['#material-section', '.material-section', '.material-table-container'], title: 'Material Cost', description: 'Masukkan material, kuantitas, harga, mata uang, MOQ, supplier, dan biaya impor.' },
-            { selector: ['#process-section', '.process-section', '.cycle-time-section'], title: 'Process dan Cycle Time', description: 'Isi cycle time, mesin, tenaga kerja, dan parameter proses untuk menghitung labor cost.' },
-            { selector: ['button[type="submit"]', '.btn-save'], title: 'Simpan Costing', description: 'Periksa kembali seluruh komponen dan total COGM sebelum menyimpan perubahan.' }
-        ],
-        'tracking-documents.create': [
-            { selector: '.header-title', title: 'New Project', description: 'Gunakan halaman ini untuk membuat project dan menerima dokumen engineering baru.' },
-            { selector: '.main-content form', title: 'Data Project', description: 'Isi business category, customer, model, nama project, PIC, dan informasi dasar lainnya.' },
-            { selector: 'input[type="file"]', title: 'Upload Dokumen', description: 'Unggah partlist, drawing, quotation, dan dokumen pendukung sesuai format yang diminta.' },
-            { selector: 'button[type="submit"]', title: 'Simpan Project', description: 'Periksa kembali isian dan dokumen, lalu simpan untuk memulai proses tracking.' }
-        ]
-    };
-
-    const masterDataNames = {
-        database: 'Database Master',
-        'database.parts': 'Database Part',
-        'database.wires': 'Database Wire',
-        'database.tubes': 'Database Tubes',
-        'database.customers': 'Database Customer',
-        'database.business-categories': 'Business Categories',
-        'database.plants': 'Database Plant',
-        'database.pics': 'Database PIC',
-        'database.cycle-time-templates': 'Cycle Time Template'
-    };
-
-    function buildPageSteps() {
-        if (pageGuides[routeName]) return pageGuides[routeName];
-        if (routeName === 'tracking-documents.index') return pageGuides.project;
-        if (routeName === 'analisis-tren.canceled' || routeName === 'analisis-tren.engineering') return pageGuides['analisis-tren'];
-
-        const masterName = masterDataNames[routeName];
-        if (masterName) {
-            return [
-                { selector: '.header-title', title: masterName, description: `Halaman ini digunakan untuk mengelola ${masterName.toLowerCase()} yang dipakai oleh proses costing.` },
-                { selector: ['.main-content .btn-primary', '.main-content .btn.btn-primary'], title: 'Tambah atau Import Data', description: 'Gunakan tombol aksi untuk menambahkan data baru atau mengimpor data jika fasilitas import tersedia.' },
-                { selector: ['.main-content .material-table-container', '.main-content .data-table', '.main-content .card'], title: 'Daftar Master Data', description: 'Cari dan periksa data master yang sudah tersimpan sebelum digunakan pada costing.' },
-                { selector: ['.main-content .btn-action', '.main-content [title="Edit"]'], title: 'Edit dan Hapus', description: 'Gunakan tombol aksi pada baris untuk memperbarui atau menghapus data sesuai hak akses.' }
-            ];
-        }
-
-        return [
-            { selector: '.header-title', title: 'Panduan Halaman', description: 'Judul ini menunjukkan halaman yang sedang Anda gunakan.' },
-            { selector: '.main-content > *', title: 'Area Kerja', description: 'Gunakan area ini untuk melihat data dan menjalankan fungsi utama halaman.' }
-        ];
-    }
-
-    function resolveTarget(selector) {
-        const selectors = Array.isArray(selector) ? selector : [selector];
-        for (const item of selectors) {
-            for (const element of document.querySelectorAll(item)) {
-                const style = window.getComputedStyle(element);
-                if (style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length) {
-                    return element;
-                }
-            }
-        }
-        return null;
-    }
-
-    function availableSteps(candidates) {
-        return candidates
-            .map(step => ({ ...step, target: resolveTarget(step.selector) }))
-            .filter(step => step.target);
-    }
-
-    function positionCurrentStep() {
-        if (!active || !steps[currentIndex]) return;
-        const target = steps[currentIndex].target?.isConnected
-            ? steps[currentIndex].target
-            : resolveTarget(steps[currentIndex].selector);
-        if (!target) return;
-
-        target.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-            const rect = target.getBoundingClientRect();
-            const gap = 12;
-            const padding = 7;
-            const spotlightTop = Math.max(6, rect.top - padding);
-            const spotlightLeft = Math.max(6, rect.left - padding);
-            spotlight.style.top = `${spotlightTop}px`;
-            spotlight.style.left = `${spotlightLeft}px`;
-            spotlight.style.width = `${Math.max(24, Math.min(window.innerWidth - spotlightLeft - 6, rect.width + (padding * 2)))}px`;
-            spotlight.style.height = `${Math.max(24, Math.min(window.innerHeight - spotlightTop - 6, rect.height + (padding * 2)))}px`;
-
-            card.style.width = '';
-            card.style.maxHeight = 'calc(100vh - 28px)';
-            const cardWidth = card.offsetWidth;
-            const cardHeight = card.offsetHeight;
-            const margin = 14;
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
-            const visibleRect = {
-                top: Math.max(margin, rect.top - padding),
-                right: Math.min(viewportWidth - margin, rect.right + padding),
-                bottom: Math.min(viewportHeight - margin, rect.bottom + padding),
-                left: Math.max(margin, rect.left - padding)
-            };
-            const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(value, maximum));
-            const spaces = {
-                right: viewportWidth - visibleRect.right - gap - margin,
-                left: visibleRect.left - gap - margin,
-                below: viewportHeight - visibleRect.bottom - gap - margin,
-                above: visibleRect.top - gap - margin
-            };
-            const isWideTarget = rect.width > viewportWidth * .48;
-            const preferredSides = isWideTarget
-                ? ['below', 'above', 'right', 'left']
-                : ['right', 'left', 'below', 'above'];
-            const fits = side => (side === 'right' || side === 'left')
-                ? spaces[side] >= cardWidth
-                : spaces[side] >= cardHeight;
-            let side = preferredSides.find(fits);
-
-            if (!side) {
-                side = preferredSides.reduce((best, candidate) => {
-                    const required = candidate === 'right' || candidate === 'left' ? cardWidth : cardHeight;
-                    return (spaces[candidate] / required) > (spaces[best] / (best === 'right' || best === 'left' ? cardWidth : cardHeight))
-                        ? candidate
-                        : best;
-                }, preferredSides[0]);
-            }
-
-            let left;
-            let top;
-            if (side === 'below' || side === 'above') {
-                const availableHeight = Math.max(150, spaces[side]);
-                card.style.maxHeight = `${Math.min(cardHeight, availableHeight)}px`;
-                left = clamp(
-                    rect.left + ((rect.width - cardWidth) / 2),
-                    margin,
-                    viewportWidth - cardWidth - margin
-                );
-                top = side === 'below'
-                    ? visibleRect.bottom + gap
-                    : visibleRect.top - Math.min(cardHeight, availableHeight) - gap;
-            } else {
-                left = side === 'right'
-                    ? visibleRect.right + gap
-                    : visibleRect.left - cardWidth - gap;
-                top = clamp(
-                    rect.top + ((rect.height - cardHeight) / 2),
-                    margin,
-                    viewportHeight - cardHeight - margin
-                );
-            }
-
-            card.style.left = `${left}px`;
-            card.style.top = `${top}px`;
-        }));
-    }
-
-    function render() {
-        const step = steps[currentIndex];
-        if (!step) return finish();
-        title.textContent = step.title;
-        description.textContent = step.description;
-        eyebrow.textContent = activeMode === 'page' ? 'PANDUAN HALAMAN' : 'PANDUAN APLIKASI';
-        counter.textContent = `${currentIndex + 1} dari ${steps.length}`;
-        previousButton.disabled = currentIndex === 0;
-        nextButton.textContent = currentIndex === steps.length - 1
-            ? (context === 'selection' ? 'Mulai Tour' : 'Selesai')
-            : 'Selanjutnya';
-        positionCurrentStep();
-    }
-
-    function start(options = {}) {
-        activeMode = context === 'selection' ? 'menu' : (options.mode || 'page');
-        const candidates = activeMode === 'page' ? buildPageSteps() : mainSteps;
-        steps = availableSteps(context === 'selection' ? selectionSteps : candidates);
-        if (!steps.length) return;
-        currentIndex = Math.min(options.index || 0, steps.length - 1);
-        active = true;
-        root.classList.remove('is-hidden');
-        root.setAttribute('aria-hidden', 'false');
-        document.body.classList.add('costing-tour-active');
-        render();
-    }
-
-    function close(markCompleted = true) {
-        active = false;
-        root.classList.add('is-hidden');
-        root.setAttribute('aria-hidden', 'true');
-        document.body.classList.remove('costing-tour-active');
-        localStorage.removeItem(continuationKey);
-        if (markCompleted) {
-            localStorage.setItem(activeMode === 'page' ? pageCompletionKey : completionKey, '1');
-        }
-    }
-
-    function finish() {
-        if (context === 'selection' && nextUrl) {
-            localStorage.setItem(continuationKey, 'main');
-            window.location.href = nextUrl;
-            return;
-        }
-        const finishedMode = activeMode;
-        close(true);
-        if (context === 'main' && finishedMode === 'menu' && localStorage.getItem(pageCompletionKey) !== '1') {
-            window.setTimeout(() => start({ mode: 'page' }), 350);
-        }
-    }
-
-    root.addEventListener('click', event => {
-        const action = event.target.closest('[data-tour-action]')?.dataset.tourAction;
-        if (!action) return;
-        if (action === 'skip') return close(true);
-        if (action === 'previous' && currentIndex > 0) currentIndex--;
-        if (action === 'next') {
-            if (currentIndex >= steps.length - 1) return finish();
-            currentIndex++;
-        }
-        render();
-    });
-
-    document.addEventListener('keydown', event => {
-        if (active && event.key === 'Escape') close(true);
-    });
-    window.addEventListener('resize', positionCurrentStep);
-
-    window.CostingTour = {
-        start() {
-            if (context === 'selection') {
-                localStorage.removeItem(completionKey);
-                start({ mode: 'menu' });
-                return;
-            }
-            localStorage.removeItem(pageCompletionKey);
-            start({ mode: 'page' });
-        },
-        startPage() {
-            localStorage.removeItem(pageCompletionKey);
-            start({ mode: 'page' });
-        },
-        startMenu() {
-            localStorage.removeItem(completionKey);
-            start({ mode: 'menu' });
-        },
-        reset() {
-            localStorage.removeItem(completionKey);
-            localStorage.removeItem(pageCompletionKey);
-            localStorage.removeItem(continuationKey);
-        }
-    };
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const completed = localStorage.getItem(completionKey) === '1';
-        const continuation = localStorage.getItem(continuationKey);
-        if (context === 'main' && continuation === 'main') {
-            localStorage.removeItem(continuationKey);
-            window.setTimeout(() => start({ mode: 'menu' }), 500);
-        } else if (!completed && context === 'selection') {
-            window.setTimeout(() => start({ mode: 'menu' }), 500);
-        } else if (context === 'main' && localStorage.getItem(pageCompletionKey) !== '1') {
-            window.setTimeout(() => start({ mode: 'page' }), 650);
-        }
-    });
-})();
-</script>
+            { selector: '.engineering-doc-panel', title: 'Dokumen Engineering', description: 'ÛM»¶‰žËkºwµçeÑ±”è€Q…µ‰… A•¹Õ¹„œ°‘•ÍÉ¥ÁÑ¥½¸è€-±¥¬Ñ½µ‰½°¥¹¤Õ¹ÑÕ¬µ•µ‰Õ…Ð…­Õ¸‰…ÉÔ‘…¸µ•¹•¹ÑÕ­…¸É½±”…Ý…±¹å„¸œô(€€€€€€€t°(€€€€€€€€…ÍÍ¥ÍÑ…¹Ð¹ÑÉ…¥¹¥¹œœèl(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹¡•…‘•ÈµÑ¥Ñ±”œ°Ñ¥Ñ±”è€ÍÍ¥ÍÑ…¹ÐQÉ…¥¹¥¹œœ°‘•ÍÉ¥ÁÑ¥½¸è€-¡ÕÍÕÌ‘µ¥¸è­•±½±„Á•¹•Ñ…¡Õ…¸‘…¸…ÑÕÉ…¸å…¹œ‘¥Õ¹…­…¸½ÍÑ¥¹œÍÍ¥ÍÑ…¹Ð¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹…ÍÍ¥ÍÑ…¹ÐµÑÉ…¥¹¥¹œµ¡•É¼œ°Ñ¥Ñ±”è€I¥¹­…Í…¸QÉ…¥¹¥¹œœ°‘•ÍÉ¥ÁÑ¥½¸è€1¥¡…Ð©Õµ±… Ñ½Á¥Œ°ÉÕ±”°‘…¸Ñ•µÁ±…Ñ”™¥±”å…¹œ…­Ñ¥˜¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹…ÍÍ¥ÍÑ…¹ÐµÑÉ…¥¹¥¹œµÉ¥œ°Ñ¥Ñ±”è€Q…µ‰… 5…Ñ•É¤ÍÍ¥ÍÑ…¹Ðœ°‘•ÍÉ¥ÁÑ¥½¸è€Q…µ‰…¡­…¸Ñ½Á¥Œ©…Ý…‰…¸°ÉÕ±”Ù…±¥‘…Í¤°‘…¸Ñ•µÁ±…Ñ”Á•µ•É¥­Í……¸™¥±”‘…É¤‰…¥…¸¥¹¤¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹…ÍÍ¥ÍÑ…¹ÐµÑÉ…¥¹¥¹œµ±¥ÍÐœ°Ñ¥Ñ±”è€-•±½±„5…Ñ•É¤Q•ÉÍ¥µÁ…¸œ°‘•ÍÉ¥ÁÑ¥½¸è€	Õ­„¥Ñ•´Õ¹ÑÕ¬µ•¹Õ‰… °µ•¹…­Ñ¥™­…¸°µ•¹½¹…­Ñ¥™­…¸°…Ñ…Ôµ•¹¡…ÁÕÌµ…Ñ•É¤ÑÉ…¥¹¥¹œ¸œô(€€€€€€€t°(€€€€€€€€É…Ñ”µ­ÕÉÌœèl(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹¡•…‘•ÈµÑ¥Ñ±”œ°Ñ¥Ñ±”è€I…Ñ”€˜-ÕÉÌœ°‘•ÍÉ¥ÁÑ¥½¸è€-•±½±„­ÕÉÌ‘…¸É…Ñ”å…¹œ‘¥Õ¹…­…¸‘…±…´­…±­Õ±…Í¤½ÍÑ¥¹œ¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹É…Ñ”µ…É‘Ìœ°Ñ¥Ñ±”è€I…Ñ”­Ñ¥˜œ°‘•ÍÉ¥ÁÑ¥½¸è€A•É¥­Í„UM°)Ad°‘…¸15Ñ•É‰…ÉÔÍ•‰•±Õ´µ•±…­Õ­…¸Á•É¡¥ÑÕ¹…¸½ÍÑ¥¹œ¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹µ…¥¸µ½¹Ñ•¹Ð™½É´œ°Ñ¥Ñ±”è€Q…µ‰… á¡…¹”I…Ñ”œ°‘•ÍÉ¥ÁÑ¥½¸è€5…ÍÕ­­…¸Á•É¥½‘”°¹¥±…¤­ÕÉÌ°15°‘…¸ÍÕµ‰•È‘…Ñ„±…±ÔÍ¥µÁ…¸¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹É…Ñ”µÑ…‰±”œ°Ñ¥Ñ±”è€I¥Ý…å…ÐI…Ñ”œ°‘•ÍÉ¥ÁÑ¥½¸è€Q…‰•°µ•¹å¥µÁ…¸¡¥ÍÑ½É¤•á¡…¹”É…Ñ”‘…¸Ý¥É”É…Ñ”Á•È‰Õ±…¸¸œô(€€€€€€€t°(€€€€€€€€Õ¹ÁÉ¥•µÁ…ÉÑÌœèl(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹¡•…‘•ÈµÑ¥Ñ±”œ°Ñ¥Ñ±”è€U¹ÁÉ¥•A…ÉÑÌœ°‘•ÍÉ¥ÁÑ¥½¸è€A…¹Ñ…ÔÁ…ÉÐå…¹œ‰•±Õ´µ•µ¥±¥­¤¡…É„‘…¸‰•ÉÁ½Ñ•¹Í¤µ•¹¡…µ‰…ÐÁ•¹å•±•Í…¥…¸½ÍÑ¥¹œ¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹ÕÀµ…É‘Ìœ°Ñ¥Ñ±”è€MÑ…ÑÕÌA•¹å•±•Í…¥…¸!…É„œ°‘•ÍÉ¥ÁÑ¥½¸è€1¥¡…Ð©Õµ±… Ñ½Ñ…°Á…ÉÐ°Á…ÉÐÉ•Í½±Ù•°‘…¸Á…ÉÐå…¹œµ…Í¥ Õ¹É•Í½±Ù•¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹ÕÀµÑ…‰±”œ°Ñ¥Ñ±”è€…™Ñ…ÈA…ÉÐQ…¹Á„!…É„œ°‘•ÍÉ¥ÁÑ¥½¸è€Õ¹…­…¸‘…™Ñ…È¥¹¤Õ¹ÑÕ¬µ•¹•µÕ­…¸Á…ÉÐ°ÁÉ½©•ÐÑ•É­…¥Ð°‘…¸ÍÑ…ÑÕÌÑ¥¹‘…¬±…¹©ÕÐ¡…É„¸œô(€€€€€€€t°(€€€€€€€™½É´èl(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹¡•…‘•ÈµÑ¥Ñ±”œ°Ñ¥Ñ±”è€½É´½ÍÑ¥¹œœ°‘•ÍÉ¥ÁÑ¥½¸è€!…±…µ…¸¥¹¤‘¥Õ¹…­…¸Õ¹ÑÕ¬µ•¹¡¥ÑÕ¹œÍ•±ÕÉÕ ­½µÁ½¹•¸‰¥…å„ÍÕ…ÑÔÁ…ÉÐ…Ñ…Ô…ÍÍä¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èèlœ¹ÁÉ½©•Ðµ¥¹™¼µÍ•Ñ¥½¸œ°€œÁÉ½©•Ðµ¥¹™¼µÍ•Ñ¥½¸œ°€œ¹µ…¥¸µ½¹Ñ•¹Ð™½É´t°Ñ¥Ñ±”è€%¹™½Éµ…Í¤AÉ½©•Ðœ°‘•ÍÉ¥ÁÑ¥½¸è€A…ÍÑ¥­…¸ÕÍÑ½µ•È°µ½‘•°°Á…ÉÐ¹Õµ‰•È°É•Ù¥Í¤°‘…¸¥¹™½Éµ…Í¤ÁÉ½©•ÐÍÕ‘… ‰•¹…È¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èèlœµ…Ñ•É¥…°µÍ•Ñ¥½¸œ°€œ¹µ…Ñ•É¥…°µÍ•Ñ¥½¸œ°€œ¹µ…Ñ•É¥…°µÑ…‰±”µ½¹Ñ…¥¹•Èt°Ñ¥Ñ±”è€5…Ñ•É¥…°½ÍÐœ°‘•ÍÉ¥ÁÑ¥½¸è€5…ÍÕ­­…¸µ…Ñ•É¥…°°­Õ…¹Ñ¥Ñ…Ì°¡…É„°µ…Ñ„Õ…¹œ°5=D°ÍÕÁÁ±¥•È°‘…¸‰¥…å„¥µÁ½È¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½ÈèlœÁÉ½•ÍÌµÍ•Ñ¥½¸œ°€œ¹ÁÉ½•ÍÌµÍ•Ñ¥½¸œ°€œ¹å±”µÑ¥µ”µÍ•Ñ¥½¸t°Ñ¥Ñ±”è€AÉ½•ÍÌ‘…¸å±”Q¥µ”œ°‘•ÍÉ¥ÁÑ¥½¸è€%Í¤å±”Ñ¥µ”°µ•Í¥¸°Ñ•¹…„­•É©„°‘…¸Á…É…µ•Ñ•ÈÁÉ½Í•ÌÕ¹ÑÕ¬µ•¹¡¥ÑÕ¹œ±…‰½È½ÍÐ¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èèl‰ÕÑÑ½¹mÑåÁ”ô‰ÍÕ‰µ¥Ð‰tœ°€œ¹‰Ñ¸µÍ…Ù”t°Ñ¥Ñ±”è€M¥µÁ…¸½ÍÑ¥¹œœ°‘•ÍÉ¥ÁÑ¥½¸è€A•É¥­Í„­•µ‰…±¤Í•±ÕÉÕ ­½µÁ½¹•¸‘…¸Ñ½Ñ…°=4Í•‰•±Õ´µ•¹å¥µÁ…¸Á•ÉÕ‰…¡…¸¸œô(€€€€€€€t°(€€€€€€€€ÑÉ…­¥¹œµ‘½Õµ•¹ÑÌ¹É•…Ñ”œèl(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹¡•…‘•ÈµÑ¥Ñ±”œ°Ñ¥Ñ±”è€9•ÜAÉ½©•Ðœ°‘•ÍÉ¥ÁÑ¥½¸è€Õ¹…­…¸¡…±…µ…¸¥¹¤Õ¹ÑÕ¬µ•µ‰Õ…ÐÁÉ½©•Ð‘…¸µ•¹•É¥µ„‘½­Õµ•¸•¹¥¹••É¥¹œ‰…ÉÔ¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹µ…¥¸µ½¹Ñ•¹Ð™½É´œ°Ñ¥Ñ±”è€…Ñ„AÉ½©•Ðœ°‘•ÍÉ¥ÁÑ¥½¸è€%Í¤‰ÕÍ¥¹•ÍÌ…Ñ•½Éä°ÕÍÑ½µ•È°µ½‘•°°¹…µ„ÁÉ½©•Ð°A%°‘…¸¥¹™½Éµ…Í¤‘…Í…È±…¥¹¹å„¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€¥¹ÁÕÑmÑåÁ”ô‰™¥±”‰tœ°Ñ¥Ñ±”è€UÁ±½…½­Õµ•¸œ°‘•ÍÉ¥ÁÑ¥½¸è€U¹… Á…ÉÑ±¥ÍÐ°‘É…Ý¥¹œ°ÅÕ½Ñ…Ñ¥½¸°‘…¸‘½­Õµ•¸Á•¹‘Õ­Õ¹œÍ•ÍÕ…¤™½Éµ…Ðå…¹œ‘¥µ¥¹Ñ„¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€‰ÕÑÑ½¹mÑåÁ”ô‰ÍÕ‰µ¥Ð‰tœ°Ñ¥Ñ±”è€M¥µÁ…¸AÉ½©•Ðœ°‘•ÍÉ¥ÁÑ¥½¸è€A•É¥­Í„­•µ‰…±¤¥Í¥…¸‘…¸‘½­Õµ•¸°±…±ÔÍ¥µÁ…¸Õ¹ÑÕ¬µ•µÕ±…¤ÁÉ½Í•ÌÑÉ…­¥¹œ¸œô(€€€€€€€t(€€€ôì((€€€½¹ÍÐµ…ÍÑ•É…Ñ…9…µ•Ì€ôì(€€€€€€€‘…Ñ…‰…Í”è€…Ñ…‰…Í”5…ÍÑ•Èœ°(€€€€€€€€‘…Ñ…‰…Í”¹Á…ÉÑÌœè€…Ñ…‰…Í”A…ÉÐœ°(€€€€€€€€‘…Ñ…‰…Í”¹Ý¥É•Ìœè€…Ñ…‰…Í”]¥É”œ°(€€€€€€€€‘…Ñ…‰…Í”¹ÑÕ‰•Ìœè€…Ñ…‰…Í”QÕ‰•Ìœ°(€€€€€€€€‘…Ñ…‰…Í”¹ÕÍÑ½µ•ÉÌœè€…Ñ…‰…Í”ÕÍÑ½µ•Èœ°(€€€€€€€€‘…Ñ…‰…Í”¹‰ÕÍ¥¹•ÍÌµ…Ñ•½É¥•Ìœè€	ÕÍ¥¹•ÍÌ…Ñ•½É¥•Ìœ°(€€€€€€€€‘…Ñ…‰…Í”¹Á±…¹ÑÌœè€…Ñ…‰…Í”A±…¹Ðœ°(€€€€€€€€‘…Ñ…‰…Í”¹Á¥Ìœè€…Ñ…‰…Í”A%œ°(€€€€€€€€‘…Ñ…‰…Í”¹å±”µÑ¥µ”µÑ•µÁ±…Ñ•Ìœè€å±”Q¥µ”Q•µÁ±…Ñ”œ(€€€ôì((€€€™Õ¹Ñ¥½¸‰Õ¥±‘A…•MÑ•ÁÌ ¤ì(€€€€€€€¥˜€¡Á…•Õ¥‘•ÍmÉ½ÕÑ•9…µ•t¤É•ÑÕÉ¸Á…•Õ¥‘•ÍmÉ½ÕÑ•9…µ•tì(€€€€€€€¥˜€¡É½ÕÑ•9…µ”€ôôô€ÑÉ…­¥¹œµ‘½Õµ•¹ÑÌ¹¥¹‘•àœ¤É•ÑÕÉ¸Á…•Õ¥‘•Ì¹ÁÉ½©•Ðì(€€€€€€€¥˜€¡É½ÕÑ•9…µ”€ôôô€…¹…±¥Í¥ÌµÑÉ•¸¹…¹•±•œñðÉ½ÕÑ•9…µ”€ôôô€…¹…±¥Í¥ÌµÑÉ•¸¹•¹¥¹••É¥¹œœ¤É•ÑÕÉ¸Á…•Õ¥‘•Íl…¹…±¥Í¥ÌµÑÉ•¸tì((€€€€€€€½¹ÍÐµ…ÍÑ•É9…µ”€ôµ…ÍÑ•É…Ñ…9…µ•ÍmÉ½ÕÑ•9…µ•tì(€€€€€€€¥˜€¡µ…ÍÑ•É9…µ”¤ì(€€€€€€€€€€€É•ÑÕÉ¸l(€€€€€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹¡•…‘•ÈµÑ¥Ñ±”œ°Ñ¥Ñ±”èµ…ÍÑ•É9…µ”°‘•ÍÉ¥ÁÑ¥½¸è!…±…µ…¸¥¹¤‘¥Õ¹…­…¸Õ¹ÑÕ¬µ•¹•±½±„€‘íµ…ÍÑ•É9…µ”¹Ñ½1½Ý•É…Í” ¥ôå…¹œ‘¥Á…­…¤½±• ÁÉ½Í•Ì½ÍÑ¥¹œ¹€ô°(€€€€€€€€€€€€€€€ìÍ•±•Ñ½Èèlœ¹µ…¥¸µ½¹Ñ•¹Ð€¹‰Ñ¸µÁÉ¥µ…Éäœ°€œ¹µ…¥¸µ½¹Ñ•¹Ð€¹‰Ñ¸¹‰Ñ¸µÁÉ¥µ…Éät°Ñ¥Ñ±”è€Q…µ‰… …Ñ…Ô%µÁ½ÉÐ…Ñ„œ°‘•ÍÉ¥ÁÑ¥½¸è€Õ¹…­…¸Ñ½µ‰½°…­Í¤Õ¹ÑÕ¬µ•¹…µ‰…¡­…¸‘…Ñ„‰…ÉÔ…Ñ…Ôµ•¹¥µÁ½È‘…Ñ„©¥­„™…Í¥±¥Ñ…Ì¥µÁ½ÉÐÑ•ÉÍ•‘¥„¸œô°(€€€€€€€€€€€€€€€ìÍ•±•Ñ½Èèlœ¹µ…¥¸µ½¹Ñ•¹Ð€¹µ…Ñ•É¥…°µÑ…‰±”µ½¹Ñ…¥¹•Èœ°€œ¹µ…¥¸µ½¹Ñ•¹Ð€¹‘…Ñ„µÑ…‰±”œ°€œ¹µ…¥¸µ½¹Ñ•¹Ð€¹…Ét°Ñ¥Ñ±”è€…™Ñ…È5…ÍÑ•È…Ñ„œ°‘•ÍÉ¥ÁÑ¥½¸è€…É¤‘…¸Á•É¥­Í„‘…Ñ„µ…ÍÑ•Èå…¹œÍÕ‘… Ñ•ÉÍ¥µÁ…¸Í•‰•±Õ´‘¥Õ¹…­…¸Á…‘„½ÍÑ¥¹œ¸œô°(€€€€€€€€€€€€€€€ìÍ•±•Ñ½Èèlœ¹µ…¥¸µ½¹Ñ•¹Ð€¹‰Ñ¸µ…Ñ¥½¸œ°€œ¹µ…¥¸µ½¹Ñ•¹ÐmÑ¥Ñ±”ô‰‘¥Ð‰tt°Ñ¥Ñ±”è€‘¥Ð‘…¸!…ÁÕÌœ°‘•ÍÉ¥ÁÑ¥½¸è€Õ¹…­…¸Ñ½µ‰½°…­Í¤Á…‘„‰…É¥ÌÕ¹ÑÕ¬µ•µÁ•É‰…ÉÕ¤…Ñ…Ôµ•¹¡…ÁÕÌ‘…Ñ„Í•ÍÕ…¤¡…¬…­Í•Ì¸œô(€€€€€€€€€€€tì(€€€€€€€ô((€€€€€€€É•ÑÕÉ¸l(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹¡•…‘•ÈµÑ¥Ñ±”œ°Ñ¥Ñ±”è€A…¹‘Õ…¸!…±…µ…¸œ°‘•ÍÉ¥ÁÑ¥½¸è€)Õ‘Õ°¥¹¤µ•¹Õ¹©Õ­­…¸¡…±…µ…¸å…¹œÍ•‘…¹œ¹‘„Õ¹…­…¸¸œô°(€€€€€€€€€€€ìÍ•±•Ñ½Èè€œ¹µ…¥¸µ½¹Ñ•¹Ð€ø€¨œ°Ñ¥Ñ±”è€É•„-•É©„œ°‘•ÍÉ¥ÁÑ¥½¸è€Õ¹…­…¸…É•„¥¹¤Õ¹ÑÕ¬µ•±¥¡…Ð‘…Ñ„‘…¸µ•¹©…±…¹­…¸™Õ¹Í¤ÕÑ…µ„¡…±…µ…¸¸œô(€€€€€€€tì(€€€ô((€€€™Õ¹Ñ¥½¸É•Í½±Ù•Q…É•Ð¡Í•±•Ñ½È¤ì(€€€€€€€½¹ÍÐÍ•±•Ñ½ÉÌ€ôÉÉ…ä¹¥ÍÉÉ…ä¡Í•±•Ñ½È¤€üÍ•±•Ñ½È€èmÍ•±•Ñ½Étì(€€€€€€€™½È€¡½¹ÍÐ¥Ñ•´½˜Í•±•Ñ½ÉÌ¤ì(€€€€€€€€€€€™½È€¡½¹ÍÐ•±•µ•¹Ð½˜‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±°¡¥Ñ•´¤¤ì(€€€€€€€€€€€€€€€½¹ÍÐÍÑå±”€ôÝ¥¹‘½Ü¹•Ñ½µÁÕÑ•‘MÑå±”¡•±•µ•¹Ð¤ì(€€€€€€€€€€€€€€€¥˜€¡ÍÑå±”¹‘¥ÍÁ±…ä€„ôô€¹½¹”œ€˜˜ÍÑå±”¹Ù¥Í¥‰¥±¥Ñä€„ôô€¡¥‘‘•¸œ€˜˜•±•µ•¹Ð¹•Ñ±¥•¹ÑI•ÑÌ ¤¹±•¹Ñ ¤ì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸•±•µ•¹Ðì(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€ô((€€€™Õ¹Ñ¥½¸…Ù…¥±…‰±•MÑ•ÁÌ¡…¹‘¥‘…Ñ•Ì¤ì(€€€€€€€É•ÑÕÉ¸…¹‘¥‘…Ñ•Ì(€€€€€€€€€€€€¹µ…À¡ÍÑ•À€ôø€¡ì€¸¸¹ÍÑ•À°Ñ…É•ÐèÉ•Í½±Ù•Q…É•Ð¡ÍÑ•À¹Í•±•Ñ½È¤ô¤¤(€€€€€€€€€€€€¹™¥±Ñ•È¡ÍÑ•À€ôøÍÑ•À¹Ñ…É•Ð¤ì(€€€ô((€€€™Õ¹Ñ¥½¸Á½Í¥Ñ¥½¹ÕÉÉ•¹ÑMÑ•À ¤ì(€€€€€€€¥˜€ ……Ñ¥Ù”ñð€…ÍÑ•ÁÍmÕÉÉ•¹Ñ%¹‘•át¤É•ÑÕÉ¸ì(€€€€€€€½¹ÍÐÑ…É•Ð€ôÍÑ•ÁÍmÕÉÉ•¹Ñ%¹‘•át¹Ñ…É•Ðü¹¥Í½¹¹•Ñ•(€€€€€€€€€€€€üÍÑ•ÁÍmÕÉÉ•¹Ñ%¹‘•át¹Ñ…É•Ð(€€€€€€€€€€€€èÉ•Í½±Ù•Q…É•Ð¡ÍÑ•ÁÍmÕÉÉ•¹Ñ%¹‘•át¹Í•±•Ñ½È¤ì(€€€€€€€¥˜€ …Ñ…É•Ð¤É•ÑÕÉ¸ì((€€€€€€€Ñ…É•Ð¹ÍÉ½±±%¹Ñ½Y¥•Ü¡ì‰±½¬è€¹•…É•ÍÐœ°‰•¡…Ù¥½Èè€…ÕÑ¼œô¤ì(€€€€€€€Ý¥¹‘½Ü¹É•ÅÕ•ÍÑ¹¥µ…Ñ¥½¹É…µ”  ¤€ôøÝ¥¹‘½Ü¹É•ÅÕ•ÍÑ¹¥µ…Ñ¥½¹É…µ”  ¤€ôøì(€€€€€€€€€€€½¹ÍÐÉ•Ð€ôÑ…É•Ð¹•Ñ	½Õ¹‘¥¹±¥•¹ÑI•Ð ¤ì(€€€€€€€€€€€½¹ÍÐ…À€ô€ÄÈì(€€€€€€€€€€€½¹ÍÐÁ…‘‘¥¹œ€ô€Üì(€€€€€€€€€€€½¹ÍÐÍÁ½Ñ±¥¡ÑQ½À€ô5…Ñ ¹µ…à Ø°É•Ð¹Ñ½À€´Á…‘‘¥¹œ¤ì(€€€€€€€€€€€½¹ÍÐÍÁ½Ñ±¥¡Ñ1•™Ð€ô5…Ñ ¹µ…à Ø°É•Ð¹±•™Ð€´Á…‘‘¥¹œ¤ì(€€€€€€€€€€€ÍÁ½Ñ±¥¡Ð¹ÍÑå±”¹Ñ½À€ô€‘íÍÁ½Ñ±¥¡ÑQ½ÁõÁá€ì(€€€€€€€€€€€ÍÁ½Ñ±¥¡Ð¹ÍÑå±”¹±•™Ð€ô€‘íÍÁ½Ñ±¥¡Ñ1•™ÑõÁá€ì(€€€€€€€€€€€ÍÁ½Ñ±¥¡Ð¹ÍÑå±”¹Ý¥‘Ñ €ô€‘í5…Ñ ¹µ…à ÈÐ°5…Ñ ¹µ¥¸¡Ý¥¹‘½Ü¹¥¹¹•É]¥‘Ñ €´ÍÁ½Ñ±¥¡Ñ1•™Ð€´€Ø°É•Ð¹Ý¥‘Ñ €¬€¡Á…‘‘¥¹œ€¨€È¤¤¥õÁá€ì(€€€€€€€€€€€ÍÁ½Ñ±¥¡Ð¹ÍÑå±”¹¡•¥¡Ð€ô€‘í5…Ñ ¹µ…à ÈÐ°5…Ñ ¹µ¥¸¡Ý¥¹‘½Ü¹¥¹¹•É!•¥¡Ð€´ÍÁ½Ñ±¥¡ÑQ½À€´€Ø°É•Ð¹¡•¥¡Ð€¬€¡Á…‘‘¥¹œ€¨€È¤¤¥õÁá€ì((€€€€€€€€€€€…É¹ÍÑå±”¹Ý¥‘Ñ €ô€œœì(€€€€€€€€€€€…É¹ÍÑå±”¹µ…á!•¥¡Ð€ô€…±Œ ÄÀÁÙ €´€ÈáÁà¤œì(€€€€€€€€€€€½¹ÍÐ…É‘]¥‘Ñ €ô…É¹½™™Í•Ñ]¥‘Ñ ì(€€€€€€€€€€€½¹ÍÐ…É‘!•¥¡Ð€ô…É¹½™™Í•Ñ!•¥¡Ðì(€€€€€€€€€€€½¹ÍÐµ…É¥¸€ô€ÄÐì(€€€€€€€€€€€½¹ÍÐÙ¥•ÝÁ½ÉÑ]¥‘Ñ €ôÝ¥¹‘½Ü¹¥¹¹•É]¥‘Ñ ì(€€€€€€€€€€€½¹ÍÐÙ¥•ÝÁ½ÉÑ!•¥¡Ð€ôÝ¥¹‘½Ü¹¥¹¹•É!•¥¡Ðì(€€€€€€€€€€€½¹ÍÐÙ¥Í¥‰±•I•Ð€ôì(€€€€€€€€€€€€€€€Ñ½Àè5…Ñ ¹µ…à¡µ…É¥¸°É•Ð¹Ñ½À€´Á…‘‘¥¹œ¤°(€€€€€€€€€€€€€€€É¥¡Ðè5…Ñ ¹µ¥¸¡Ù¥•ÝÁ½ÉÑ]¥‘Ñ €´µ…É¥¸°É•Ð¹É¥¡Ð€¬Á…‘‘¥¹œ¤°(€€€€€€€€€€€€€€€‰½ÑÑ½´è5…Ñ ¹µ¥¸¡Ù¥•ÝÁ½ÉÑ!•¥¡Ð€´µ…É¥¸°É•Ð¹‰½ÑÑ½´€¬Á…‘‘¥¹œ¤°(€€€€€€€€€€€€€€€±•™Ðè5…Ñ ¹µ…à¡µ…É¥¸°É•Ð¹±•™Ð€´Á…‘‘¥¹œ¤(€€€€€€€€€€€ôì(€€€€€€€€€€€½¹ÍÐ±…µÀ€ô€¡Ù…±Õ”°µ¥¹¥µÕ´°µ…á¥µÕ´¤€ôø5…Ñ ¹µ…à¡µ¥¹¥µÕ´°5…Ñ ¹µ¥¸¡Ù…±Õ”°µ…á¥µÕ´¤¤ì(€€€€€€€€€€€½¹ÍÐÍÁ…•Ì€ôì(€€€€€€€€€€€€€€€É¥¡ÐèÙ¥•ÝÁ½ÉÑ]¥‘Ñ €´Ù¥Í¥‰±•I•Ð¹É¥¡Ð€´…À€´µ…É¥¸°(€€€€€€€€€€€€€€€±•™ÐèÙ¥Í¥‰±•I•Ð¹±•™Ð€´…À€´µ…É¥¸°(€€€€€€€€€€€€€€€‰•±½ÜèÙ¥•ÝÁ½ÉÑ!•¥¡Ð€´Ù¥Í¥‰±•I•Ð¹‰½ÑÑ½´€´…À€´µ…É¥¸°(€€€€€€€€€€€€€€€…‰½Ù”èÙ¥Í¥‰±•I•Ð¹Ñ½À€´…À€´µ…É¥¸(€€€€€€€€€€€ôì(€€€€€€€€€€€½¹ÍÐ¥Í]¥‘•Q…É•Ð€ôÉ•Ð¹Ý¥‘Ñ €øÙ¥•ÝÁ½ÉÑ]¥‘Ñ €¨€¸Ðàì(€€€€€€€€€€€½¹ÍÐÁÉ•™•ÉÉ•‘M¥‘•Ì€ô¥Í]¥‘•Q…É•Ð(€€€€€€€€€€€€€€€€ül‰•±½Üœ°€…‰½Ù”œ°€É¥¡Ðœ°€±•™Ðt(€€€€€€€€€€€€€€€€èlÉ¥¡Ðœ°€±•™Ðœ°€‰•±½Üœ°€…‰½Ù”tì(€€€€€€€€€€€½¹ÍÐ™¥ÑÌ€ôÍ¥‘”€ôø€¡Í¥‘”€ôôô€É¥¡ÐœñðÍ¥‘”€ôôô€±•™Ðœ¤(€€€€€€€€€€€€€€€€üÍÁ…•ÍmÍ¥‘•t€øô…É‘]¥‘Ñ (€€€€€€€€€€€€€€€€èÍÁ…•ÍmÍ¥‘•t€øô…É‘!•¥¡Ðì(€€€€€€€€€€€±•ÐÍ¥‘”€ôÁÉ•™•ÉÉ•‘M¥‘•Ì¹™¥¹¡™¥ÑÌ¤ì((€€€€€€€€€€€¥˜€ …Í¥‘”¤ì(€€€€€€€€€€€€€€€Í¥‘”€ôÁÉ•™•ÉÉ•‘M¥‘•Ì¹É•‘Õ” ¡‰•ÍÐ°…¹‘¥‘…Ñ”¤€ôøì(€€€€€€€€€€€€€€€€€€€½¹ÍÐÉ•ÅÕ¥É•€ô…¹‘¥‘…Ñ”€ôôô€É¥¡Ðœñð…¹‘¥‘…Ñ”€ôôô€±•™Ðœ€ü…É‘]¥‘Ñ €è…É‘!•¥¡Ðì(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€¡ÍÁ…•Ím…¹‘¥‘…Ñ•t€¼É•ÅÕ¥É•¤€ø€¡ÍÁ…•Ím‰•ÍÑt€¼€¡‰•ÍÐ€ôôô€É¥¡Ðœñð‰•ÍÐ€ôôô€±•™Ðœ€ü…É‘]¥‘Ñ €è…É‘!•¥¡Ð¤¤(€€€€€€€€€€€€€€€€€€€€€€€€ü…¹‘¥‘…Ñ”(€€€€€€€€€€€€€€€€€€€€€€€€è‰•ÍÐì(€€€€€€€€€€€€€€€ô°ÁÉ•™•ÉÉ•‘M¥‘•ÍlÁt¤ì(€€€€€€€€€€€ô((€€€€€€€€€€€±•Ð±•™Ðì(€€€€€€€€€€€±•ÐÑ½Àì(€€€€€€€€€€€¥˜€¡Í¥‘”€ôôô€‰•±½ÜœñðÍ¥‘”€ôôô€…‰½Ù”œ¤ì(€€€€€€€€€€€€€€€½¹ÍÐ…Ù…¥±…‰±•!•¥¡Ð€ô5…Ñ ¹µ…à ÄÔÀ°ÍÁ…•ÍmÍ¥‘•t¤ì(€€€€€€€€€€€€€€€…É¹ÍÑå±”¹µ…á!•¥¡Ð€ô€‘í5…Ñ ¹µ¥¸¡…É‘!•¥¡Ð°…Ù…¥±…‰±•!•¥¡Ð¥õÁá€ì(€€€€€€€€€€€€€€€±•™Ð€ô±…µÀ (€€€€€€€€€€€€€€€€€€€É•Ð¹±•™Ð€¬€ ¡É•Ð¹Ý¥‘Ñ €´…É‘]¥‘Ñ ¤€¼€È¤°(€€€€€€€€€€€€€€€€€€€µ…É¥¸°(€€€€€€€€€€€€€€€€€€€Ù¥•ÝÁ½ÉÑ]¥‘Ñ €´…É‘]¥‘Ñ €´µ…É¥¸(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€Ñ½À€ôÍ¥‘”€ôôô€‰•±½Üœ(€€€€€€€€€€€€€€€€€€€€üÙ¥Í¥‰±•I•Ð¹‰½ÑÑ½´€¬…À(€€€€€€€€€€€€€€€€€€€€èÙ¥Í¥‰±•I•Ð¹Ñ½À€´5…Ñ ¹µ¥¸¡…É‘!•¥¡Ð°…Ù…¥±…‰±•!•¥¡Ð¤€´…Àì(€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€±•™Ð€ôÍ¥‘”€ôôô€É¥¡Ðœ(€€€€€€€€€€€€€€€€€€€€üÙ¥Í¥‰±•I•Ð¹É¥¡Ð€¬…À(€€€€€€€€€€€€€€€€€€€€èÙ¥Í¥‰±•I•Ð¹±•™Ð€´…É‘]¥‘Ñ €´…Àì(€€€€€€€€€€€€€€€Ñ½À€ô±…µÀ (€€€€€€€€€€€€€€€€€€€É•Ð¹Ñ½À€¬€ ¡É•Ð¹¡•¥¡Ð€´…É‘!•¥¡Ð¤€¼€È¤°(€€€€€€€€€€€€€€€€€€€µ…É¥¸°(€€€€€€€€€€€€€€€€€€€Ù¥•ÝÁ½ÉÑ!•¥¡Ð€´…É‘!•¥¡Ð€´µ…É¥¸(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô((€€€€€€€€€€€…É¹ÍÑå±”¹±•™Ð€ô€‘í±•™ÑõÁá€ì(€€€€€€€€€€€…É¹ÍÑå±”¹Ñ½À€ô€‘íÑ½ÁõÁá€ì(€€€€€€€ô¤¤ì(€€€ô((€€€™Õ¹Ñ¥½¸É•¹‘•È ¤ì(€€€€€€€½¹ÍÐÍÑ•À€ôÍÑ•ÁÍmÕÉÉ•¹Ñ%¹‘•átì(€€€€€€€¥˜€ …ÍÑ•À¤É•ÑÕÉ¸™¥¹¥Í  ¤ì(€€€€€€€Ñ¥Ñ±”¹Ñ•áÑ½¹Ñ•¹Ð€ôÍÑ•À¹Ñ¥Ñ±”ì(€€€€€€€‘•ÍÉ¥ÁÑ¥½¸¹Ñ•áÑ½¹Ñ•¹Ð€ôÍÑ•À¹‘•ÍÉ¥ÁÑ¥½¸ì(€€€€€€€•å•‰É½Ü¹Ñ•áÑ½¹Ñ•¹Ð€ô…Ñ¥Ù•5½‘”€ôôô€Á…”œ€ü€A9U8!158œ€è€A9U8A1%-M$œì(€€€€€€€½Õ¹Ñ•È¹Ñ•áÑ½¹Ñ•¹Ð€ô€‘íÕÉÉ•¹Ñ%¹‘•à€¬€Åô‘…É¤€‘íÍÑ•ÁÌ¹±•¹Ñ¡õ€ì(€€€€€€€ÁÉ•Ù¥½ÕÍ	ÕÑÑ½¸¹‘¥Í…‰±•€ôÕÉÉ•¹Ñ%¹‘•à€ôôô€Àì(€€€€€€€¹•áÑ	ÕÑÑ½¸¹Ñ•áÑ½¹Ñ•¹Ð€ôÕÉÉ•¹Ñ%¹‘•à€ôôôÍÑ•ÁÌ¹±•¹Ñ €´€Ä(€€€€€€€€€€€€ü€¡½¹Ñ•áÐ€ôôô€Í•±•Ñ¥½¸œ€ü€5Õ±…¤Q½ÕÈœ€è€M•±•Í…¤œ¤(€€€€€€€€€€€€è€M•±…¹©ÕÑ¹å„œì(€€€€€€€Á½Í¥Ñ¥½¹ÕÉÉ•¹ÑMÑ•À ¤ì(€€€ô((€€€™Õ¹Ñ¥½¸ÍÑ…ÉÐ¡½ÁÑ¥½¹Ì€ôíô¤ì(€€€€€€€…Ñ¥Ù•5½‘”€ô½¹Ñ•áÐ€ôôô€Í•±•Ñ¥½¸œ€ü€µ•¹Ôœ€è€¡½ÁÑ¥½¹Ì¹µ½‘”ñð€Á…”œ¤ì(€€€€€€€½¹ÍÐ…¹‘¥‘…Ñ•Ì€ô…Ñ¥Ù•5½‘”€ôôô€Á…”œ€ü‰Õ¥±‘A…•MÑ•ÁÌ ¤€èµ…¥¹MÑ•ÁÌì(€€€€€€€ÍÑ•ÁÌ€ô…Ù…¥±…‰±•MÑ•ÁÌ¡½¹Ñ•áÐ€ôôô€Í•±•Ñ¥½¸œ€üÍ•±•Ñ¥½¹MÑ•ÁÌ€è…¹‘¥‘…Ñ•Ì¤ì(€€€€€€€¥˜€ …ÍÑ•ÁÌ¹±•¹Ñ ¤É•ÑÕÉ¸ì(€€€€€€€ÕÉÉ•¹Ñ%¹‘•à€ô5…Ñ ¹µ¥¸¡½ÁÑ¥½¹Ì¹¥¹‘•àñð€À°ÍÑ•ÁÌ¹±•¹Ñ €´€Ä¤ì(€€€€€€€…Ñ¥Ù”€ôÑÉÕ”ì(€€€€€€€É½½Ð¹±…ÍÍ1¥ÍÐ¹É•µ½Ù” ¥Ìµ¡¥‘‘•¸œ¤ì(€€€€€€€É½½Ð¹Í•ÑÑÑÉ¥‰ÕÑ” …É¥„µ¡¥‘‘•¸œ°€™…±Í”œ¤ì(€€€€€€€‘½Õµ•¹Ð¹‰½‘ä¹±…ÍÍ1¥ÍÐ¹…‘ ½ÍÑ¥¹œµÑ½ÕÈµ…Ñ¥Ù”œ¤ì(€€€€€€€É•¹‘•È ¤ì(€€€ô((€€€™Õ¹Ñ¥½¸±½Í”¡µ…É­½µÁ±•Ñ•€ôÑÉÕ”¤ì(€€€€€€€…Ñ¥Ù”€ô™…±Í”ì(€€€€€€€É½½Ð¹±…ÍÍ1¥ÍÐ¹…‘ ¥Ìµ¡¥‘‘•¸œ¤ì(€€€€€€€É½½Ð¹Í•ÑÑÑÉ¥‰ÕÑ” …É¥„µ¡¥‘‘•¸œ°€ÑÉÕ”œ¤ì(€€€€€€€‘½Õµ•¹Ð¹‰½‘ä¹±…ÍÍ1¥ÍÐ¹É•µ½Ù” ½ÍÑ¥¹œµÑ½ÕÈµ…Ñ¥Ù”œ¤ì(€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡½¹Ñ¥¹Õ…Ñ¥½¹-•ä¤ì(€€€€€€€¥˜€¡µ…É­½µÁ±•Ñ•¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡…Ñ¥Ù•5½‘”€ôôô€Á…”œ€üÁ…•½µÁ±•Ñ¥½¹-•ä€è½µÁ±•Ñ¥½¹-•ä°€œÄœ¤ì(€€€€€€€ô(€€€ô((€€€™Õ¹Ñ¥½¸™¥¹¥Í  ¤ì(€€€€€€€¥˜€¡½¹Ñ•áÐ€ôôô€Í•±•Ñ¥½¸œ€˜˜¹•áÑUÉ°¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡½¹Ñ¥¹Õ…Ñ¥½¹-•ä°€µ…¥¸œ¤ì(€€€€€€€€€€€Ý¥¹‘½Ü¹±½…Ñ¥½¸¹¡É•˜€ô¹•áÑUÉ°ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€ô(€€€€€€€½¹ÍÐ™¥¹¥Í¡•‘5½‘”€ô…Ñ¥Ù•5½‘”ì(€€€€€€€±½Í”¡ÑÉÕ”¤ì(€€€€€€€¥˜€¡½¹Ñ•áÐ€ôôô€µ…¥¸œ€˜˜™¥¹¥Í¡•‘5½‘”€ôôô€µ•¹Ôœ€˜˜±½…±MÑ½É…”¹•Ñ%Ñ•´¡Á…•½µÁ±•Ñ¥½¹-•ä¤€„ôô€œÄœ¤ì(€€€€€€€€€€€Ý¥¹‘½Ü¹Í•ÑQ¥µ•½ÕÐ  ¤€ôøÍÑ…ÉÐ¡ìµ½‘”è€Á…”œô¤°€ÌÔÀ¤ì(€€€€€€€ô(€€€ô((€€€É½½Ð¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ°•Ù•¹Ð€ôøì(€€€€€€€½¹ÍÐ…Ñ¥½¸€ô•Ù•¹Ð¹Ñ…É•Ð¹±½Í•ÍÐ m‘…Ñ„µÑ½ÕÈµ…Ñ¥½¹tœ¤ü¹‘…Ñ…Í•Ð¹Ñ½ÕÉÑ¥½¸ì(€€€€€€€¥˜€ ……Ñ¥½¸¤É•ÑÕÉ¸ì(€€€€€€€¥˜€¡…Ñ¥½¸€ôôô€Í­¥Àœ¤É•ÑÕÉ¸±½Í”¡ÑÉÕ”¤ì(€€€€€€€¥˜€¡…Ñ¥½¸€ôôô€ÁÉ•Ù¥½ÕÌœ€˜˜ÕÉÉ•¹Ñ%¹‘•à€ø€À¤ÕÉÉ•¹Ñ%¹‘•à´´ì(€€€€€€€¥˜€¡…Ñ¥½¸€ôôô€¹•áÐœ¤ì(€€€€€€€€€€€¥˜€¡ÕÉÉ•¹Ñ%¹‘•à€øôÍÑ•ÁÌ¹±•¹Ñ €´€Ä¤É•ÑÕÉ¸™¥¹¥Í  ¤ì(€€€€€€€€€€€ÕÉÉ•¹Ñ%¹‘•à¬¬ì(€€€€€€€ô(€€€€€€€É•¹‘•È ¤ì(€€€ô¤ì((€€€‘½Õµ•¹Ð¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ­•å‘½Ý¸œ°•Ù•¹Ð€ôøì(€€€€€€€¥˜€¡…Ñ¥Ù”€˜˜•Ù•¹Ð¹­•ä€ôôô€Í…Á”œ¤±½Í”¡ÑÉÕ”¤ì(€€€ô¤ì(€€€Ý¥¹‘½Ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È É•Í¥é”œ°Á½Í¥Ñ¥½¹ÕÉÉ•¹ÑMÑ•À¤ì((€€€Ý¥¹‘½Ü¹½ÍÑ¥¹Q½ÕÈ€ôì(€€€€€€€ÍÑ…ÉÐ ¤ì(€€€€€€€€€€€¥˜€¡½¹Ñ•áÐ€ôôô€Í•±•Ñ¥½¸œ¤ì(€€€€€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡½µÁ±•Ñ¥½¹-•ä¤ì(€€€€€€€€€€€€€€€ÍÑ…ÉÐ¡ìµ½‘”è€µ•¹Ôœô¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€ô(€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡Á…•½µÁ±•Ñ¥½¹-•ä¤ì(€€€€€€€€€€€ÍÑ…ÉÐ¡ìµ½‘”è€Á…”œô¤ì(€€€€€€€ô°(€€€€€€€ÍÑ…ÉÑA…” ¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡Á…•½µÁ±•Ñ¥½¹-•ä¤ì(€€€€€€€€€€€ÍÑ…ÉÐ¡ìµ½‘”è€Á…”œô¤ì(€€€€€€€ô°(€€€€€€€ÍÑ…ÉÑ5•¹Ô ¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡½µÁ±•Ñ¥½¹-•ä¤ì(€€€€€€€€€€€ÍÑ…ÉÐ¡ìµ½‘”è€µ•¹Ôœô¤ì(€€€€€€€ô°(€€€€€€€É•Í•Ð ¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡½µÁ±•Ñ¥½¹-•ä¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡Á…•½µÁ±•Ñ¥½¹-•ä¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡½¹Ñ¥¹Õ…Ñ¥½¹-•ä¤ì(€€€€€€€ô(€€€ôì((€€€‘½Õµ•¹Ð¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È =5½¹Ñ•¹Ñ1½…‘•œ°€ ¤€ôøì(€€€€€€€½¹ÍÐ½µÁ±•Ñ•€ô±½…±MÑ½É…”¹•Ñ%Ñ•´¡½µÁ±•Ñ¥½¹-•ä¤€ôôô€œÄœì(€€€€€€€½¹ÍÐ½¹Ñ¥¹Õ…Ñ¥½¸€ô±½…±MÑ½É…”¹•Ñ%Ñ•´¡½¹Ñ¥¹Õ…Ñ¥½¹-•ä¤ì(€€€€€€€¥˜€¡½¹Ñ•áÐ€ôôô€µ…¥¸œ€˜˜½¹Ñ¥¹Õ…Ñ¥½¸€ôôô€µ…¥¸œ¤ì(€€€€€€€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡½¹Ñ¥¹Õ…Ñ¥½¹-•ä¤ì(€€€€€€€€€€€Ý¥¹‘½Ü¹Í•ÑQ¥µ•½ÕÐ  ¤€ôøÍÑ…ÉÐ¡ìµ½‘”è€µ•¹Ôœô¤°€ÔÀÀ¤ì(€€€€€€€ô•±Í”¥˜€ …½µÁ±•Ñ•€˜˜½¹Ñ•áÐ€ôôô€Í•±•Ñ¥½¸œ¤ì(€€€€€€€€€€€Ý¥¹‘½Ü¹Í•ÑQ¥µ•½ÕÐ  ¤€ôøÍÑ…ÉÐ¡ìµ½‘”è€µ•¹Ôœô¤°€ÔÀÀ¤ì(€€€€€€€ô•±Í”¥˜€¡½¹Ñ•áÐ€ôôô€µ…¥¸œ€˜˜±½…±MÑ½É…”¹•Ñ%Ñ•´¡Á…•½µÁ±•Ñ¥½¹-•ä¤€„ôô€œÄœ¤ì(€€€€€€€€€€€Ý¥¹‘½Ü¹Í•ÑQ¥µ•½ÕÐ  ¤€ôøÍÑ…ÉÐ¡ìµ½‘”è€Á…”œô¤°€ØÔÀ¤ì(€€€€€€€ô(€€€ô¤ì)ô¤ ¤ì(ð½ÍÉ¥ÁÐø
