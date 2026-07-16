@@ -4,6 +4,7 @@ use App\Http\Controllers\ExportCenterController;
 use App\Models\ExportJob;
 use App\Models\SystemEvent;
 use App\Services\Operations\DatabaseBackupService;
+use App\Services\Operations\SlaSnapshotService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -84,3 +85,9 @@ Artisan::command('system-events:prune', function () {
 
 Schedule::command('exports:run-scheduled')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('system-events:prune')->dailyAt('02:15')->withoutOverlapping();
+
+Artisan::command('sla:capture', function (SlaSnapshotService $service) {
+    $this->info($service->capture().' SLA snapshot(s) captured.');
+})->purpose('Capture the daily SLA history independently from dashboard visits');
+
+Schedule::command('sla:capture')->dailyAt('23:50')->withoutOverlapping();

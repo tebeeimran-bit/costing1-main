@@ -92,7 +92,9 @@ Scheduler production wajib berjalan setiap menit:
 * * * * * php /path/to/artisan schedule:run
 ```
 
-Scheduler menjalankan backup terverifikasi, scheduled export, dan pembersihan telemetry lama.
+Scheduler menjalankan backup terverifikasi, snapshot SLA harian, scheduled export, dan pembersihan telemetry lama. Backup mendukung SQLite serta MySQL/MariaDB melalui `mysqldump`; atur `MYSQLDUMP_PATH` dan `MYSQL_PATH` bila executable tidak tersedia di PATH. Restore selalu memverifikasi checksum dan membuat safety backup terlebih dahulu.
+
+Browser quality gate menggunakan database E2E terpisah untuk menguji login, pembuatan project, upload Partlist/UMH, submit approval, digital sign-off, pengiriman ke Marketing, viewport mobile, dan performance budget tanpa menyentuh data staging/production.
 
 ## Struktur Folder Penting
 

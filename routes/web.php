@@ -197,6 +197,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/costing/import-cogm', fn () => redirect()->route('form'))->name('costing.import-cogm.get');
         Route::post('/costing/import-cogm', [CostingController::class, 'importCogm'])->name('costing.import-cogm');
         Route::post('/costing/import-cogm/preview', [CostingController::class, 'previewCogm'])->name('costing.import-cogm.preview');
+        Route::post('/costing/import-partlist/preview', [CostingController::class, 'previewPartlist'])->name('costing.import-partlist.preview');
+        Route::post('/costing/import-umh/preview', [CostingController::class, 'previewUmh'])->name('costing.import-umh.preview');
         Route::post('/costing/imports/{importRun}/rollback', [ImportSafetyController::class, 'rollback'])->name('costing.imports.rollback');
         Route::get('/costing/import-umh', fn () => redirect()->route('form'))->name('costing.import-umh.get');
         Route::post('/costing/import-umh', [CostingController::class, 'importUmh'])->name('costing.import-umh');

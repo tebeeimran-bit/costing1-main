@@ -19,6 +19,10 @@ class SlaPerformanceController extends Controller
         $role = (string) ($request->user()?->role ?? 'viewer');
         $stageFilter = trim((string) $request->query('stage', 'all'));
         $statusFilter = trim((string) $request->query('status', 'all'));
+        $historyRange = (int) $request->query('history_range', 30);
+        if (! in_array($historyRange, [30, 90, 365], true)) {
+            $historyRange = 30;
+        }
 
         $revisions = DocumentRevision::query()
             ->latestPerProject()
@@ -115,10 +119,14 @@ class SlaPerformanceController extends Controller
                 ['stage' => $item->stage, 'pic' => $item->pic, 'due_at' => $item->due_at, 'is_overdue' => $item->is_overdue, 'aging_days' => $item->aging_days, 'compliance' => $item->is_overdue ? 0 : 100]
             );
         }
-        $history = SlaSnapshot::query()->where('snapshot_date', '>=', today()->subDays(29))->get()
-            ->groupBy(fn ($row) => $row->snapshot_date->toDateString())
+        $historyRows = SlaSnapshot::query()->where('snapshot_date', '>=', today()->subDays($historyRange - 1))->get();
+        $monthly = $historyRange === 365;
+        $history = $historyRows
+            ->groupBy(fn ($row) => $monthly ? $row->snapshot_date->format('Y-m') : $row->snapshot_date->toDateString())
             ->map(fn ($items, $date) => (object) ['date' => $date, 'compliance' => (int) round($items->avg('compliance')), 'overdue' => $items->where('is_overdue', true)->count(), 'total' => $items->count()])
             ->sortKeys()->values();
+        $historicStageSummary = $this->historicSummary($historyRows, 'stage');
+        $historicPicSummary = $this->historicSummary($historyRows, 'pic');
 
         return view('reports.sla-performance', compact(
             'kpis',
@@ -127,8 +135,26 @@ class SlaPerformanceController extends Controller
             'filteredRows',
             'stageFilter',
             'statusFilter',
-            'history'
+            'history',
+            'historyRange',
+            'monthly',
+            'historicStageSummary',
+            'historicPicSummary'
         ));
+    }
+
+    private function historicSummary($rows, string $field)
+    {
+        return $rows->groupBy(fn ($row) => trim((string) $row->{$field}) ?: 'Belum ditentukan')
+            ->map(function ($items, string $label) {
+                return (object) [
+                    'label' => $label,
+                    'samples' => $items->count(),
+                    'compliance' => (int) round($items->avg('compliance')),
+                    'overdue' => $items->where('is_overdue', true)->count(),
+                    'average_aging' => round((float) $items->avg('aging_days'), 1),
+                ];
+            })->sortBy('compliance')->values();
     }
 
     private function stageLabel(string $stage): string

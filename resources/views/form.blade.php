@@ -877,7 +877,7 @@
             input.click();
         }
 
-        function submitUmhImport() {
+        async function submitUmhImport() {
             const form = document.getElementById('umhImportForm');
 
             if (!form) {
@@ -885,7 +885,25 @@
                 return;
             }
 
-            form.submit();
+            showAppLoading('Memeriksa isi UMH...');
+            try {
+                const previewData = new FormData();
+                previewData.append('import_umh_file', document.getElementById('importUmhFileInput').files[0]);
+                const response = await fetch(@json(route('costing.import-umh.preview', absolute:false)), {method:'POST', headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token())}, body:previewData});
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Preview UMH gagal.');
+                hideAppLoading();
+                if (!confirm(`Preview UMH\n\n${result.summary.rows} baris ditemukan\n${result.summary.issues} masalah validasi\n\nLanjutkan import?`)) {
+                    document.getElementById('importUmhFileInput').value = '';
+                    return;
+                }
+            } catch (error) {
+                hideAppLoading();
+                alert(error.message);
+                return;
+            }
+            showAppLoading('Mengimport UMH...');
+            form.requestSubmit ? form.requestSubmit() : form.submit();
         }
 
         function triggerMaterialImport() {
@@ -4424,7 +4442,7 @@
             fileInput.click();
         }
 
-        function submitPartlistImport() {
+        async function submitPartlistImport() {
             const form = document.getElementById('partlistImportForm');
             const importForecast = document.getElementById('importForecast');
             const importProjectPeriod = document.getElementById('importProjectPeriod');
@@ -4468,7 +4486,26 @@
                 if (hidden && main) hidden.value = main.value || '';
             }
 
-            // Submit the import form
+            showAppLoading('Memeriksa isi partlist...');
+            try {
+                const previewData = new FormData();
+                previewData.append('import_partlist_file', document.getElementById('importPartlistFileInput').files[0]);
+                const revisionId = form.querySelector('[name="tracking_revision_id"]')?.value;
+                if (revisionId) previewData.append('tracking_revision_id', revisionId);
+                const response = await fetch(@json(route('costing.import-partlist.preview', absolute:false)), {method:'POST', headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token())}, body:previewData});
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Preview partlist gagal.');
+                hideAppLoading();
+                if (!confirm(`Preview Partlist\n\n${result.summary.rows} baris ditemukan\n${result.summary.issues} masalah validasi\n\nLanjutkan import?`)) {
+                    document.getElementById('importPartlistFileInput').value = '';
+                    return;
+                }
+            } catch (error) {
+                hideAppLoading();
+                alert(error.message);
+                return;
+            }
+
             showAppLoading('Mengimport partlist...');
 
             if (typeof form.requestSubmit === 'function') {

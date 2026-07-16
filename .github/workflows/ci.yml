@@ -49,6 +49,13 @@ jobs:
           php artisan view:cache
           npm run build
       - name: Browser smoke and mobile accessibility
+        env:
+          DB_DATABASE: ${{ github.workspace }}/database/e2e.sqlite
+          E2E_USER: e2e-admin@example.test
+          E2E_PASSWORD: E2E-password-2026
         run: |
+          touch database/e2e.sqlite
+          php artisan migrate:fresh --force
+          php artisan db:seed --class=E2eTestSeeder --force
           npx playwright install --with-deps chromium
           npm run test:e2e

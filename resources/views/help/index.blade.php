@@ -140,15 +140,15 @@
         </article>
         <article class="help-topic" data-help-text="import cogm preview rollback safety restore material">
             <h3>Import Preview &amp; Rollback</h3>
-            <p>Sebelum import COGM diterapkan, sistem menampilkan jumlah baris, harga kosong, dan harga estimate. Setelah import, panel Import Safety dapat mengembalikan material ke kondisi sebelum import.</p>
+            <p>Sebelum import Partlist, COGM, atau UMH diterapkan, sistem menampilkan jumlah baris dan masalah validasi. Setelah import, panel Import Safety dapat mengembalikan material maupun cycle time ke kondisi sebelumnya.</p>
         </article>
         <article class="help-topic" data-help-text="backup restore checksum safety copy operations center">
             <h3>Backup &amp; Restore</h3>
-            <p>Admin dapat membuat, memverifikasi checksum, dan mengunduh backup dari Operations Center. Restore wajib mengetik RESTORE dan sistem membuat safety copy terlebih dahulu untuk mengurangi risiko kehilangan data.</p>
+            <p>Admin dapat membuat, memverifikasi checksum SHA-256, dan mengunduh backup SQLite maupun MySQL dari Operations Center. Restore wajib mengetik RESTORE; sistem memeriksa kecocokan driver dan membuat safety backup terlebih dahulu.</p>
         </article>
         <article class="help-topic" data-help-text="sla escalation warning besok hari ini overdue notification historical trend">
             <h3>SLA Escalation &amp; Trend</h3>
-            <p>Notification Center memberi peringatan saat deadline tersisa satu hari, jatuh tempo hari ini, atau overdue. SLA Performance menyimpan snapshot harian agar tren kepatuhan 30 hari dapat dibandingkan.</p>
+            <p>Notification Center memberi peringatan saat deadline tersisa satu hari, jatuh tempo hari ini, atau overdue. Scheduler menyimpan snapshot harian; SLA Performance dapat membandingkan 30 hari, 90 hari, atau 12 bulan berdasarkan tahap dan PIC.</p>
         </article>
         <article class="help-topic" data-help-text="system center error performance slow request login security monitoring admin">
             <h3>System Center</h3><p>Admin memantau error, request lambat, histori login gagal, announcement, dan delegasi approval. Event kritis harus diperiksa sebelum release dinyatakan Ready.</p>

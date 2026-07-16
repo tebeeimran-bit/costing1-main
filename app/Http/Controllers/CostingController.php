@@ -1316,15 +1316,8 @@ class CostingController extends Controller
                     ->unique('part_number');
 
                 // Pre-load all materials & wires once (2 queries total instead of N*8)
-                $allMaterials = Material::query()
-                    ->where(function ($q) {
-                        $q->whereNull('material_code')->orWhere('material_code', 'not like', '__ROW_%');
-                    })
-                    ->whereNotNull('material_description')
-                    ->where('material_description', '!=', '')
-                    ->orderBy('material_code')
-                    ->get();
-                $allWires = Wire::all();
+                $allMaterials = $materials;
+                $allWires = Cache::remember('form:wires:lookup', 60, fn () => Wire::all());
 
                 // Build lookup indexes in memory
                 $matByDescExact = $allMaterials->groupBy(fn ($m) => Str::lower($m->material_description));
@@ -1660,8 +1653,32 @@ class CostingController extends Controller
             }
 
             $costingData = $persistenceService->resolveExistingCostingData($validated);
+            $importSnapshot = null;
+            if ($importFromPartlist) {
+                $importSnapshot = [
+                    'material_cost' => $costingData?->material_cost,
+                    'materials' => $costingData
+                        ? DB::table('material_breakdowns')->where('costing_data_id', $costingData->id)->get()->map(fn ($row) => (array) $row)->all()
+                        : [],
+                ];
+            } elseif ($importFromCycleTime) {
+                $importSnapshot = ['cycle_times' => $costingData?->cycle_times ?? []];
+            }
             $productId = $persistenceService->resolveProductId($request, $costingData);
             $costingData = $persistenceService->saveCostingData($request, $validated, $updateSection, $costingData, $productId);
+            $importRun = null;
+            if ($importSnapshot !== null) {
+                $uploaded = $importFromPartlist ? $request->file('import_partlist_file') : $request->file('import_cycle_time_file');
+                $importRun = ImportRun::create([
+                    'user_id' => $request->user()->id,
+                    'costing_data_id' => $costingData->id,
+                    'document_revision_id' => $trackingRevisionId,
+                    'type' => $importFromPartlist ? 'partlist' : 'umh',
+                    'original_name' => $uploaded?->getClientOriginalName(),
+                    'status' => 'previewed',
+                    'before_snapshot' => $importSnapshot,
+                ]);
+            }
 
             if ($trackingRevisionId && ($updateSection === '' || $updateSection === 'informasi_project')) {
                 $revisionPayload = array_filter([
@@ -1716,6 +1733,16 @@ class CostingController extends Controller
             if (($updateSection === '' || $updateSection === 'resume_cogm') && $request->has('material_cost')) {
                 $costingData->update([
                     'material_cost' => $this->parseNumericInput($request->input('material_cost', 0)),
+                ]);
+            }
+
+            if ($importRun) {
+                $importRun->update([
+                    'status' => 'applied',
+                    'after_summary' => [
+                        'rows' => $importFromPartlist ? count($importedMaterialRows) : count($importedCycleTimeRows),
+                        'material_cost' => $importFromPartlist ? $costingData->fresh()->material_cost : null,
+                    ],
                 ]);
             }
 
@@ -2210,6 +2237,38 @@ class CostingController extends Controller
             'summary' => ['rows' => count($rows), 'estimated_rows' => collect($rows)->where('cn_type', 'E')->count(), 'missing_price_rows' => collect($rows)->filter(fn ($row) => (float) ($row['amount1'] ?? 0) <= 0)->count()],
             'preview' => array_slice($rows, 0, 20),
         ]);
+    }
+
+    public function previewPartlist(Request $request, CostingImportService $importService)
+    {
+        $request->validate([
+            'import_partlist_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:20480'],
+            'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
+        ]);
+        $result = $importService->previewPartlist($request->only('tracking_revision_id'), $request);
+
+        return response()->json([
+            'success' => ! isset($result['error']) && ! isset($result['warning']),
+            'message' => $result['error'] ?? $result['warning'] ?? null,
+            'summary' => ['rows' => count($result['rows'] ?? []), 'issues' => count($result['issues'] ?? [])],
+            'issues' => array_slice($result['issues'] ?? [], 0, 50),
+            'preview' => array_slice($result['rows'] ?? [], 0, 20),
+        ], isset($result['error']) || isset($result['warning']) ? 422 : 200);
+    }
+
+    public function previewUmh(Request $request, CostingImportService $importService)
+    {
+        $request->validate(['import_umh_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:20480']]);
+        $request->files->set('import_cycle_time_file', $request->file('import_umh_file'));
+        $result = $importService->previewCycleTime($request);
+
+        return response()->json([
+            'success' => ! isset($result['error']) && ! isset($result['warning']),
+            'message' => $result['error'] ?? $result['warning'] ?? null,
+            'summary' => ['rows' => count($result['rows'] ?? []), 'issues' => count($result['issues'] ?? [])],
+            'issues' => array_slice($result['issues'] ?? [], 0, 50),
+            'preview' => array_slice($result['rows'] ?? [], 0, 20),
+        ], isset($result['error']) || isset($result['warning']) ? 422 : 200);
     }
 
     private function resolveCostingDataForCogmImport(Request $request, array $validated): CostingData
