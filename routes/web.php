@@ -1,25 +1,27 @@
 <?php
 
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\CostingController;
-use App\Http\Controllers\CostingDraftController;
+use App\Http\Controllers\BulkProjectActionController;
 use App\Http\Controllers\CostingApprovalController;
 use App\Http\Controllers\CostingAssistantController;
+use App\Http\Controllers\CostingController;
+use App\Http\Controllers\CostingDraftController;
 use App\Http\Controllers\Database\DocumentRecapController;
 use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\DocumentReceiptController;
-use App\Http\Controllers\ProjectGroupController;
-use App\Http\Controllers\ReportController;
-use App\Http\Controllers\TrackingDocumentController;
-use App\Http\Controllers\MyTaskController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\HelpCenterController;
-use App\Http\Controllers\ProjectCollaborationController;
+use App\Http\Controllers\ImportSafetyController;
+use App\Http\Controllers\MyTaskController;
 use App\Http\Controllers\NotificationCenterController;
-use App\Http\Controllers\BulkProjectActionController;
-use App\Http\Controllers\UatFeedbackController;
+use App\Http\Controllers\OperationsCenterController;
+use App\Http\Controllers\ProjectCollaborationController;
+use App\Http\Controllers\ProjectGroupController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SlaPerformanceController;
+use App\Http\Controllers\TrackingDocumentController;
 use App\Http\Controllers\TubesController;
+use App\Http\Controllers\UatFeedbackController;
 use Illuminate\Support\Facades\Route;
 
 // Auth routes
@@ -49,9 +51,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/notifications/dismiss', [NotificationCenterController::class, 'dismiss'])->name('notifications.dismiss');
     Route::put('/notifications/preferences', [NotificationCenterController::class, 'updatePreferences'])->name('notifications.preferences');
     Route::post('/projects/bulk-action', BulkProjectActionController::class)->name('project.bulk-action');
-    Route::post('/uat-feedback', [UatFeedbackController::class,'store'])->name('uat-feedback.store');
-    Route::get('/uat-feedback', [UatFeedbackController::class,'index'])->name('uat-feedback.index');
-    Route::patch('/uat-feedback/{feedback}', [UatFeedbackController::class,'update'])->name('uat-feedback.update');
+    Route::post('/uat-feedback', [UatFeedbackController::class, 'store'])->name('uat-feedback.store');
+    Route::get('/uat-feedback', [UatFeedbackController::class, 'index'])->name('uat-feedback.index');
+    Route::patch('/uat-feedback/{feedback}', [UatFeedbackController::class, 'update'])->name('uat-feedback.update');
     Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
 
     Route::post('/costing-approvals/{revision}/submit', [CostingApprovalController::class, 'submit'])->name('costing-approvals.submit');
@@ -71,7 +73,6 @@ Route::middleware('auth')->group(function () {
         Route::post('/partlist-project/preview', [CostingAssistantController::class, 'previewPartlistProject'])->name('partlist-project.preview');
         Route::post('/partlist-project/create', [CostingAssistantController::class, 'createPartlistProject'])->name('partlist-project.create');
     });
-
 
     // ── DASHBOARD ─────────────────────────────────────────────────────────────
     Route::middleware('permission:dashboard')->group(function () {
@@ -189,6 +190,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/costing/import-partlist', [CostingController::class, 'importPartlist'])->name('costing.import-partlist');
         Route::get('/costing/import-cogm', fn () => redirect()->route('form'))->name('costing.import-cogm.get');
         Route::post('/costing/import-cogm', [CostingController::class, 'importCogm'])->name('costing.import-cogm');
+        Route::post('/costing/import-cogm/preview', [CostingController::class, 'previewCogm'])->name('costing.import-cogm.preview');
+        Route::post('/costing/imports/{importRun}/rollback', [ImportSafetyController::class, 'rollback'])->name('costing.imports.rollback');
         Route::get('/costing/import-umh', fn () => redirect()->route('form'))->name('costing.import-umh.get');
         Route::post('/costing/import-umh', [CostingController::class, 'importUmh'])->name('costing.import-umh');
         Route::match(['post', 'patch'], '/costing/status-project/{revisionId}', [CostingController::class, 'updateStatusProject'])->name('costing.status-project.update');
@@ -222,6 +225,17 @@ Route::middleware('auth')->group(function () {
 
     // ── USER MANAGEMENT (admin only) ──────────────────────────────────────────
     Route::middleware('permission:user_management')->group(function () {
+        Route::get('/operations-center', [OperationsCenterController::class, 'index'])->name('operations.index');
+        Route::post('/operations-center/releases', [OperationsCenterController::class, 'storeRelease'])->name('operations.releases.store');
+        Route::patch('/operations-center/releases/{release}', [OperationsCenterController::class, 'updateRelease'])->name('operations.releases.update');
+        Route::post('/operations-center/releases/{release}/checks', [OperationsCenterController::class, 'storeCheck'])->name('operations.checks.store');
+        Route::patch('/operations-center/checks/{check}', [OperationsCenterController::class, 'updateCheck'])->name('operations.checks.update');
+        Route::post('/operations-center/holidays', [OperationsCenterController::class, 'storeHoliday'])->name('operations.holidays.store');
+        Route::delete('/operations-center/holidays/{holiday}', [OperationsCenterController::class, 'destroyHoliday'])->name('operations.holidays.destroy');
+        Route::post('/operations-center/backups', [OperationsCenterController::class, 'createBackup'])->name('operations.backups.store');
+        Route::post('/operations-center/backups/{backup}/verify', [OperationsCenterController::class, 'verifyBackup'])->name('operations.backups.verify');
+        Route::get('/operations-center/backups/{backup}/download', [OperationsCenterController::class, 'downloadBackup'])->name('operations.backups.download');
+        Route::post('/operations-center/backups/{backup}/restore', [OperationsCenterController::class, 'restoreBackup'])->name('operations.backups.restore');
         Route::get('/permissions', [AuthController::class, 'permissions'])->name('permissions');
         Route::post('/permissions', [AuthController::class, 'storeUser'])->name('permissions.store');
         Route::post('/permissions/update-access', [AuthController::class, 'updatePermission'])->name('permissions.update-access');

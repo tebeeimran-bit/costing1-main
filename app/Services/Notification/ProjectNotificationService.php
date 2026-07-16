@@ -8,11 +8,15 @@ use App\Models\NotificationPreference;
 use App\Models\NotificationState;
 use App\Models\ProjectComment;
 use App\Models\User;
+use App\Services\Project\ProjectDeadlineService;
+use App\Services\Project\ProjectWorkflowService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class ProjectNotificationService
 {
+    public function __construct(private readonly ProjectWorkflowService $workflowService, private readonly ProjectDeadlineService $deadlineService) {}
+
     public function forUser(User $user): Collection
     {
         $enabled = NotificationPreference::query()->where('user_id', $user->id)->value('enabled_types') ?? NotificationPreference::TYPES;
@@ -22,7 +26,7 @@ class ProjectNotificationService
 
         $revisions = DocumentRevision::query()
             ->latestPerProject()
-            ->with('project')
+            ->with(['project', 'unpricedParts:id,document_revision_id,resolved_at', 'taskSetting'])
             ->get();
         $costingByRevision = CostingData::query()
             ->with(['materialBreakdowns:id,costing_data_id,part_no,amount1,cn_type'])
@@ -39,6 +43,12 @@ class ProjectNotificationService
             $costing = $costingByRevision->get($revision->id);
             $costingUrl = route('form', array_filter(['id' => $costing?->id, 'tracking_revision_id' => $revision->id]), false);
             $version = $revision->updated_at?->timestamp ?? 0;
+            $workflow = $this->workflowService->build($revision, $costing, (string) $user->role);
+            $deadline = $this->deadlineService->resolve($revision, $workflow);
+            if (! $workflow['is_complete'] && ($deadline['is_overdue'] || $deadline['days_remaining'] <= 1)) {
+                $severity = $deadline['is_overdue'] ? 'melewati SLA' : ($deadline['days_remaining'] === 0 ? 'jatuh tempo hari ini' : 'jatuh tempo besok');
+                $items->push($this->item('sla:'.$revision->id.':'.$deadline['due_at']->toDateString(), 'sla', 'Peringatan SLA', $identity.' - '.$severity, 'Tahap '.ucfirst($deadline['category']).' memerlukan tindak lanjut. Aging '.$deadline['aging_days'].' hari.', 'Tindak Lanjuti', route('project-collaboration.show', $revision, false), $deadline['is_overdue'] ? 'orange' : 'blue', now()));
+            }
 
             if (($revision->a00 ?? null) !== 'ada' && ($revision->a04 ?? null) !== 'ada' && ($revision->a05 ?? null) !== 'ada') {
                 $items->push($this->item('document:'.$revision->id.':'.$version, 'document', 'Dokumen project belum ada', $identity.' - A00 belum ada', 'Minimal salah satu dokumen A00, A04, atau A05 harus terisi.', 'Cek Dokumen', route('database.project-documents', ['search' => $project->part_number], false), 'orange', $revision->updated_at));

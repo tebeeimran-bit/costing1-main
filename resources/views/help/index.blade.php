@@ -126,6 +126,30 @@
             <h3>Perbandingan revisi</h3>
             <p>Pada Activity &amp; Comments, bagian Perbandingan Revisi menunjukkan perubahan total COGM, komponen biaya, dan material dibanding revisi sebelumnya. Coordinator dapat membuka perbandingan lengkap sebelum memberi keputusan approval.</p>
         </article>
+        <article class="help-topic" data-help-text="operations center release readiness checklist uat admin testing deployment">
+            <h3>Release Readiness</h3>
+            <p>Admin menggunakan Operations Center sebelum aplikasi dirilis. Setiap pemeriksaan functional, data, security, performance, UX, dan deployment harus berstatus Pass sebelum release dapat ditandai Ready.</p>
+        </article>
+        <article class="help-topic" data-help-text="business calendar hari kerja weekend libur sla deadline">
+            <h3>Business Calendar</h3>
+            <p>Deadline SLA hanya menghitung hari kerja. Sabtu, Minggu, dan hari libur yang dicatat Admin di Operations Center otomatis dilewati agar tenggat lebih adil dan konsisten.</p>
+        </article>
+        <article class="help-topic" data-help-text="approval freeze locked read only revisi baru">
+            <h3>Approval Freeze</h3>
+            <p>Saat costing menunggu approval, sudah disetujui, atau sudah dikirim ke Marketing, data menjadi read-only. Perlindungan ini mencegah versi yang sedang direview berubah diam-diam; gunakan revision baru untuk koreksi.</p>
+        </article>
+        <article class="help-topic" data-help-text="import cogm preview rollback safety restore material">
+            <h3>Import Preview &amp; Rollback</h3>
+            <p>Sebelum import COGM diterapkan, sistem menampilkan jumlah baris, harga kosong, dan harga estimate. Setelah import, panel Import Safety dapat mengembalikan material ke kondisi sebelum import.</p>
+        </article>
+        <article class="help-topic" data-help-text="backup restore checksum safety copy operations center">
+            <h3>Backup &amp; Restore</h3>
+            <p>Admin dapat membuat, memverifikasi checksum, dan mengunduh backup dari Operations Center. Restore wajib mengetik RESTORE dan sistem membuat safety copy terlebih dahulu untuk mengurangi risiko kehilangan data.</p>
+        </article>
+        <article class="help-topic" data-help-text="sla escalation warning besok hari ini overdue notification historical trend">
+            <h3>SLA Escalation &amp; Trend</h3>
+            <p>Notification Center memberi peringatan saat deadline tersisa satu hari, jatuh tempo hari ini, atau overdue. SLA Performance menyimpan snapshot harian agar tren kepatuhan 30 hari dapat dibandingkan.</p>
+        </article>
     </section>
 
     <section class="help-faq help-topic" data-help-text="faq pertanyaan draft harga approval akses permission">

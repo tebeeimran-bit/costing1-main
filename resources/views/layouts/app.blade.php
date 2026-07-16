@@ -25,6 +25,7 @@
         @keyframes lcPopIn{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
     </style>
     <link rel="stylesheet" href="{{ asset('css/app-layout.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/future-ui.css') }}">
     <style>
         .project-selection-button {
             display: inline-flex;
@@ -371,6 +372,11 @@
                             <path d="M17 11l2 2 4-4"/>
                         </svg>
                         <span>Permission</span>
+                    </a>
+                    <a href="{{ route('operations.index', absolute: false) }}" data-tour="operations-center"
+                        class="sidebar-nav-item {{ request()->routeIs('operations.*') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3v-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1h.09v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>
+                        <span>Operations Center</span>
                     </a>
                     <a href="{{ route('assistant.training', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('assistant.training') ? 'active' : '' }}">

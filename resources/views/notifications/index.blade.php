@@ -16,7 +16,7 @@
             </div>
         </main>
         <aside class="notification-card preferences"><header><div><h3>Preferensi</h3><p>Pilih notifikasi yang ingin ditampilkan.</p></div></header><form method="POST" action="{{ route('notifications.preferences', absolute:false) }}">@csrf @method('PUT')
-            @foreach(['document'=>['Dokumen Project','Kelengkapan A00, A04, dan A05'],'project'=>['Progress Costing','Material atau Cycle Time belum lengkap'],'pricing'=>['Harga Material','Part belum memiliki harga final'],'mention'=>['Mention Komentar','Saat anggota tim menyebut Anda']] as $type=>$copy)
+            @foreach(['document'=>['Dokumen Project','Kelengkapan A00, A04, dan A05'],'project'=>['Progress Costing','Material atau Cycle Time belum lengkap'],'pricing'=>['Harga Material','Part belum memiliki harga final'],'mention'=>['Mention Komentar','Saat anggota tim menyebut Anda'],'sla'=>['Peringatan SLA','Deadline besok, hari ini, atau sudah overdue']] as $type=>$copy)
                 <label><input type="checkbox" name="enabled_types[]" value="{{ $type }}" @checked(in_array($type,$enabledTypes,true))><span><b>{{ $copy[0] }}</b><small>{{ $copy[1] }}</small></span></label>
             @endforeach
             <button type="submit">Simpan Preferensi</button></form></aside>

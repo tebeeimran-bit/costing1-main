@@ -9,6 +9,8 @@ class ProjectDeadlineService
 {
     private const SLA_DAYS = ['documents' => 3, 'pricing' => 2, 'costing' => 3, 'approval' => 1, 'marketing' => 2];
 
+    public function __construct(private readonly BusinessCalendarService $calendar) {}
+
     public function resolve(DocumentRevision $revision, array $workflow): array
     {
         $currentStep = collect($workflow['steps'])->first(fn ($step) => ! $step['complete']);
@@ -17,7 +19,7 @@ class ProjectDeadlineService
         $setting = $this->syncStage($revision, $category);
         $custom = $setting->due_at;
         $stageEnteredAt = $setting->stage_entered_at ?: $revision->updated_at ?: now();
-        $dueAt = ($custom ?: $stageEnteredAt->copy()->addDays($slaDays))->endOfDay();
+        $dueAt = ($custom ?: $this->calendar->addBusinessDays($stageEnteredAt, $slaDays))->endOfDay();
         $seconds = now()->diffInSeconds($dueAt, false);
         $daysRemaining = $seconds >= 0 ? (int) ceil($seconds / 86400) : -(int) ceil(abs($seconds) / 86400);
 

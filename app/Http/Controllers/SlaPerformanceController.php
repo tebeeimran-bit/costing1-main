@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
+use App\Models\SlaSnapshot;
 use App\Services\Project\ProjectDeadlineService;
 use App\Services\Project\ProjectWorkflowService;
 use Illuminate\Http\Request;
@@ -108,13 +109,25 @@ class SlaPerformanceController extends Controller
             ->sort(fn ($a, $b) => ($b->is_overdue <=> $a->is_overdue)
                 ?: ($a->days_remaining <=> $b->days_remaining))->values();
 
+        foreach ($activeRows as $item) {
+            SlaSnapshot::updateOrCreate(
+                ['snapshot_date' => today()->toDateString(), 'document_revision_id' => $item->revision->id],
+                ['stage' => $item->stage, 'pic' => $item->pic, 'due_at' => $item->due_at, 'is_overdue' => $item->is_overdue, 'aging_days' => $item->aging_days, 'compliance' => $item->is_overdue ? 0 : 100]
+            );
+        }
+        $history = SlaSnapshot::query()->where('snapshot_date', '>=', today()->subDays(29))->get()
+            ->groupBy(fn ($row) => $row->snapshot_date->toDateString())
+            ->map(fn ($items, $date) => (object) ['date' => $date, 'compliance' => (int) round($items->avg('compliance')), 'overdue' => $items->where('is_overdue', true)->count(), 'total' => $items->count()])
+            ->sortKeys()->values();
+
         return view('reports.sla-performance', compact(
             'kpis',
             'stageSummary',
             'picSummary',
             'filteredRows',
             'stageFilter',
-            'statusFilter'
+            'statusFilter',
+            'history'
         ));
     }
 

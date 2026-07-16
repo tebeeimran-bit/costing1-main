@@ -116,6 +116,7 @@
         { selector: '[data-tour="database"]', title: 'Database Master', description: 'Kelola Part, Wire, Tubes, Customer, Business Category, Plant, PIC, Cycle Time, Rate & Kurs, serta Unpriced Parts.' },
         { selector: '[data-tour="reports"]', title: 'Laporan & Export', description: 'Buka laporan operasional dan ekspor data costing sesuai kebutuhan.' },
         { selector: '[data-tour="sla-performance"]', title: 'SLA Performance', description: 'Pantau kepatuhan deadline, pekerjaan overdue, aging, dan performa setiap PIC.' },
+        { selector: '[data-tour="operations-center"]', title: 'Operations Center', description: 'Kelola checklist kesiapan rilis, kalender hari kerja SLA, serta backup dan restore terverifikasi.' },
         { selector: '[data-tour="administration"]', title: 'Administrasi', description: 'Khusus Admin: atur permission pengguna dan materi Costing Assistant melalui Assistant Training.' },
         { selector: '[data-tour="account"]', title: 'Akun Pengguna', description: 'Lihat identitas dan role pengguna, buka profil, atau keluar dari aplikasi melalui bagian ini.' }
     ];

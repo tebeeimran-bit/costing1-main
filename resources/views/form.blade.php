@@ -18,6 +18,14 @@
     @include('form.partials.unpriced-top-banner')
     @include('form.partials.autosave')
 
+    @if($isCostingLocked ?? false)
+        <div class="costing-freeze"><div><b>APPROVAL FREEZE AKTIF</b><span>Data terkunci untuk menjaga versi yang sedang direview. Buat revision baru bila perlu mengubah costing.</span></div><span>READ ONLY</span></div>
+        <script>document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('#costingForm input,#costingForm select,#costingForm textarea,#costingForm button').forEach(element=>element.disabled=true));</script>
+    @endif
+    @if(($importRuns ?? collect())->isNotEmpty())
+        <details class="import-safety"><summary>Import Safety · {{ $importRuns->count() }} aktivitas terbaru</summary>@foreach($importRuns as $run)<div><span><b>{{ strtoupper($run->type) }} · {{ $run->original_name }}</b><small>{{ $run->created_at->format('d M Y H:i') }} · {{ strtoupper($run->status) }} · {{ data_get($run->after_summary,'rows',0) }} baris</small></span>@if($run->status==='applied')<form method="POST" action="{{ route('costing.imports.rollback',$run,absolute:false) }}" onsubmit="return confirm('Kembalikan material ke kondisi sebelum import?')">@csrf<button>Rollback</button></form>@endif</div>@endforeach</details>
+    @endif
+
 <div class="form-page">
     <form action="{{ route('costing.store', absolute: false) }}" method="POST" id="costingForm" enctype="multipart/form-data" autocomplete="off">
         @csrf
@@ -892,7 +900,7 @@
             input.click();
         }
 
-        function submitCogmImport() {
+        async function submitCogmImport() {
             const form = document.getElementById('cogmImportForm');
 
             if (!form) {
@@ -944,6 +952,17 @@
                 }
             }
 
+            showAppLoading('Memeriksa isi COGM...');
+            try {
+                const previewData = new FormData();
+                previewData.append('import_cogm_file', document.getElementById('importCogmFileInput').files[0]);
+                const response = await fetch(@json(route('costing.import-cogm.preview', absolute:false)), {method:'POST', headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token())}, body:previewData});
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Preview gagal.');
+                hideAppLoading();
+                const summary = result.summary;
+                if (!confirm(`Preview COGM\n\n${summary.rows} baris ditemukan\n${summary.missing_price_rows} baris tanpa harga\n${summary.estimated_rows} baris estimate\n\nLanjutkan import?`)) { document.getElementById('importCogmFileInput').value=''; return; }
+            } catch (error) { hideAppLoading(); alert(error.message); return; }
             showAppLoading('Mengimport COGM...');
 
             if (typeof form.requestSubmit === 'function') {
