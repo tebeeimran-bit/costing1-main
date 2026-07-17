@@ -27,4 +27,9 @@ class DocumentProject extends Model
     {
         return $this->hasMany(DocumentRevision::class);
     }
+
+    public function manualTasks()
+    {
+        return $this->hasMany(ProjectManualTask::class);
+    }
 }

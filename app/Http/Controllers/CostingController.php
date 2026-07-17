@@ -984,6 +984,7 @@ class CostingController extends Controller
         };
 
         $materialComparisonRows = collect();
+        $materialKeyOccurrences = ['A' => [], 'B' => []];
         foreach ([['slot' => 'A', 'costing' => $costingA], ['slot' => 'B', 'costing' => $costingB]] as $bundle) {
             $slot = $bundle['slot'];
             $costing = $bundle['costing'];
@@ -1010,14 +1011,18 @@ class CostingController extends Controller
                     trim((string) ($material->id_code ?? '')),
                     trim((string) ($material->part_name ?? '')),
                 ]);
-                $rowKey = implode(' | ', $keyParts);
-                if ($rowKey === '') {
-                    $rowKey = 'ROW-'.((int) ($material->row_no ?? ($index + 1)));
-                }
+                $baseRowKey = implode(' | ', $keyParts);
+                if ($baseRowKey === '') $baseRowKey = 'ROW-'.((int) ($material->row_no ?? ($index + 1)));
+                $occurrence = ($materialKeyOccurrences[$slot][$baseRowKey] ?? 0) + 1;
+                $materialKeyOccurrences[$slot][$baseRowKey] = $occurrence;
+                // Preserve duplicate materials instead of overwriting them. The same
+                // occurrence number on A and B remains paired for comparison.
+                $rowKey = $baseRowKey.' #'.$occurrence;
 
                 if (! $materialComparisonRows->has($rowKey)) {
                     $materialComparisonRows->put($rowKey, [
                         'row_key' => $rowKey,
+                        'display_key' => $baseRowKey,
                         'row_no' => (int) ($material->row_no ?? ($index + 1)),
                         'part_no' => trim((string) ($material->part_no ?? '')),
                         'part_name' => trim((string) ($material->part_name ?? '')),
@@ -1028,6 +1033,12 @@ class CostingController extends Controller
                 }
 
                 $existing = $materialComparisonRows->get($rowKey);
+                $categorySource = trim((string) (($material->material->material_type ?? '') ?: ($material->material->material_group ?? '') ?: 'Other'));
+                $categoryLookup = Str::upper($categorySource.' '.($material->part_name ?? ''));
+                $category = collect(['Wire', 'Connector', 'Terminal', 'Tube', 'Tape', 'Accessories'])
+                    ->first(fn ($candidate) => str_contains($categoryLookup, Str::upper($candidate)))
+                    ?? Str::headline($categorySource);
+                $existing['category'] = $existing['category'] ?? $category;
                 $existing[$slot] = [
                     'qty_req' => (int) $qtyReq,
                     'amount1' => round($amount1, 6),
@@ -1040,6 +1051,7 @@ class CostingController extends Controller
                     'supplier' => trim((string) (($material->material->maker ?? '') ?: '')),
                     'import_tax_percent' => (float) ($material->import_tax_percent ?? 0),
                     'total_price_idr' => $totalPriceIdr,
+                    'unit' => trim((string) (($material->material->base_uom ?? '') ?: ($material->unit_price_basis_text ?? '') ?: ($material->unit_price_basis ?? ''))),
                 ];
                 $materialComparisonRows->put($rowKey, $existing);
             }
@@ -1263,7 +1275,10 @@ class CostingController extends Controller
         $products = Cache::remember('form:products', 300, fn () => Product::all());
         $businessCategories = Cache::remember('form:business-categories', 300, fn () => BusinessCategory::orderBy('code')->orderBy('name')->get());
         $customers = Cache::remember('form:customers', 300, fn () => Customer::all());
-        $materials = Cache::remember('form:materials:slim-source', 60, fn () => $this->validMasterMaterialsQuery()->orderBy('material_code')->get());
+        // Material master can contain tens of thousands of rows. Do not serialize the
+        // whole collection into the database cache: one oversized INSERT can exceed
+        // MySQL's packet/connection limit and take the form down.
+        $materials = $this->validMasterMaterialsQuery()->orderBy('material_code')->get();
         $cycleTimeTemplates = Cache::remember('form:cycle-time-templates', 300, fn () => CycleTimeTemplate::orderBy('id')->get());
         $plants = Cache::remember('form:plants', 300, fn () => Plant::orderBy('code')->orderBy('name')->get());
         $periods = CostingData::distinct('period')->orderBy('period', 'desc')->pluck('period');
@@ -1317,7 +1332,7 @@ class CostingController extends Controller
 
                 // Pre-load all materials & wires once (2 queries total instead of N*8)
                 $allMaterials = $materials;
-                $allWires = Cache::remember('form:wires:lookup', 60, fn () => Wire::all());
+                $allWires = Wire::all();
 
                 // Build lookup indexes in memory
                 $matByDescExact = $allMaterials->groupBy(fn ($m) => Str::lower($m->material_description));

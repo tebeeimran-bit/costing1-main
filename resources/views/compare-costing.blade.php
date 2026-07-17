@@ -350,6 +350,7 @@
         <div class="card-header">
             <h3 class="card-title">Material vs Material</h3>
         </div>
+        @include('partials.material-category-comparison', ['rows' => $materialComparisonRows, 'costingA' => $costingA, 'costingB' => $costingB])
         <div class="material-compare-wrap">
             <table class="data-table material-compare-table">
                 <thead>

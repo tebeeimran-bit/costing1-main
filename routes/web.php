@@ -41,6 +41,9 @@ Route::middleware('auth')->group(function () {
     // Child = Part Number / Part Name / Revision
     Route::get('/project', [ProjectGroupController::class, 'index'])->name('project');
     Route::get('/my-tasks', [MyTaskController::class, 'index'])->name('my-tasks');
+    Route::post('/my-tasks', [MyTaskController::class, 'store'])->name('my-tasks.store');
+    Route::patch('/my-tasks/{manualTask}', [MyTaskController::class, 'update'])->name('my-tasks.update');
+    Route::delete('/my-tasks/{manualTask}', [MyTaskController::class, 'destroy'])->name('my-tasks.destroy');
     Route::get('/global-search', GlobalSearchController::class)->name('global-search');
     Route::get('/help-center', HelpCenterController::class)->name('help-center');
     Route::get('/export-center', [ExportCenterController::class, 'index'])->name('exports.index');
@@ -145,6 +148,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/database/customers', [DatabaseController::class, 'customers'])->name('database.customers');
         Route::post('/database/customers', [DatabaseController::class, 'storeCustomer'])->name('database.customers.store');
         Route::put('/database/customers/{id}', [DatabaseController::class, 'updateCustomer'])->name('database.customers.update');
+        Route::post('/database/customers/{id}/logo', [DatabaseController::class, 'updateCustomerLogo'])->name('database.customers.logo');
         Route::delete('/database/customers/{id}', [DatabaseController::class, 'destroyCustomer'])->name('database.customers.destroy');
 
         // Cycle Time Templates
