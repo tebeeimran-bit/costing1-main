@@ -21,6 +21,7 @@ class MyTaskController extends Controller
         $customerLogos = Customer::query()->whereNotNull('logo_path')->get()->keyBy(fn ($customer) => mb_strtolower(trim($customer->name)));
         $category = trim((string) $request->query('category', 'all'));
         $search = trim((string) $request->query('q', ''));
+        $priorityFilter = trim((string) $request->query('priority', 'all'));
 
         $revisions = DocumentRevision::query()
             ->latestPerProject()
@@ -137,6 +138,11 @@ class MyTaskController extends Controller
             $needle = mb_strtolower($search);
             $tasks = $tasks->filter(fn ($task) => str_contains(mb_strtolower(implode(' ', [$task->title, $task->description, $task->project, $task->part_number, $task->customer, $task->model, $task->category])), $needle))->values();
         }
+        if (in_array($priorityFilter, ['high', 'medium', 'normal'], true)) {
+            $tasks = $tasks->where('priority', $priorityFilter)->values();
+        } else {
+            $priorityFilter = 'all';
+        }
 
         $counts = collect(['general', 'documents', 'pricing', 'costing', 'approval', 'marketing'])
             ->mapWithKeys(fn ($key) => [$key => $tasks->where('category', $key)->count()]);
@@ -146,7 +152,7 @@ class MyTaskController extends Controller
         $projects = DocumentProject::query()->orderBy('customer')->orderBy('part_number')->get();
         $assignees = User::query()->where('role', '!=', 'viewer')->orderBy('name')->get(['id', 'name']);
 
-        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search'));
+        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search', 'priorityFilter'));
     }
 
     public function store(Request $request)

@@ -32,15 +32,16 @@
 
     <form class="task-search" method="GET" action="{{ route('my-tasks', absolute: false) }}">
         @if($category !== 'all')<input type="hidden" name="category" value="{{ $category }}">@endif
-        <span>⌕</span><input type="search" name="q" value="{{ $search }}" placeholder="Cari project, part number, customer, atau task..."><button type="submit">Cari</button>
-        @if($search !== '')<a href="{{ route('my-tasks', $category === 'all' ? [] : ['category'=>$category], false) }}">Reset</a>@endif
+        <span>⌕</span><input type="search" name="q" value="{{ $search }}" placeholder="Cari project, part number, customer, atau task..."><select name="priority"><option value="all">Semua prioritas</option><option value="high" @selected($priorityFilter==='high')>Tinggi</option><option value="medium" @selected($priorityFilter==='medium')>Segera</option><option value="normal" @selected($priorityFilter==='normal')>Normal</option></select><button type="submit">Cari</button>
+        @if($search !== '' || $priorityFilter !== 'all')<a href="{{ route('my-tasks', $category === 'all' ? [] : ['category'=>$category], false) }}">Reset</a>@endif
     </form>
 
     @php $labels = ['all'=>'Semua','general'=>'Umum','documents'=>'Dokumen','pricing'=>'Harga Part','costing'=>'Costing','approval'=>'Approval','marketing'=>'Marketing']; @endphp
     <nav class="task-filters" aria-label="Filter task">
         @foreach($labels as $key => $label)
             @php $count = $key === 'all' ? $counts->sum() : ($counts[$key] ?? 0); @endphp
-            <a href="{{ route('my-tasks', $key === 'all' ? [] : ['category'=>$key], false) }}" class="{{ $category === $key ? 'active' : '' }}">{{ $label }} <span>{{ $count }}</span></a>
+            @php $filterParams = array_filter(['category' => $key === 'all' ? null : $key, 'q' => $search ?: null, 'priority' => $priorityFilter !== 'all' ? $priorityFilter : null]); @endphp
+            <a href="{{ route('my-tasks', $filterParams, false) }}" class="{{ $category === $key ? 'active' : '' }}">{{ $label }} <span>{{ $count }}</span></a>
         @endforeach
     </nav>
 
