@@ -117,14 +117,14 @@ class DatabaseController extends Controller
     private function saveCustomerLogo(Request $request, Customer $customer): void
     {
         if (! $request->hasFile('logo')) return;
-        $request->validateWithBag('customerCreate', ['logo' => ['image', 'mimes:jpg,jpeg,png,webp,svg', 'max:2048']]);
+        $request->validateWithBag('customerCreate', ['logo' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:2048']]);
         if ($customer->logo_path) Storage::disk('public')->delete($customer->logo_path);
         $customer->update(['logo_path' => $request->file('logo')->store('customer-logos', 'public')]);
     }
 
     public function updateCustomerLogo(Request $request, $id)
     {
-        $request->validateWithBag('customerLogo', ['logo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp,svg', 'max:2048']]);
+        $request->validateWithBag('customerLogo', ['logo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048']]);
         $customer = Customer::findOrFail($id);
         if ($customer->logo_path) {
             Storage::disk('public')->delete($customer->logo_path);

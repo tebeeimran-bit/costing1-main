@@ -18,6 +18,7 @@ class UpdateCustomerRequest extends FormRequest
         return [
             'code' => 'required|string|max:255|unique:customers,code,' . $id,
             'name' => 'required|string|max:255|unique:customers,name,' . $id,
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
     }
 }
