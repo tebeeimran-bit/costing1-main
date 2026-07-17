@@ -22,6 +22,7 @@ class MyTaskController extends Controller
         $category = trim((string) $request->query('category', 'all'));
         $search = trim((string) $request->query('q', ''));
         $priorityFilter = trim((string) $request->query('priority', 'all'));
+        $projectFilter = (int) $request->query('project_id', 0);
 
         $revisions = DocumentRevision::query()
             ->latestPerProject()
@@ -143,6 +144,9 @@ class MyTaskController extends Controller
         } else {
             $priorityFilter = 'all';
         }
+        if ($projectFilter > 0) {
+            $tasks = $tasks->where('project_id', $projectFilter)->values();
+        }
 
         $counts = collect(['general', 'documents', 'pricing', 'costing', 'approval', 'marketing'])
             ->mapWithKeys(fn ($key) => [$key => $tasks->where('category', $key)->count()]);
@@ -152,7 +156,7 @@ class MyTaskController extends Controller
         $projects = DocumentProject::query()->orderBy('customer')->orderBy('part_number')->get();
         $assignees = User::query()->where('role', '!=', 'viewer')->orderBy('name')->get(['id', 'name']);
 
-        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search', 'priorityFilter'));
+        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search', 'priorityFilter', 'projectFilter'));
     }
 
     public function store(Request $request)
