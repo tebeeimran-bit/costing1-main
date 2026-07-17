@@ -23,6 +23,7 @@ class MyTaskController extends Controller
         $search = trim((string) $request->query('q', ''));
         $priorityFilter = trim((string) $request->query('priority', 'all'));
         $projectFilter = (int) $request->query('project_id', 0);
+        $viewMode = $request->query('view') === 'calendar' ? 'calendar' : 'list';
 
         $revisions = DocumentRevision::query()
             ->latestPerProject()
@@ -155,8 +156,15 @@ class MyTaskController extends Controller
         $groupedTasks = $filteredTasks->groupBy('project_id');
         $projects = DocumentProject::query()->orderBy('customer')->orderBy('part_number')->get();
         $assignees = User::query()->where('role', '!=', 'viewer')->orderBy('name')->get(['id', 'name']);
+        $workloads = User::query()->where('role', '!=', 'viewer')->withCount([
+            'assignedManualTasks as open_tasks_count' => fn ($query) => $query->where('status', '!=', 'completed'),
+            'assignedManualTasks as overdue_tasks_count' => fn ($query) => $query->where('status', '!=', 'completed')->whereDate('due_at', '<', today()),
+        ])->orderByDesc('open_tasks_count')->orderBy('name')->get(['id', 'name', 'role']);
+        $calendarTasks = $filteredTasks->filter(fn ($task) => $task->deadline['due_at'] ?? null)
+            ->sortBy(fn ($task) => $task->deadline['due_at'])
+            ->groupBy(fn ($task) => $task->deadline['due_at']->format('Y-m-d'));
 
-        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search', 'priorityFilter', 'projectFilter'));
+        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search', 'priorityFilter', 'projectFilter', 'viewMode', 'workloads', 'calendarTasks'));
     }
 
     public function store(Request $request)

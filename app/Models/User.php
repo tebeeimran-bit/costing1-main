@@ -46,4 +46,9 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function assignedManualTasks()
+    {
+        return $this->hasMany(ProjectManualTask::class, 'assignee_id');
+    }
 }
