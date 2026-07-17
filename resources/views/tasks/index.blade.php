@@ -7,6 +7,18 @@
     <a href="{{ route('dashboard', absolute: false) }}">Dashboard</a><span class="breadcrumb-separator">/</span><span>My Tasks</span>
 @endsection
 
+<script>
+(() => {
+    const key = 'costing.myTasks.savedViews';
+    const select = document.getElementById('taskSavedViewSelect');
+    const load = () => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; } };
+    const render = () => { if (!select) return; select.querySelectorAll('option:not(:first-child)').forEach(o => o.remove()); load().forEach((view, i) => { const o = document.createElement('option'); o.value = i; o.textContent = view.name; select.appendChild(o); }); };
+    document.getElementById('saveTaskView')?.addEventListener('click', () => { const name = prompt('Nama saved view:'); if (!name?.trim()) return; const params = Object.fromEntries(new URLSearchParams(location.search)); const views = load().filter(v => v.name !== name.trim()); views.push({ name: name.trim(), params }); localStorage.setItem(key, JSON.stringify(views.slice(-10))); render(); });
+    select?.addEventListener('change', () => { const view = load()[Number(select.value)]; if (!view) return; const url = new URL(location.href); url.search = new URLSearchParams(view.params).toString(); location.href = url.toString(); });
+    render();
+})();
+</script>
+
 @section('content')
 <div class="task-page">
     <section class="task-hero">
@@ -35,6 +47,7 @@
         <span>⌕</span><input type="search" name="q" value="{{ $search }}" placeholder="Cari project, part number, customer, atau task..."><select name="project_id"><option value="0">Semua project</option>@foreach($projects as $project)<option value="{{ $project->id }}" @selected($projectFilter === $project->id)>{{ $project->part_number }} · {{ $project->part_name }}</option>@endforeach</select><select name="priority"><option value="all">Semua prioritas</option><option value="high" @selected($priorityFilter==='high')>Tinggi</option><option value="medium" @selected($priorityFilter==='medium')>Segera</option><option value="normal" @selected($priorityFilter==='normal')>Normal</option></select><button type="submit">Cari</button>
         @if($search !== '' || $priorityFilter !== 'all' || $projectFilter > 0)<a href="{{ route('my-tasks', $category === 'all' ? [] : ['category'=>$category], false) }}">Reset</a>@endif
     </form>
+    <div class="task-saved-views"><span>Saved view:</span><select id="taskSavedViewSelect"><option value="">Pilih tampilan tersimpan...</option></select><button type="button" id="saveTaskView">Simpan filter saat ini</button></div>
 
     @php $labels = ['all'=>'Semua','general'=>'Umum','documents'=>'Dokumen','pricing'=>'Harga Part','costing'=>'Costing','approval'=>'Approval','marketing'=>'Marketing']; @endphp
     <nav class="task-filters" aria-label="Filter task">
