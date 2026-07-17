@@ -2,6 +2,7 @@
     use App\Models\CostingData;
     use App\Models\DocumentRevision;
     use App\Models\MaterialBreakdown;
+    use App\Models\ProjectComment;
 
     /*
      * Notification Bell Project
@@ -12,13 +13,8 @@
      *   part yang belum ada harga atau masih estimate.
      */
 
-    $latestRevisionIds = DocumentRevision::query()
-        ->selectRaw('MAX(id) as id')
-        ->whereNotNull('document_project_id')
-        ->groupBy('document_project_id');
-
     $latestProjectRevisions = DocumentRevision::with('project')
-        ->whereIn('id', $latestRevisionIds)
+        ->latestPerProject()
         ->get();
 
     $notificationItems = collect();
@@ -168,6 +164,25 @@
             ]);
         }
     }
+
+    ProjectComment::query()
+        ->with(['user:id,name', 'revision.project'])
+        ->whereJsonContains('mentioned_user_ids', auth()->id())
+        ->where('created_at', '>=', now()->subDays(14))
+        ->latest()
+        ->limit(5)
+        ->get()
+        ->each(function ($comment) use ($notificationItems) {
+            $notificationItems->push([
+                'type' => 'mention',
+                'title' => 'You were mentioned',
+                'line' => ($comment->user?->name ?: 'A teammate') . ' mentioned you in ' . ($comment->revision?->project?->part_number ?: 'a project'),
+                'description' => \Illuminate\Support\Str::limit($comment->body, 90),
+                'button_label' => 'Open Discussion',
+                'url' => route('project-collaboration.show', $comment->document_revision_id, false),
+                'color' => 'purple',
+            ]);
+        });
 
     $notificationItems = $notificationItems->values();
     $notificationCount = $notificationItems->count();

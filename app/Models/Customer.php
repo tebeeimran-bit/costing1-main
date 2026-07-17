@@ -9,7 +9,7 @@ class Customer extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['code', 'name'];
+    protected $fillable = ['code', 'name', 'logo_path'];
 
     public function costingData()
     {

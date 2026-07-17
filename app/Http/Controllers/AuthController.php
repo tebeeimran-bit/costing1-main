@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\LoginActivity;
 use App\Models\RolePermission;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -38,15 +41,24 @@ class AuthController extends Controller
 
         $login = trim((string) $validated['login']);
         $field = filter_var($login, FILTER_VALIDATE_EMAIL) ? 'email' : 'name';
+        $throttleKey = 'login|'.Str::lower($login).'|'.$request->ip();
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            return back()->withErrors(['login' => 'Terlalu banyak percobaan login. Coba kembali dalam '.RateLimiter::availableIn($throttleKey).' detik.'])->onlyInput('login');
+        }
 
         if (Auth::attempt([
             $field => $login,
             'password' => $validated['password'],
         ], $request->boolean('remember'))) {
             $request->session()->regenerate();
+            RateLimiter::clear($throttleKey);
+            LoginActivity::create(['user_id' => Auth::id(), 'identifier' => $login, 'ip_address' => $request->ip(), 'user_agent' => Str::limit((string) $request->userAgent(), 1000), 'successful' => true, 'occurred_at' => now()]);
 
             return redirect()->route('project-selection');
         }
+
+        RateLimiter::hit($throttleKey, 60);
+        LoginActivity::create(['identifier' => $login, 'ip_address' => $request->ip(), 'user_agent' => Str::limit((string) $request->userAgent(), 1000), 'successful' => false, 'occurred_at' => now()]);
 
         return back()->withErrors([
             'login' => 'Nama/email atau password salah.',
@@ -110,7 +122,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:6'],
+            'password' => ['required', 'string', 'min:10'],
             'role' => ['required', 'in:admin,admin_costing,coordinator_costing,marketing,editor,viewer'],
         ]);
 
@@ -127,16 +139,25 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$user->id],
             'role' => ['required', 'in:admin,admin_costing,coordinator_costing,marketing,editor,viewer'],
-            'password' => ['nullable', 'string', 'min:6'],
+            'password' => ['nullable', 'string', 'min:10'],
         ]);
+
+        if ($user->role === 'admin' && $validated['role'] !== 'admin') {
+            if ($user->id === Auth::id()) {
+                return redirect()->route('permissions')->with('error', 'Role akun Admin yang sedang digunakan tidak dapat diturunkan. Gunakan akun Admin lain.');
+            }
+            if (User::where('role', 'admin')->count() <= 1) {
+                return redirect()->route('permissions')->with('error', 'Minimal satu akun Admin harus tetap tersedia.');
+            }
+        }
 
         $user->name = $validated['name'];
         $user->email = $validated['email'];
         $user->role = $validated['role'];
 
-        if (!empty($validated['password'])) {
+        if (! empty($validated['password'])) {
             $user->password = Hash::make($validated['password']);
         }
 
@@ -151,6 +172,10 @@ class AuthController extends Controller
 
         if ($user->id === Auth::id()) {
             return redirect()->route('permissions')->with('error', 'Tidak dapat menghapus akun sendiri.');
+        }
+
+        if ($user->role === 'admin' && User::where('role', 'admin')->count() <= 1) {
+            return redirect()->route('permissions')->with('error', 'Admin terakhir tidak dapat dihapus.');
         }
 
         $user->delete();

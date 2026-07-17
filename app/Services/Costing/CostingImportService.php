@@ -8,6 +8,58 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class CostingImportService
 {
+    public function previewPartlist(array $validated, $request): array
+    {
+        $result = $this->preparePartlistImport($validated, $request);
+        if (isset($result['error']) || isset($result['warning'])) {
+            return $result;
+        }
+
+        $rows = $result['rows'] ?? [];
+        $issues = collect($rows)->flatMap(function (array $row, int $index) {
+            $messages = [];
+            if (blank($row['part_no'] ?? null)) {
+                $messages[] = ['row' => $index + 12, 'field' => 'Part Number', 'message' => 'Part Number kosong'];
+            }
+            if (blank($row['part_name'] ?? null)) {
+                $messages[] = ['row' => $index + 12, 'field' => 'Part Name', 'message' => 'Part Name kosong'];
+            }
+            if (! is_numeric(str_replace(',', '.', (string) ($row['qty_req'] ?? '')))) {
+                $messages[] = ['row' => $index + 12, 'field' => 'Qty', 'message' => 'Qty bukan angka'];
+            }
+
+            return $messages;
+        })->values()->all();
+
+        return ['rows' => $rows, 'issues' => $issues];
+    }
+
+    public function previewCycleTime($request): array
+    {
+        $result = $this->prepareCycleTimeImport($request);
+        if (isset($result['error']) || isset($result['warning'])) {
+            return $result;
+        }
+
+        $rows = $result['rows'] ?? [];
+        $issues = collect($rows)->flatMap(function (array $row, int $index) {
+            $messages = [];
+            if (blank($row['process'] ?? null)) {
+                $messages[] = ['row' => $index + 17, 'field' => 'Process', 'message' => 'Nama process kosong'];
+            }
+            if ((float) ($row['qty'] ?? 0) <= 0) {
+                $messages[] = ['row' => $index + 17, 'field' => 'Qty', 'message' => 'Qty harus lebih dari nol'];
+            }
+            if ((float) ($row['time_sec'] ?? 0) <= 0) {
+                $messages[] = ['row' => $index + 17, 'field' => 'Time', 'message' => 'Waktu harus lebih dari nol'];
+            }
+
+            return $messages;
+        })->values()->all();
+
+        return ['rows' => $rows, 'issues' => $issues];
+    }
+
     public function preparePartlistImport(array $validated, $request): array
     {
         $trackingRevisionId = isset($validated['tracking_revision_id']) ? (int) $validated['tracking_revision_id'] : null;
@@ -15,13 +67,14 @@ class CostingImportService
         $uploadErrorCode = (int) ($_FILES['import_partlist_file']['error'] ?? UPLOAD_ERR_NO_FILE);
 
         if ($uploadedPartlistFile) {
-            if (!$uploadedPartlistFile->isValid()) {
+            if (! $uploadedPartlistFile->isValid()) {
                 $errorCode = (int) $uploadedPartlistFile->getError();
-                return ['error' => 'Upload file partlist gagal: ' . $this->uploadErrorCodeToMessage($errorCode)];
+
+                return ['error' => 'Upload file partlist gagal: '.$this->uploadErrorCodeToMessage($errorCode)];
             }
 
             $ext = strtolower((string) $uploadedPartlistFile->getClientOriginalExtension());
-            if (!in_array($ext, ['xlsx', 'xls'], true)) {
+            if (! in_array($ext, ['xlsx', 'xls'], true)) {
                 return ['error' => 'Format file harus .xlsx atau .xls sesuai template partlist.'];
             }
 
@@ -30,16 +83,16 @@ class CostingImportService
             }
         } else {
             if ($uploadErrorCode !== UPLOAD_ERR_NO_FILE) {
-                return ['error' => 'Upload file partlist gagal: ' . $this->uploadErrorCodeToMessage($uploadErrorCode)];
+                return ['error' => 'Upload file partlist gagal: '.$this->uploadErrorCodeToMessage($uploadErrorCode)];
             }
 
-            if ($uploadErrorCode === UPLOAD_ERR_NO_FILE && !$trackingRevisionId) {
+            if ($uploadErrorCode === UPLOAD_ERR_NO_FILE && ! $trackingRevisionId) {
                 return ['warning' => 'Silakan pilih file partlist terlebih dahulu sebelum import.'];
             }
         }
 
         $importResult = $this->loadPartlistMaterialRows($trackingRevisionId, $uploadedPartlistFile);
-        if (!empty($importResult['error'])) {
+        if (! empty($importResult['error'])) {
             return ['error' => $importResult['error']];
         }
 
@@ -57,13 +110,14 @@ class CostingImportService
         $uploadErrorCode = (int) ($_FILES['import_cycle_time_file']['error'] ?? UPLOAD_ERR_NO_FILE);
 
         if ($uploadedCycleTimeFile) {
-            if (!$uploadedCycleTimeFile->isValid()) {
+            if (! $uploadedCycleTimeFile->isValid()) {
                 $errorCode = (int) $uploadedCycleTimeFile->getError();
-                return ['error' => 'Upload file Cycle Time gagal: ' . $this->uploadErrorCodeToMessage($errorCode)];
+
+                return ['error' => 'Upload file Cycle Time gagal: '.$this->uploadErrorCodeToMessage($errorCode)];
             }
 
             $ext = strtolower((string) $uploadedCycleTimeFile->getClientOriginalExtension());
-            if (!in_array($ext, ['xlsx', 'xls'], true)) {
+            if (! in_array($ext, ['xlsx', 'xls'], true)) {
                 return ['error' => 'Format file Cycle Time harus .xlsx atau .xls.'];
             }
 
@@ -71,13 +125,13 @@ class CostingImportService
                 return ['error' => 'Ukuran file Cycle Time terlalu besar (maks 20MB).'];
             }
         } elseif ($uploadErrorCode !== UPLOAD_ERR_NO_FILE) {
-            return ['error' => 'Upload file Cycle Time gagal: ' . $this->uploadErrorCodeToMessage($uploadErrorCode)];
+            return ['error' => 'Upload file Cycle Time gagal: '.$this->uploadErrorCodeToMessage($uploadErrorCode)];
         } else {
             return ['warning' => 'Silakan pilih file Cycle Time terlebih dahulu sebelum import.'];
         }
 
         $importResult = $this->loadCycleTimeRows($uploadedCycleTimeFile);
-        if (!empty($importResult['error'])) {
+        if (! empty($importResult['error'])) {
             return ['error' => $importResult['error']];
         }
 
@@ -95,19 +149,19 @@ class CostingImportService
 
         try {
             if ($uploadedPartlistFile instanceof UploadedFile) {
-                if (!$uploadedPartlistFile->isValid()) {
+                if (! $uploadedPartlistFile->isValid()) {
                     return ['rows' => [], 'error' => 'File yang diupload tidak valid.'];
                 }
 
                 $spreadsheet = IOFactory::load($uploadedPartlistFile->getRealPath());
             } elseif ($trackingRevisionId) {
                 $trackingRevision = DocumentRevision::find($trackingRevisionId);
-                if (!$trackingRevision || empty($trackingRevision->partlist_file_path)) {
+                if (! $trackingRevision || empty($trackingRevision->partlist_file_path)) {
                     return ['rows' => [], 'error' => 'File partlist belum tersedia pada revisi tracking yang dipilih.'];
                 }
 
-                $storagePath = storage_path('app/private/' . ltrim((string) $trackingRevision->partlist_file_path, '/'));
-                if (!file_exists($storagePath)) {
+                $storagePath = storage_path('app/private/'.ltrim((string) $trackingRevision->partlist_file_path, '/'));
+                if (! file_exists($storagePath)) {
                     return ['rows' => [], 'error' => 'File partlist tidak ditemukan di server.'];
                 }
 
@@ -117,15 +171,17 @@ class CostingImportService
                 if ($localTempPath === false) {
                     return ['rows' => [], 'error' => 'Gagal menyiapkan file partlist sementara.'];
                 }
-                $renamedTempPath = $localTempPath . '.' . $tempExt;
-                if (!@rename($localTempPath, $renamedTempPath)) {
+                $renamedTempPath = $localTempPath.'.'.$tempExt;
+                if (! @rename($localTempPath, $renamedTempPath)) {
                     @unlink($localTempPath);
+
                     return ['rows' => [], 'error' => 'Gagal menyiapkan file partlist sementara.'];
                 }
                 $localTempPath = $renamedTempPath;
 
-                if (!@copy($storagePath, $localTempPath)) {
+                if (! @copy($storagePath, $localTempPath)) {
                     @unlink($localTempPath);
+
                     return ['rows' => [], 'error' => 'Gagal menyalin file partlist ke penyimpanan sementara.'];
                 }
 
@@ -139,13 +195,13 @@ class CostingImportService
             $rows = [];
 
             for ($row = 12; $row <= $highestRow; $row++) {
-                $partNo = trim((string) $sheet->getCell('D' . $row)->getCalculatedValue());
-                $partName = trim((string) $sheet->getCell('E' . $row)->getCalculatedValue());
-                $qtyReq = trim((string) $sheet->getCell('F' . $row)->getCalculatedValue());
-                $unit = trim((string) $sheet->getCell('G' . $row)->getCalculatedValue());
-                $idCode = trim((string) $sheet->getCell('H' . $row)->getCalculatedValue());
-                $proCode = trim((string) $sheet->getCell('I' . $row)->getCalculatedValue());
-                $supplier = trim((string) $sheet->getCell('J' . $row)->getCalculatedValue());
+                $partNo = trim((string) $sheet->getCell('D'.$row)->getCalculatedValue());
+                $partName = trim((string) $sheet->getCell('E'.$row)->getCalculatedValue());
+                $qtyReq = trim((string) $sheet->getCell('F'.$row)->getCalculatedValue());
+                $unit = trim((string) $sheet->getCell('G'.$row)->getCalculatedValue());
+                $idCode = trim((string) $sheet->getCell('H'.$row)->getCalculatedValue());
+                $proCode = trim((string) $sheet->getCell('I'.$row)->getCalculatedValue());
+                $supplier = trim((string) $sheet->getCell('J'.$row)->getCalculatedValue());
 
                 if ($partNo === '' && $partName === '' && $qtyReq === '' && $unit === '' && $idCode === '' && $proCode === '' && $supplier === '') {
                     continue;
@@ -174,7 +230,7 @@ class CostingImportService
 
             return ['rows' => $rows];
         } catch (\Throwable $e) {
-            return ['rows' => [], 'error' => 'Gagal membaca file partlist: ' . $e->getMessage()];
+            return ['rows' => [], 'error' => 'Gagal membaca file partlist: '.$e->getMessage()];
         } finally {
             if ($localTempPath && file_exists($localTempPath)) {
                 @unlink($localTempPath);
@@ -185,7 +241,7 @@ class CostingImportService
     private function loadCycleTimeRows($uploadedCycleTimeFile): array
     {
         try {
-            if (!$uploadedCycleTimeFile instanceof UploadedFile || !$uploadedCycleTimeFile->isValid()) {
+            if (! $uploadedCycleTimeFile instanceof UploadedFile || ! $uploadedCycleTimeFile->isValid()) {
                 return ['rows' => [], 'error' => 'File Cycle Time yang diupload tidak valid.'];
             }
 
@@ -195,11 +251,11 @@ class CostingImportService
             $rows = [];
 
             for ($row = 18; $row <= $highestRow; $row++) {
-                $no = trim((string) $sheet->getCell('B' . $row)->getCalculatedValue());
-                $process = trim((string) $sheet->getCell('C' . $row)->getCalculatedValue());
-                $qty = trim((string) $sheet->getCell('D' . $row)->getCalculatedValue());
-                $timeSec = trim((string) $sheet->getCell('G' . $row)->getCalculatedValue());
-                $area = trim((string) $sheet->getCell('I' . $row)->getCalculatedValue());
+                $no = trim((string) $sheet->getCell('B'.$row)->getCalculatedValue());
+                $process = trim((string) $sheet->getCell('C'.$row)->getCalculatedValue());
+                $qty = trim((string) $sheet->getCell('D'.$row)->getCalculatedValue());
+                $timeSec = trim((string) $sheet->getCell('G'.$row)->getCalculatedValue());
+                $area = trim((string) $sheet->getCell('I'.$row)->getCalculatedValue());
 
                 if ($no === '' && $process === '' && $qty === '' && $timeSec === '' && $area === '') {
                     continue;
@@ -227,7 +283,7 @@ class CostingImportService
 
             return ['rows' => $rows];
         } catch (\Throwable $e) {
-            return ['rows' => [], 'error' => 'Gagal membaca file Cycle Time: ' . $e->getMessage()];
+            return ['rows' => [], 'error' => 'Gagal membaca file Cycle Time: '.$e->getMessage()];
         }
     }
 

@@ -223,7 +223,7 @@
         border: 1px solid #dbe5f2;
         border-radius: 12px;
         background: #fff;
-        overflow: hidden;
+        overflow-x: auto;
     }
 
     .child-panel-head {
@@ -240,6 +240,7 @@
 
     .child-table {
         width: 100%;
+        min-width: 1500px;
         border-collapse: collapse;
     }
 
@@ -393,6 +394,142 @@
         color: #dc2626;
     }
 
+    .workflow-summary {
+        display: grid;
+        gap: 0.42rem;
+        width: 100%;
+        min-width: 0;
+        margin-top: 0.55rem;
+        padding-top: 0.55rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .workflow-summary-head,
+    .workflow-card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.65rem;
+        color: #334155;
+        font-size: 0.68rem;
+        font-weight: 850;
+    }
+
+    .workflow-progress-track {
+        height: 7px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e2e8f0;
+    }
+
+    .workflow-progress-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #2563eb, #0ea5e9);
+    }
+
+    .workflow-summary-meta {
+        color: #64748b;
+        font-size: 0.64rem;
+        font-weight: 750;
+        line-height: 1.35;
+    }
+
+    .workflow-summary-meta.complete { color: #15803d; }
+    .workflow-summary-meta.attention { color: #b45309; }
+
+    .workflow-card {
+        display: grid;
+        gap: 0.65rem;
+        min-width: 330px;
+        padding: 0.72rem;
+        border: 1px solid #dbe5f2;
+        border-radius: 10px;
+        background: #f8fafc;
+    }
+
+    .workflow-steps {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(42px, 1fr));
+        gap: 0.25rem;
+    }
+
+    .workflow-step {
+        display: grid;
+        justify-items: center;
+        gap: 0.25rem;
+        position: relative;
+        color: #94a3b8;
+        font-size: 0.56rem;
+        font-weight: 800;
+        text-align: center;
+    }
+
+    .workflow-step:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        top: 10px;
+        left: calc(50% + 12px);
+        width: calc(100% - 20px);
+        height: 2px;
+        background: #dbe5f2;
+    }
+
+    .workflow-step-dot {
+        width: 21px;
+        height: 21px;
+        z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #cbd5e1;
+        border-radius: 999px;
+        background: #fff;
+        color: #94a3b8;
+        font-size: 0.62rem;
+        font-weight: 950;
+    }
+
+    .workflow-step.complete { color: #15803d; }
+    .workflow-step.complete .workflow-step-dot { border-color: #22c55e; background: #dcfce7; color: #15803d; }
+    .workflow-step.complete:not(:last-child)::after { background: #86efac; }
+    .workflow-step.current { color: #1d4ed8; }
+    .workflow-step.current .workflow-step-dot { border-color: #3b82f6; background: #dbeafe; color: #1d4ed8; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .workflow-step.issue { color: #b45309; }
+    .workflow-step.issue .workflow-step-dot { border-color: #f59e0b; background: #fef3c7; color: #b45309; }
+
+    .workflow-next {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.65rem;
+        padding-top: 0.55rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .workflow-next-copy { min-width: 0; }
+    .workflow-next-label { color: #0f172a; font-size: 0.68rem; font-weight: 900; }
+    .workflow-next-description { color: #64748b; font-size: 0.60rem; font-weight: 650; line-height: 1.35; margin-top: 0.12rem; }
+    .workflow-next-link {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 29px;
+        padding: 0.3rem 0.55rem;
+        border: 1px solid #bfdbfe;
+        border-radius: 7px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.62rem;
+        font-weight: 850;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .workflow-next-link.issue { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+    .workflow-next-link.complete { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
+    .workflow-next-waiting { color: #64748b; font-size: 0.62rem; font-weight: 800; white-space: nowrap; }
+
     .empty-state {
         padding: 2rem;
         text-align: center;
@@ -462,6 +599,19 @@
         </form>
     </div>
 
+    @if(session('success'))<div class="bulk-flash">{{ session('success') }}</div>@endif
+    @if($errors->has('bulk_value'))<div class="bulk-flash error">{{ $errors->first('bulk_value') }}</div>@endif
+    <form method="POST" action="{{ route('project.bulk-action', absolute:false) }}" class="bulk-toolbar" id="bulkProjectForm" hidden>
+        @csrf
+        <div><strong><span id="bulkSelectedCount">0</span> revisi dipilih</strong><button type="button" id="bulkClearSelection">Batalkan Pilihan</button></div>
+        <div id="bulkRevisionInputs"></div>
+        <select name="bulk_action" id="bulkActionSelect" required>
+            <option value="">Pilih bulk action...</option><option value="deadline">Update Deadline</option><option value="pic_engineering">Update PIC Engineering</option><option value="pic_marketing">Update PIC Marketing</option><option value="export">Export CSV</option>
+        </select>
+        <input type="text" name="bulk_value" id="bulkActionValue" placeholder="Pilih action terlebih dahulu" disabled>
+        <button type="submit">Terapkan</button>
+    </form>
+
     <div class="project-table-wrap">
         <table class="project-table">
             <thead>
@@ -472,7 +622,7 @@
                     <th style="width:130px;">Total Part Number</th>
                     <th style="width:130px;">PIC Engineering</th>
                     <th style="width:130px;">PIC Marketing</th>
-                    <th style="width:150px;">Status Summary</th>
+                    <th style="width:200px;">Status & Workflow</th>
                     <th style="width:120px;">Last Updated</th>
                     <th style="width:220px;">Action</th>
                 </tr>
@@ -561,6 +711,22 @@
                                     <span class="status-pill {{ $status->class }}">{{ $status->count }} {{ $status->label }}</span>
                                 @endforeach
                             </div>
+                            <div class="workflow-summary">
+                                <div class="workflow-summary-head">
+                                    <span>Progress</span>
+                                    <strong>{{ $group->workflow_progress }}%</strong>
+                                </div>
+                                <div class="workflow-progress-track">
+                                    <div class="workflow-progress-fill" style="width: {{ $group->workflow_progress }}%;"></div>
+                                </div>
+                                @if($group->workflow_attention > 0)
+                                    <div class="workflow-summary-meta attention">
+                                        {{ $group->workflow_attention }} item perlu tindakan berikutnya
+                                    </div>
+                                @else
+                                    <div class="workflow-summary-meta complete">Semua item sudah dikirim ke Marketing</div>
+                                @endif
+                            </div>
                         </td>
                         <td>
                             {{ $group->updated_at ? \Carbon\Carbon::parse($group->updated_at)->format('d/m/Y H:i') : '-' }}
@@ -598,12 +764,14 @@
                                 <table class="child-table">
                                     <thead>
                                         <tr>
+                                            <th style="width:38px;"><input type="checkbox" class="bulk-group-toggle" aria-label="Pilih semua revisi dalam group"></th>
                                             <th>Part Number</th>
                                             <th>Part Name</th>
                                             <th>Rev</th>
                                             <th>PIC Engineering</th>
                                             <th>PIC Marketing</th>
                                             <th>Status Dokumen</th>
+                                            <th style="width:380px;">Workflow & Langkah Berikutnya</th>
                                             <th>Last Updated</th>
                                             <th style="width:220px;">Action</th>
                                         </tr>
@@ -611,6 +779,7 @@
                                     <tbody>
                                         @foreach($group->items as $item)
                                             <tr>
+                                                <td><input type="checkbox" class="bulk-revision-checkbox" value="{{ $item->revision->id }}" aria-label="Pilih {{ $item->part_number }} {{ $item->revision_label }}"></td>
                                                 <td>{{ $item->part_number }}</td>
                                                 <td>{{ $item->part_name }}</td>
                                                 <td>{{ $item->revision_label }} ({{ $item->revision_count }} revisi)</td>
@@ -647,9 +816,54 @@
                                                         @endif
                                                     </div>
                                                 </td>
+                                                <td>
+                                                    <div class="workflow-card">
+                                                        <div class="workflow-card-head">
+                                                            <span>{{ $item->workflow['completed_count'] }}/{{ $item->workflow['total_count'] }} tahap selesai</span>
+                                                            <strong>{{ $item->workflow['progress'] }}%</strong>
+                                                        </div>
+                                                        <div class="workflow-progress-track">
+                                                            <div class="workflow-progress-fill" style="width: {{ $item->workflow['progress'] }}%;"></div>
+                                                        </div>
+                                                        <details class="completeness-mini level-{{ $item->completeness['level'] }}">
+                                                            <summary><span>Kelengkapan Data</span><strong>{{ $item->completeness['score'] }}%</strong></summary>
+                                                            <div>
+                                                                @forelse($item->completeness['missing'] as $missing)
+                                                                    <a href="{{ $missing['url'] }}"><span>{{ $missing['label'] }}</span><small>{{ $missing['description'] }}</small></a>
+                                                                @empty<span class="completeness-done">Semua data wajib sudah lengkap.</span>@endforelse
+                                                            </div>
+                                                        </details>
+                                                        <div class="workflow-steps">
+                                                            @foreach($item->workflow['steps'] as $workflowStep)
+                                                                <div class="workflow-step {{ $workflowStep['state'] }}">
+                                                                    <span class="workflow-step-dot">
+                                                                        {{ $workflowStep['complete'] ? '✓' : $loop->iteration }}
+                                                                    </span>
+                                                                    <span>{{ $workflowStep['label'] }}</span>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                        @php($nextAction = $item->workflow['next_action'])
+                                                        <div class="workflow-next">
+                                                            <div class="workflow-next-copy">
+                                                                <div class="workflow-next-label">{{ $nextAction['label'] }}</div>
+                                                                <div class="workflow-next-description">{{ $nextAction['description'] }}</div>
+                                                            </div>
+                                                            @if($nextAction['url'])
+                                                                <a href="{{ $nextAction['url'] }}" class="workflow-next-link {{ $nextAction['type'] === 'issue' ? 'issue' : '' }}">
+                                                                    Buka
+                                                                </a>
+                                                            @elseif($nextAction['type'] === 'complete')
+                                                                <span class="workflow-next-link complete">Selesai</span>
+                                                            @else
+                                                                <span class="workflow-next-waiting">Menunggu</span>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                </td>
                                                 <td>{{ $item->updated_at ? \Carbon\Carbon::parse($item->updated_at)->format('d/m/Y H:i') : '-' }}</td>
                                                 <td>
-                                                    <div class="action-stack">
+                                                    <div class="action-stack" id="workflow-actions-{{ $item->revision->id }}">
                                                         @if($item->project)
                                                             <form action="{{ route('tracking-documents.destroy-project', ['project' => $item->project->id], false) }}" method="POST"
                                                                 onsubmit="return confirm('Hapus semua data project {{ $item->customer }} / {{ $item->model }} / {{ $item->part_number }}?');">
@@ -666,6 +880,9 @@
                                                         <a class="action-link" href="{{ url('/form') }}?tracking_revision_id={{ $item->revision->id }}">
                                                             Form Costing
                                                         </a>
+                                                        <a class="action-link" href="{{ route('project-collaboration.show', $item->revision, false) }}">
+                                                            Activity &amp; Comments
+                                                        </a>
 
                                                         @if($item->can_submit_approval)
                                                             <form action="{{ route('costing-approvals.submit', ['revision' => $item->revision->id], false) }}" method="POST"
@@ -677,8 +894,9 @@
 
                                                         @if($item->can_approve_approval)
                                                             <form action="{{ route('costing-approvals.approve', ['revision' => $item->revision->id], false) }}" method="POST"
-                                                                onsubmit="return confirm('Approve COGM {{ e($item->part_number) }}?');">
+                                                                onsubmit="const sign=prompt('Digital sign-off: ketik APPROVE untuk menyetujui COGM {{ e($item->part_number) }}');if(sign!=='APPROVE')return false;this.querySelector('[name=approval_confirmation]').value=sign;return true;">
                                                                 @csrf
+                                                                <input type="hidden" name="approval_confirmation" value="">
                                                                 <button type="submit" class="action-link action-approve">Approve COGM</button>
                                                             </form>
                                                         @endif
@@ -730,6 +948,10 @@
     </div>
 </div>
 
+<style>
+    .completeness-mini{margin-top:8px;border:1px solid #d8e4ef;border-radius:8px;background:#f8fafc}.completeness-mini summary{display:flex;justify-content:space-between;padding:7px 9px;cursor:pointer;color:#587087;font-size:9px;font-weight:800}.completeness-mini summary strong{color:#1670cf}.completeness-mini.level-danger summary strong{color:#dc2626}.completeness-mini.level-warning summary strong{color:#d97706}.completeness-mini>div{display:grid;gap:4px;padding:0 7px 7px}.completeness-mini a{display:block;padding:6px;border-radius:6px;background:#fff;color:#315779;text-decoration:none}.completeness-mini a span,.completeness-mini a small{display:block}.completeness-mini a span{font-size:9px;font-weight:800}.completeness-mini a small{margin-top:2px;color:#788a9d;font-size:8px}.completeness-done{padding:6px;color:#16834a;font-size:9px;font-weight:800}
+    .bulk-toolbar{display:flex;align-items:center;gap:8px;margin:0 16px 12px;padding:10px 12px;border:1px solid #bcd8f5;border-radius:10px;background:#eef7ff}.bulk-toolbar[hidden]{display:none}.bulk-toolbar>div:first-child{display:flex;align-items:center;gap:7px;margin-right:auto;color:#174e82;font-size:10px}.bulk-toolbar>div:first-child button{border:0;background:transparent;color:#d14343;font-size:9px;font-weight:800;cursor:pointer}.bulk-toolbar select,.bulk-toolbar input{padding:7px 9px;border:1px solid #c7d8e8;border-radius:7px;background:#fff;font-size:10px}.bulk-toolbar input{width:190px}.bulk-toolbar>button{padding:8px 11px;border:0;border-radius:7px;background:#086fdc;color:#fff;font-size:10px;font-weight:800;cursor:pointer}.bulk-flash{margin:0 16px 10px;padding:9px 11px;border-radius:8px;background:#ebfff3;color:#14723d;font-size:10px;font-weight:800}.bulk-flash.error{background:#fff0f0;color:#b42318}@media(max-width:800px){.bulk-toolbar{align-items:stretch;flex-direction:column}.bulk-toolbar input{width:auto}}
+</style>
 <script>
     function toggleProjectGroup(rowId) {
         const child = document.getElementById(rowId + 'Child');
@@ -744,5 +966,27 @@
         main?.classList.toggle('is-open');
         button?.classList.toggle('is-open');
     }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('bulkProjectForm');
+        const checkboxes = Array.from(document.querySelectorAll('.bulk-revision-checkbox'));
+        const inputs = document.getElementById('bulkRevisionInputs');
+        const count = document.getElementById('bulkSelectedCount');
+        const action = document.getElementById('bulkActionSelect');
+        const value = document.getElementById('bulkActionValue');
+        const sync = () => {
+            const selected = checkboxes.filter(box => box.checked);
+            form.hidden = selected.length === 0;
+            count.textContent = selected.length;
+            inputs.replaceChildren();
+            selected.forEach(box => { const hidden=document.createElement('input'); hidden.type='hidden'; hidden.name='revision_ids[]'; hidden.value=box.value; inputs.append(hidden); });
+            document.querySelectorAll('.bulk-group-toggle').forEach(toggle => { const boxes=Array.from(toggle.closest('table').querySelectorAll('.bulk-revision-checkbox')); toggle.checked=boxes.length>0&&boxes.every(box=>box.checked); toggle.indeterminate=boxes.some(box=>box.checked)&&!toggle.checked; });
+        };
+        checkboxes.forEach(box => box.addEventListener('change', sync));
+        document.querySelectorAll('.bulk-group-toggle').forEach(toggle => toggle.addEventListener('change', () => { toggle.closest('table').querySelectorAll('.bulk-revision-checkbox').forEach(box => box.checked=toggle.checked); sync(); }));
+        document.getElementById('bulkClearSelection')?.addEventListener('click', () => { checkboxes.forEach(box=>box.checked=false); sync(); });
+        action?.addEventListener('change', () => { const exportOnly=action.value==='export', deadline=action.value==='deadline'; value.disabled=exportOnly||!action.value; value.required=!exportOnly&&Boolean(action.value); value.type=deadline?'date':'text'; value.value=''; value.placeholder=deadline?'Pilih tanggal deadline':(action.value?'Masukkan nama PIC':'Pilih action terlebih dahulu'); });
+        form?.addEventListener('submit', event => { form.dataset.skipLoadingOverlay=action.value==='export'?'true':'false'; if (!confirm(`Terapkan action ke ${count.textContent} revisi terpilih?`)) event.preventDefault(); });
+    });
 </script>
 @endsection

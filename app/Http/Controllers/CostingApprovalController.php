@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ApprovalDelegation;
 use App\Models\CogmSubmission;
 use App\Models\CostingApproval;
 use App\Models\CostingData;
@@ -17,7 +18,7 @@ class CostingApprovalController extends Controller
         $this->authorizeRole($request, ['admin', 'admin_costing', 'editor']);
 
         $costing = $this->costingForRevision($revision);
-        if (!$costing) {
+        if (! $costing) {
             return back()->with('error', 'Submit approval ditolak karena form costing untuk project ini belum ada.');
         }
 
@@ -58,7 +59,7 @@ class CostingApprovalController extends Controller
 
     public function approve(Request $request, DocumentRevision $revision)
     {
-        $this->authorizeRole($request, ['admin', 'coordinator_costing']);
+        $delegation = $this->authorizeApprovalRole($request);
 
         if ($revision->status !== DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL) {
             return back()->with('warning', 'Project hanya bisa di-approve saat status Waiting Approval Coordinator.');
@@ -66,15 +67,19 @@ class CostingApprovalController extends Controller
 
         $validated = $request->validate([
             'approval_notes' => ['nullable', 'string', 'max:1000'],
+            'approval_confirmation' => ['required', 'in:APPROVE'],
         ]);
 
-        DB::transaction(function () use ($request, $revision, $validated) {
+        DB::transaction(function () use ($request, $revision, $validated, $delegation) {
             $approval = $this->approvalForRevision($revision);
+            $approvedAt = now();
             $approval->update([
                 'status' => CostingApproval::STATUS_APPROVED,
                 'approved_by_id' => $request->user()->id,
-                'approved_at' => now(),
+                'approved_at' => $approvedAt,
                 'approval_notes' => $validated['approval_notes'] ?? null,
+                'signature_hash' => hash('sha256', $revision->id.'|'.$request->user()->id.'|'.$approvedAt->toIso8601String().'|'.config('app.key')),
+                'delegated_by_id' => $delegation?->delegator_id,
             ]);
 
             $revision->update([
@@ -87,7 +92,7 @@ class CostingApprovalController extends Controller
 
     public function reject(Request $request, DocumentRevision $revision)
     {
-        $this->authorizeRole($request, ['admin', 'coordinator_costing']);
+        $this->authorizeApprovalRole($request);
 
         if ($revision->status !== DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL) {
             return back()->with('warning', 'Project hanya bisa di-reject saat status Waiting Approval Coordinator.');
@@ -123,7 +128,7 @@ class CostingApprovalController extends Controller
         }
 
         $costing = $this->costingForRevision($revision);
-        if (!$costing) {
+        if (! $costing) {
             return back()->with('error', 'COGM tidak bisa dikirim karena data costing tidak ditemukan.');
         }
 
@@ -175,9 +180,20 @@ class CostingApprovalController extends Controller
     private function authorizeRole(Request $request, array $allowedRoles): void
     {
         $role = (string) ($request->user()->role ?? '');
-        if (!in_array($role, $allowedRoles, true)) {
+        if (! in_array($role, $allowedRoles, true)) {
             abort(403, 'Role Anda tidak memiliki akses untuk aksi approval ini.');
         }
+    }
+
+    private function authorizeApprovalRole(Request $request): ?ApprovalDelegation
+    {
+        if (in_array((string) $request->user()->role, ['admin', 'coordinator_costing'], true)) {
+            return null;
+        }
+        $delegation = ApprovalDelegation::current()->where('delegate_id', $request->user()->id)->first();
+        abort_unless($delegation, 403, 'Anda tidak memiliki mandat approval aktif.');
+
+        return $delegation;
     }
 
     private function costingForRevision(DocumentRevision $revision): ?CostingData

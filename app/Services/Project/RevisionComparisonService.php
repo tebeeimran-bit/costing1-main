@@ -1,0 +1,37 @@
+<?php
+
+namespace App\Services\Project;
+
+use App\Models\CostingData;
+
+class RevisionComparisonService
+{
+    public function build(CostingData $current, ?CostingData $previous): array
+    {
+        if (! $previous) {
+            return ['available' => false, 'components' => [], 'material_changes' => 0, 'total_delta' => 0, 'total_delta_percent' => 0];
+        }
+        $components = collect(['material_cost' => 'Material Cost', 'labor_cost' => 'Labor Cost', 'overhead_cost' => 'Tooling / Overhead', 'scrap_cost' => 'Administration / Scrap'])->map(function ($label, $field) use ($current, $previous) {
+            $a = (float) ($current->{$field} ?? 0);
+            $b = (float) ($previous->{$field} ?? 0);
+
+            return ['field' => $field, 'label' => $label, 'current' => $a, 'previous' => $b, 'delta' => $a - $b, 'percent' => $b != 0 ? (($a - $b) / abs($b)) * 100 : null];
+        })->values()->all();
+        $currentTotal = collect($components)->sum('current');
+        $previousTotal = collect($components)->sum('previous');
+        $currentMaterials = $current->materialBreakdowns->keyBy(fn ($row) => strtoupper(trim((string) $row->part_no)) ?: 'ROW-'.$row->id);
+        $previousMaterials = $previous->materialBreakdowns->keyBy(fn ($row) => strtoupper(trim((string) $row->part_no)) ?: 'ROW-'.$row->id);
+        $keys = $currentMaterials->keys()->merge($previousMaterials->keys())->unique();
+        $changed = $keys->filter(function ($key) use ($currentMaterials, $previousMaterials) {
+            $a = $currentMaterials->get($key);
+            $b = $previousMaterials->get($key);
+            if (! $a || ! $b) {
+                return true;
+            }
+
+return abs((float) $a->amount2 - (float) $b->amount2) > .000001 || abs((float) $a->qty_req - (float) $b->qty_req) > .000001;
+        })->count();
+
+        return ['available' => true, 'components' => $components, 'material_changes' => $changed, 'current_total' => $currentTotal, 'previous_total' => $previousTotal, 'total_delta' => $currentTotal - $previousTotal, 'total_delta_percent' => $previousTotal != 0 ? (($currentTotal - $previousTotal) / abs($previousTotal)) * 100 : null];
+    }
+}

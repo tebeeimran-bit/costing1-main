@@ -2,32 +2,38 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Product;
-use App\Models\Customer;
-use App\Models\CogmSubmission;
-use App\Models\Material;
-use App\Models\CostingData;
-use App\Models\UnpricedPart;
-use App\Models\DocumentRevision;
-use App\Models\CycleTimeTemplate;
-use App\Models\MaterialBreakdown;
-use App\Models\Plant;
+use App\Http\Requests\StoreCostingRequest;
 use App\Models\BusinessCategory;
+use App\Models\CogmSubmission;
+use App\Models\CostingData;
+use App\Models\CostingDraft;
+use App\Models\Customer;
+use App\Models\CycleTimeTemplate;
+use App\Models\DocumentRevision;
+use App\Models\ImportRun;
+use App\Models\Material;
+use App\Models\MaterialBreakdown;
+use App\Models\Pic;
+use App\Models\Plant;
+use App\Models\Product;
+use App\Models\UnpricedPart;
 use App\Models\Wire;
 use App\Models\WireRate;
-use App\Models\Pic;
-use App\Http\Requests\StoreCostingRequest;
-use App\Http\Requests\UpdateStatusProjectRequest;
 use App\Services\Costing\CostingImportService;
+use App\Services\Costing\CostingLockService;
 use App\Services\Costing\CostingMaterialService;
 use App\Services\Costing\CostingPersistenceService;
 use App\Services\Costing\CostingResponseService;
 use App\Services\Costing\CostingStatusService;
 use App\Services\Costing\MissingProjectInformationException;
+use App\Services\Dashboard\RoleDashboardService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -40,6 +46,7 @@ class CostingController extends Controller
 {
     public function dashboard(Request $request)
     {
+        $roleWorkspace = app(RoleDashboardService::class)->build($request->user());
         $periods = CostingData::query()
             ->select('period')
             ->distinct()
@@ -50,7 +57,7 @@ class CostingController extends Controller
         $requestedPeriod = trim((string) $request->get('period', ''));
         $period = $requestedPeriod !== '' ? $requestedPeriod : ((string) ($periods->first() ?? now()->format('Y-m')));
 
-        if ($period !== 'all' && $periods->isNotEmpty() && !$periods->contains($period)) {
+        if ($period !== 'all' && $periods->isNotEmpty() && ! $periods->contains($period)) {
             $period = (string) $periods->first();
         }
 
@@ -117,7 +124,7 @@ class CostingController extends Controller
                 }
             }
 
-            return 'Costing #' . (string) ($item->id ?? '-');
+            return 'Costing #'.(string) ($item->id ?? '-');
         };
 
         $resolveBusinessCategoryLabel = function ($item) {
@@ -127,6 +134,7 @@ class CostingController extends Controller
             }
 
             $productName = trim((string) ($item->product->name ?? ''));
+
             return $productName !== '' ? $productName : 'Uncategorized';
         };
 
@@ -165,13 +173,13 @@ class CostingController extends Controller
         if ($period === 'all') {
             $periodDisplayLabel = 'Semua Periode';
         } elseif (preg_match('/^\d{4}-\d{2}$/', (string) $period) === 1) {
-            $periodDisplayLabel = \Carbon\Carbon::createFromFormat('Y-m', (string) $period)->format('M Y');
+            $periodDisplayLabel = Carbon::createFromFormat('Y-m', (string) $period)->format('M Y');
         }
 
         $periodStart = null;
         $periodEnd = null;
         if (preg_match('/^\d{4}-\d{2}$/', (string) $period) === 1) {
-            $periodStart = \Carbon\Carbon::createFromFormat('Y-m', (string) $period)->startOfMonth();
+            $periodStart = Carbon::createFromFormat('Y-m', (string) $period)->startOfMonth();
             $periodEnd = $periodStart->copy()->endOfMonth();
         }
 
@@ -241,19 +249,19 @@ class CostingController extends Controller
             ->values();
 
         // Batch-fetch all monthly submit counts in one query.
-        $submitRangeStart = \Carbon\Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->first())->startOfMonth();
-        $submitRangeEnd   = \Carbon\Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->last())->endOfMonth();
+        $submitRangeStart = Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->first())->startOfMonth();
+        $submitRangeEnd = Carbon::createFromFormat('Y-m', (string) $submitPeriodCandidates->last())->endOfMonth();
         $submitMonthExpression = DB::connection()->getDriverName() === 'sqlite'
             ? "strftime('%Y-%m', submitted_at)"
             : "DATE_FORMAT(submitted_at, '%Y-%m')";
         $batchedSubmitCounts = (clone $submitScope)
             ->whereBetween('submitted_at', [$submitRangeStart, $submitRangeEnd])
-            ->selectRaw($submitMonthExpression . ' as ym, COUNT(*) as cnt')
+            ->selectRaw($submitMonthExpression.' as ym, COUNT(*) as cnt')
             ->groupByRaw($submitMonthExpression)
             ->pluck('cnt', 'ym');
 
         $monthlySubmitCounts = $submitPeriodCandidates->map(function ($submitPeriod) use ($batchedSubmitCounts) {
-            $monthStart = \Carbon\Carbon::createFromFormat('Y-m', (string) $submitPeriod)->startOfMonth();
+            $monthStart = Carbon::createFromFormat('Y-m', (string) $submitPeriod)->startOfMonth();
 
             return [
                 'period' => $submitPeriod,
@@ -299,7 +307,7 @@ class CostingController extends Controller
 
         foreach ($costingData as $item) {
             $revision = $item->trackingRevision;
-            if (!$revision) {
+            if (! $revision) {
                 continue;
             }
 
@@ -366,18 +374,18 @@ class CostingController extends Controller
             $sliceAngle = ($count / $pieStatusSum) * 360;
             $pieEndAngle = $pieStartAngle + $sliceAngle;
             $pieSegments[] = $statusItem['color']
-                . ' '
-                . number_format($pieStartAngle, 2, '.', '')
-                . 'deg '
-                . number_format($pieEndAngle, 2, '.', '')
-                . 'deg';
+                .' '
+                .number_format($pieStartAngle, 2, '.', '')
+                .'deg '
+                .number_format($pieEndAngle, 2, '.', '')
+                .'deg';
             $pieStartAngle = $pieEndAngle;
         }
 
         if (empty($pieSegments)) {
             $statusProjectPieGradient = 'conic-gradient(#e2e8f0 0deg 360deg)';
         } else {
-            $statusProjectPieGradient = 'conic-gradient(' . implode(', ', $pieSegments) . ')';
+            $statusProjectPieGradient = 'conic-gradient('.implode(', ', $pieSegments).')';
         }
 
         // Aggregate by assy to reflect project-level costing records.
@@ -449,7 +457,7 @@ class CostingController extends Controller
 
             $label = $trendPeriod;
             if (preg_match('/^\d{4}-\d{2}$/', (string) $trendPeriod) === 1) {
-                $label = \Carbon\Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
+                $label = Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
             }
 
             return [
@@ -476,7 +484,7 @@ class CostingController extends Controller
 
             $label = $trendPeriod;
             if (preg_match('/^\d{4}-\d{2}$/', (string) $trendPeriod) === 1) {
-                $label = \Carbon\Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
+                $label = Carbon::createFromFormat('Y-m', (string) $trendPeriod)->format('M y');
             }
 
             return [
@@ -493,7 +501,7 @@ class CostingController extends Controller
             ->groupBy('customer_id')
             ->map(function ($items) {
                 return [
-                    'name' => $items->first()->customer->name ?? ('Customer #' . $items->first()->customer_id),
+                    'name' => $items->first()->customer->name ?? ('Customer #'.$items->first()->customer_id),
                     'revenue' => $items->sum('revenue'),
                 ];
             })
@@ -551,6 +559,7 @@ class CostingController extends Controller
             ? $costingData
                 ->groupBy(function ($item) {
                     $assyNo = trim((string) ($item->assy_no ?? ''));
+
                     return $assyNo !== '' ? $assyNo : '-';
                 })
                 ->map(function ($items, $assyNo) use ($resolvePotentialSales) {
@@ -578,6 +587,7 @@ class CostingController extends Controller
             ? $costingData
                 ->groupBy(function ($item) {
                     $modelName = trim((string) ($item->model ?? ''));
+
                     return $modelName !== '' ? $modelName : '-';
                 })
                 ->map(function ($items, $modelName) use ($resolvePotentialSales) {
@@ -615,7 +625,7 @@ class CostingController extends Controller
 
                         return [
                             'dimension_key' => (string) $customerId,
-                            'name' => $items->first()->customer->name ?? ('Customer #' . $customerId),
+                            'name' => $items->first()->customer->name ?? ('Customer #'.$customerId),
                             'potential_sales' => $items->sum(function ($row) use ($resolvePotentialSales) {
                                 return $resolvePotentialSales($row);
                             }),
@@ -644,7 +654,7 @@ class CostingController extends Controller
         $topCustomerPotentialSales = $costingData
             ->groupBy('customer_id')
             ->map(function ($items) {
-                $customerName = $items->first()->customer->name ?? ('Customer #' . $items->first()->customer_id);
+                $customerName = $items->first()->customer->name ?? ('Customer #'.$items->first()->customer_id);
                 $resolvePotentialSales = function ($row) {
                     $qtyPerMonth = (float) ($row->forecast ?? 0);
                     $productLifeYears = (float) ($row->project_period ?? 0);
@@ -664,6 +674,7 @@ class CostingController extends Controller
                         }
 
                         $productName = trim((string) ($item->product->name ?? ''));
+
                         return $productName !== '' ? $productName : 'Uncategorized';
                     })
                     ->map(function ($categoryItems, $categoryName) {
@@ -726,11 +737,13 @@ class CostingController extends Controller
             $categoryItems = $costingData->filter(function ($item) use ($analysisMode, $dimensionKey, $resolveBusinessCategoryLabel) {
                 if ($analysisMode === 'assy_no') {
                     $assyNo = trim((string) ($item->assy_no ?? ''));
+
                     return ($assyNo !== '' ? $assyNo : '-') === $dimensionKey;
                 }
 
                 if ($analysisMode === 'model') {
                     $modelName = trim((string) ($item->model ?? ''));
+
                     return ($modelName !== '' ? $modelName : '-') === $dimensionKey;
                 }
 
@@ -746,7 +759,7 @@ class CostingController extends Controller
             $a05Count = 0;
             foreach ($categoryItems as $item) {
                 $revision = $item->trackingRevision;
-                if (!$revision) {
+                if (! $revision) {
                     continue;
                 }
 
@@ -820,7 +833,7 @@ class CostingController extends Controller
             'statusProjectPieGradient',
             'totalSubmitCostingMonthly',
             'monthlySubmitCounts',
-            'maxMonthlySubmitCount'
+            'maxMonthlySubmitCount', 'roleWorkspace'
         ));
     }
 
@@ -840,7 +853,7 @@ class CostingController extends Controller
             ->pluck('products.line')
             ->values();
 
-        if ($businessCategoryFilter !== 'all' && !$businessCategoryOptions->contains($businessCategoryFilter)) {
+        if ($businessCategoryFilter !== 'all' && ! $businessCategoryOptions->contains($businessCategoryFilter)) {
             $businessCategoryFilter = 'all';
         }
 
@@ -862,10 +875,10 @@ class CostingController extends Controller
 
         $customerIdOptions = $customerOptions
             ->pluck('id')
-            ->map(fn($id) => (string) $id)
+            ->map(fn ($id) => (string) $id)
             ->values();
 
-        if ($customerFilter !== 'all' && !$customerIdOptions->contains((string) $customerFilter)) {
+        if ($customerFilter !== 'all' && ! $customerIdOptions->contains((string) $customerFilter)) {
             $customerFilter = 'all';
         }
 
@@ -890,7 +903,7 @@ class CostingController extends Controller
             ->pluck('model')
             ->values();
 
-        if ($modelFilter !== 'all' && !$modelOptions->contains($modelFilter)) {
+        if ($modelFilter !== 'all' && ! $modelOptions->contains($modelFilter)) {
             $modelFilter = 'all';
         }
 
@@ -934,23 +947,23 @@ class CostingController extends Controller
             ? CostingData::with(['product', 'customer', 'trackingRevision', 'materialBreakdowns.material'])->find($selectedBId)
             : null;
 
-        if (!$costingA && $revisionOptions->isNotEmpty()) {
+        if (! $costingA && $revisionOptions->isNotEmpty()) {
             $selectedAId = (int) ($revisionOptions->first()['id'] ?? 0);
             $costingA = CostingData::with(['product', 'customer', 'trackingRevision', 'materialBreakdowns.material'])->find($selectedAId);
         }
 
-        if (!$costingB && $revisionOptions->count() > 1) {
+        if (! $costingB && $revisionOptions->count() > 1) {
             $selectedBId = (int) ($revisionOptions->get(1)['id'] ?? $selectedAId);
             $costingB = CostingData::with(['product', 'customer', 'trackingRevision', 'materialBreakdowns.material'])->find($selectedBId);
         }
 
-        if (!$costingB && $costingA) {
+        if (! $costingB && $costingA) {
             $selectedBId = $selectedAId;
             $costingB = $costingA;
         }
 
         $resolveAssyLabel = function ($costing, string $fallback = '-') {
-            if (!$costing) {
+            if (! $costing) {
                 return $fallback;
             }
 
@@ -960,10 +973,10 @@ class CostingController extends Controller
                 trim((string) ($costing->model ?? '')),
             ]);
 
-            $base = implode(' - ', $parts) ?: ('Costing #' . (string) $costing->id);
+            $base = implode(' - ', $parts) ?: ('Costing #'.(string) $costing->id);
             $versionLabel = trim((string) ($costing->trackingRevision?->version_label ?? 'V-'));
 
-            return $base . ' | ' . $versionLabel;
+            return $base.' | '.$versionLabel;
         };
 
         $formatNumeric = function ($value, int $decimals = 2) {
@@ -971,10 +984,11 @@ class CostingController extends Controller
         };
 
         $materialComparisonRows = collect();
+        $materialKeyOccurrences = ['A' => [], 'B' => []];
         foreach ([['slot' => 'A', 'costing' => $costingA], ['slot' => 'B', 'costing' => $costingB]] as $bundle) {
             $slot = $bundle['slot'];
             $costing = $bundle['costing'];
-            if (!$costing) {
+            if (! $costing) {
                 continue;
             }
 
@@ -997,14 +1011,18 @@ class CostingController extends Controller
                     trim((string) ($material->id_code ?? '')),
                     trim((string) ($material->part_name ?? '')),
                 ]);
-                $rowKey = implode(' | ', $keyParts);
-                if ($rowKey === '') {
-                    $rowKey = 'ROW-' . ((int) ($material->row_no ?? ($index + 1)));
-                }
+                $baseRowKey = implode(' | ', $keyParts);
+                if ($baseRowKey === '') $baseRowKey = 'ROW-'.((int) ($material->row_no ?? ($index + 1)));
+                $occurrence = ($materialKeyOccurrences[$slot][$baseRowKey] ?? 0) + 1;
+                $materialKeyOccurrences[$slot][$baseRowKey] = $occurrence;
+                // Preserve duplicate materials instead of overwriting them. The same
+                // occurrence number on A and B remains paired for comparison.
+                $rowKey = $baseRowKey.' #'.$occurrence;
 
-                if (!$materialComparisonRows->has($rowKey)) {
+                if (! $materialComparisonRows->has($rowKey)) {
                     $materialComparisonRows->put($rowKey, [
                         'row_key' => $rowKey,
+                        'display_key' => $baseRowKey,
                         'row_no' => (int) ($material->row_no ?? ($index + 1)),
                         'part_no' => trim((string) ($material->part_no ?? '')),
                         'part_name' => trim((string) ($material->part_name ?? '')),
@@ -1015,6 +1033,12 @@ class CostingController extends Controller
                 }
 
                 $existing = $materialComparisonRows->get($rowKey);
+                $categorySource = trim((string) (($material->material->material_type ?? '') ?: ($material->material->material_group ?? '') ?: 'Other'));
+                $categoryLookup = Str::upper($categorySource.' '.($material->part_name ?? ''));
+                $category = collect(['Wire', 'Connector', 'Terminal', 'Tube', 'Tape', 'Accessories'])
+                    ->first(fn ($candidate) => str_contains($categoryLookup, Str::upper($candidate)))
+                    ?? Str::headline($categorySource);
+                $existing['category'] = $existing['category'] ?? $category;
                 $existing[$slot] = [
                     'qty_req' => (int) $qtyReq,
                     'amount1' => round($amount1, 6),
@@ -1027,6 +1051,7 @@ class CostingController extends Controller
                     'supplier' => trim((string) (($material->material->maker ?? '') ?: '')),
                     'import_tax_percent' => (float) ($material->import_tax_percent ?? 0),
                     'total_price_idr' => $totalPriceIdr,
+                    'unit' => trim((string) (($material->material->base_uom ?? '') ?: ($material->unit_price_basis_text ?? '') ?: ($material->unit_price_basis ?? ''))),
                 ];
                 $materialComparisonRows->put($rowKey, $existing);
             }
@@ -1040,7 +1065,7 @@ class CostingController extends Controller
         foreach ([['slot' => 'A', 'costing' => $costingA], ['slot' => 'B', 'costing' => $costingB]] as $bundle) {
             $slot = $bundle['slot'];
             $costing = $bundle['costing'];
-            if (!$costing) {
+            if (! $costing) {
                 continue;
             }
 
@@ -1048,12 +1073,12 @@ class CostingController extends Controller
             foreach ($cycleTimes as $index => $cycleTime) {
                 $process = trim((string) data_get($cycleTime, 'process', ''));
                 $area = trim((string) data_get($cycleTime, 'area_of_process', ''));
-                $rowKey = trim($process . '|' . $area);
+                $rowKey = trim($process.'|'.$area);
                 if ($rowKey === '|') {
-                    $rowKey = 'ROW-' . ($index + 1);
+                    $rowKey = 'ROW-'.($index + 1);
                 }
 
-                if (!$cycleTimeComparisonRows->has($rowKey)) {
+                if (! $cycleTimeComparisonRows->has($rowKey)) {
                     $cycleTimeComparisonRows->put($rowKey, [
                         'row_key' => $rowKey,
                         'process' => $process,
@@ -1191,14 +1216,14 @@ class CostingController extends Controller
 
                 $base = implode(' - ', array_filter([$assyNo, $assyName, $model]));
                 if ($base === '') {
-                    $base = 'Costing #' . (string) $item->id;
+                    $base = 'Costing #'.(string) $item->id;
                 }
 
-                $label = $base . ' | ' . $versionLabel;
+                $label = $base.' | '.$versionLabel;
                 if ($periodLabel !== '') {
-                    $label .= ' | ' . $periodLabel;
+                    $label .= ' | '.$periodLabel;
                 }
-                $label .= ' | update ' . $updatedLabel;
+                $label .= ' | update '.$updatedLabel;
 
                 return [
                     'id' => (int) $item->id,
@@ -1247,14 +1272,15 @@ class CostingController extends Controller
 
     public function form(Request $request)
     {
-        $products = Product::all();
-        $businessCategories = BusinessCategory::orderBy('code')->orderBy('name')->get();
-        $customers = Customer::all();
-        $materials = $this->validMasterMaterialsQuery()
-            ->orderBy('material_code')
-            ->get();
-        $cycleTimeTemplates = CycleTimeTemplate::orderBy('id')->get();
-        $plants = Plant::orderBy('code')->orderBy('name')->get();
+        $products = Cache::remember('form:products', 300, fn () => Product::all());
+        $businessCategories = Cache::remember('form:business-categories', 300, fn () => BusinessCategory::orderBy('code')->orderBy('name')->get());
+        $customers = Cache::remember('form:customers', 300, fn () => Customer::all());
+        // Material master can contain tens of thousands of rows. Do not serialize the
+        // whole collection into the database cache: one oversized INSERT can exceed
+        // MySQL's packet/connection limit and take the form down.
+        $materials = $this->validMasterMaterialsQuery()->orderBy('material_code')->get();
+        $cycleTimeTemplates = Cache::remember('form:cycle-time-templates', 300, fn () => CycleTimeTemplate::orderBy('id')->get());
+        $plants = Cache::remember('form:plants', 300, fn () => Plant::orderBy('code')->orderBy('name')->get());
         $periods = CostingData::distinct('period')->orderBy('period', 'desc')->pluck('period');
         $wireRates = WireRate::orderBy('period_month', 'asc')->orderBy('id', 'asc')->get();
         $picsEngineering = Pic::where('type', 'engineering')->orderBy('name')->get();
@@ -1272,7 +1298,7 @@ class CostingController extends Controller
         }
 
         $activeWireRate = $wireRates->firstWhere('id', $selectedWireRateId);
-        if (!$activeWireRate) {
+        if (! $activeWireRate) {
             $activeWireRate = $wireRates->last();
             $selectedWireRateId = (int) ($activeWireRate?->id ?? 0);
         }
@@ -1305,14 +1331,7 @@ class CostingController extends Controller
                     ->unique('part_number');
 
                 // Pre-load all materials & wires once (2 queries total instead of N*8)
-                $allMaterials = Material::query()
-                    ->where(function ($q) {
-                        $q->whereNull('material_code')->orWhere('material_code', 'not like', '__ROW_%');
-                    })
-                    ->whereNotNull('material_description')
-                    ->where('material_description', '!=', '')
-                    ->orderBy('material_code')
-                    ->get();
+                $allMaterials = $materials;
                 $allWires = Wire::all();
 
                 // Build lookup indexes in memory
@@ -1336,7 +1355,7 @@ class CostingController extends Controller
 
                         // 2) Suffix match (e.g. "604152-0" matches "TERM 604152-0")
                         if ($matchedMaterials->isEmpty()) {
-                            $suffix = ' ' . $lower;
+                            $suffix = ' '.$lower;
                             $matchedMaterials = $allMaterials->filter(fn ($m) => Str::endsWith(Str::lower($m->material_description), $suffix))->values();
                         }
 
@@ -1345,7 +1364,9 @@ class CostingController extends Controller
                             $matchedMaterials = $allMaterials->filter(fn ($m) => str_contains(Str::lower($m->material_description), $lower))->values();
                         }
 
-                        if ($matchedMaterials->isNotEmpty()) break;
+                        if ($matchedMaterials->isNotEmpty()) {
+                            break;
+                        }
                     }
 
                     $item->matched_materials = $matchedMaterials;
@@ -1371,14 +1392,17 @@ class CostingController extends Controller
 
                         // Exact match on item or idcode
                         $wires = $wireByItemLower->get($lower, collect());
-                        if ($wires->isEmpty()) $wires = $wireByIdcodeLower->get($lower, collect());
+                        if ($wires->isEmpty()) {
+                            $wires = $wireByIdcodeLower->get($lower, collect());
+                        }
 
                         // Prefix match (e.g., "AVSS 0.5 B" starts with wire item "AVSS 0.5")
                         if ($wires->isEmpty()) {
                             $wires = $allWires->filter(function ($w) use ($lower) {
                                 $wItem = Str::lower($w->item);
+
                                 return $wItem !== '' && (
-                                    str_starts_with($lower, $wItem . ' ') ||
+                                    str_starts_with($lower, $wItem.' ') ||
                                     str_starts_with($lower, $wItem)
                                 );
                             })->values();
@@ -1393,7 +1417,7 @@ class CostingController extends Controller
                     // Fallback: populate matched fields from wire data when no material match
                     if ($matchedMaterials->isEmpty() && $item->matched_wires->isNotEmpty()) {
                         $firstWire = $item->matched_wires->first();
-                        $item->matched_material_description = 'WIRE ' . $firstWire->item;
+                        $item->matched_material_description = 'WIRE '.$firstWire->item;
                         $item->matched_price = $firstWire->price;
                         $item->matched_currency = 'IDR';
                         $item->matched_wire_idcode = $firstWire->idcode;
@@ -1445,7 +1469,7 @@ class CostingController extends Controller
                         });
                     }
 
-                    if (!$matchedProduct) {
+                    if (! $matchedProduct) {
                         $matchedProduct = $products->first(function ($product) use (
                             $normalize,
                             $trackingModel,
@@ -1492,16 +1516,16 @@ class CostingController extends Controller
                     ];
                 }
 
-                if (!isset($trackingProjectPrefill['pic_engineering'])) {
+                if (! isset($trackingProjectPrefill['pic_engineering'])) {
                     $trackingProjectPrefill['pic_engineering'] = $trackingRevision->pic_engineering ?? null;
                 }
-                if (!isset($trackingProjectPrefill['pic_marketing'])) {
+                if (! isset($trackingProjectPrefill['pic_marketing'])) {
                     $trackingProjectPrefill['pic_marketing'] = $trackingRevision->pic_marketing ?? null;
                 }
             }
         }
 
-        if (!$costingDataId && $trackingRevisionId) {
+        if (! $costingDataId && $trackingRevisionId) {
             $costingDataId = CostingData::where('tracking_revision_id', $trackingRevisionId)
                 ->latest('id')
                 ->value('id');
@@ -1513,8 +1537,12 @@ class CostingController extends Controller
                 $materialBreakdowns = $costingData->materialBreakdowns;
             }
         }
+        $importRuns = $costingData
+            ? ImportRun::query()->where('costing_data_id', $costingData->id)->latest()->limit(5)->get()
+            : collect();
+        $isCostingLocked = $trackingRevision && in_array($trackingRevision->status, [DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL, DocumentRevision::STATUS_APPROVED_BY_COORDINATOR, DocumentRevision::STATUS_SUBMITTED_TO_MARKETING], true);
         $initialCycleTimes = $request->old('cycle_times', $costingData->cycle_times ?? []);
-        if (!is_array($initialCycleTimes)) {
+        if (! is_array($initialCycleTimes)) {
             $initialCycleTimes = [];
         }
         if (count($initialCycleTimes) === 0 && $cycleTimeTemplates->count() > 0) {
@@ -1557,7 +1585,7 @@ class CostingController extends Controller
             'openUnpricedParts',
             'trackingProjectPrefill',
             'picsEngineering',
-            'picsMarketing'
+            'picsMarketing', 'importRuns', 'isCostingLocked'
         ));
     }
 
@@ -1568,8 +1596,7 @@ class CostingController extends Controller
         CostingPersistenceService $persistenceService,
         CostingStatusService $statusService,
         CostingResponseService $responseService
-    )
-    {
+    ) {
         $updateSection = $request->resolvedUpdateSection();
         $importPartlistFileUploaded = $request->hasFile('import_partlist_file');
         $importCycleTimeFileUploaded = $request->hasFile('import_cycle_time_file');
@@ -1586,10 +1613,10 @@ class CostingController extends Controller
 
         if ($importRequested) {
             $partlistImport = $importService->preparePartlistImport($validated, $request);
-            if (!empty($partlistImport['error'])) {
+            if (! empty($partlistImport['error'])) {
                 return back()->with('error', $partlistImport['error'])->withInput();
             }
-            if (!empty($partlistImport['warning'])) {
+            if (! empty($partlistImport['warning'])) {
                 return back()->with('warning', $partlistImport['warning'])->withInput();
             }
             $importedMaterialRows = $partlistImport['rows'] ?? [];
@@ -1607,10 +1634,10 @@ class CostingController extends Controller
              */
             $cycleTimeImport = $this->loadCycleTimeRows($request->file('import_cycle_time_file'));
 
-            if (!empty($cycleTimeImport['error'])) {
+            if (! empty($cycleTimeImport['error'])) {
                 return back()->with('error', $cycleTimeImport['error'])->withInput();
             }
-            if (!empty($cycleTimeImport['warning'])) {
+            if (! empty($cycleTimeImport['warning'])) {
                 return back()->with('warning', $cycleTimeImport['warning'])->withInput();
             }
 
@@ -1641,8 +1668,32 @@ class CostingController extends Controller
             }
 
             $costingData = $persistenceService->resolveExistingCostingData($validated);
+            $importSnapshot = null;
+            if ($importFromPartlist) {
+                $importSnapshot = [
+                    'material_cost' => $costingData?->material_cost,
+                    'materials' => $costingData
+                        ? DB::table('material_breakdowns')->where('costing_data_id', $costingData->id)->get()->map(fn ($row) => (array) $row)->all()
+                        : [],
+                ];
+            } elseif ($importFromCycleTime) {
+                $importSnapshot = ['cycle_times' => $costingData?->cycle_times ?? []];
+            }
             $productId = $persistenceService->resolveProductId($request, $costingData);
             $costingData = $persistenceService->saveCostingData($request, $validated, $updateSection, $costingData, $productId);
+            $importRun = null;
+            if ($importSnapshot !== null) {
+                $uploaded = $importFromPartlist ? $request->file('import_partlist_file') : $request->file('import_cycle_time_file');
+                $importRun = ImportRun::create([
+                    'user_id' => $request->user()->id,
+                    'costing_data_id' => $costingData->id,
+                    'document_revision_id' => $trackingRevisionId,
+                    'type' => $importFromPartlist ? 'partlist' : 'umh',
+                    'original_name' => $uploaded?->getClientOriginalName(),
+                    'status' => 'previewed',
+                    'before_snapshot' => $importSnapshot,
+                ]);
+            }
 
             if ($trackingRevisionId && ($updateSection === '' || $updateSection === 'informasi_project')) {
                 $revisionPayload = array_filter([
@@ -1665,7 +1716,7 @@ class CostingController extends Controller
             $partAggregation = $materialSyncResult['part_aggregation'] ?? [];
             $shouldProcessMaterials = (bool) ($materialSyncResult['should_process_materials'] ?? false);
 
-            if ($trackingRevisionId && !$importFromPartlist) {
+            if ($trackingRevisionId && ! $importFromPartlist) {
                 if ($updateSection === 'unpriced_parts') {
                     $partAggregation = $statusService->syncUnpricedPartsFromBreakdowns((int) $trackingRevisionId, $costingData);
                 }
@@ -1700,7 +1751,28 @@ class CostingController extends Controller
                 ]);
             }
 
+            if ($importRun) {
+                $importRun->update([
+                    'status' => 'applied',
+                    'after_summary' => [
+                        'rows' => $importFromPartlist ? count($importedMaterialRows) : count($importedCycleTimeRows),
+                        'material_cost' => $importFromPartlist ? $costingData->fresh()->material_cost : null,
+                    ],
+                ]);
+            }
+
             DB::commit();
+
+            if ($updateSection === '') {
+                $draftKey = $trackingRevisionId
+                    ? 'revision:'.$trackingRevisionId
+                    : 'costing:'.$costingData->id;
+
+                CostingDraft::query()
+                    ->where('user_id', $request->user()->id)
+                    ->whereIn('draft_key', array_unique([$draftKey, 'new']))
+                    ->delete();
+            }
 
             /*
              * Tombol utama "Simpan Data Costing" dianggap sebagai final submit.
@@ -1749,6 +1821,7 @@ class CostingController extends Controller
             return redirect($redirectUrl);
         } catch (MissingProjectInformationException $e) {
             DB::rollBack();
+
             return back()->with('error', $e->getMessage())->withInput();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1763,11 +1836,11 @@ class CostingController extends Controller
             if ($responseService->shouldReturnJson($request)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+                    'message' => 'Terjadi kesalahan: '.$e->getMessage(),
                 ], 500);
             }
 
-            return back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage())->withInput();
+            return back()->with('error', 'Terjadi kesalahan: '.$e->getMessage())->withInput();
         }
     }
 
@@ -1785,7 +1858,7 @@ class CostingController extends Controller
         ]);
 
         $rows = json_decode((string) $validated['materials_json'], true);
-        if (!is_array($rows)) {
+        if (! is_array($rows)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Payload Material tidak valid.',
@@ -1793,17 +1866,18 @@ class CostingController extends Controller
         }
 
         $costingData = CostingData::findOrFail((int) $validated['costing_data_id']);
+        app(CostingLockService::class)->assertEditable($costingData);
 
         DB::beginTransaction();
 
         try {
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns');
+            $columns = Schema::getColumnListing('material_breakdowns');
             $columnMap = array_fill_keys($columns, true);
             $now = now();
             $updatedRows = 0;
 
             foreach ($rows as $row) {
-                if (!is_array($row)) {
+                if (! is_array($row)) {
                     continue;
                 }
 
@@ -1817,12 +1891,12 @@ class CostingController extends Controller
                 }
 
                 $currency = strtoupper(trim((string) ($row['currency'] ?? 'IDR')));
-                if (!in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
+                if (! in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
                     $currency = 'IDR';
                 }
 
                 $cnType = strtoupper(trim((string) ($row['cn_type'] ?? 'N')));
-                if (!in_array($cnType, ['C', 'N', 'E'], true)) {
+                if (! in_array($cnType, ['C', 'N', 'E'], true)) {
                     $cnType = 'N';
                 }
 
@@ -1886,7 +1960,7 @@ class CostingController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menyimpan Material: ' . $e->getMessage(),
+                'message' => 'Gagal menyimpan Material: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1903,6 +1977,7 @@ class CostingController extends Controller
         ]);
 
         $costingData = CostingData::findOrFail((int) $validated['costing_data_id']);
+        app(CostingLockService::class)->assertEditable($costingData);
 
         DB::beginTransaction();
 
@@ -1911,7 +1986,7 @@ class CostingController extends Controller
                 ->orderBy('row_no')
                 ->get();
 
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns');
+            $columns = Schema::getColumnListing('material_breakdowns');
             $columnMap = array_fill_keys($columns, true);
             $now = now();
             $updatedRows = 0;
@@ -1986,7 +2061,7 @@ class CostingController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghitung ulang COGM: ' . $e->getMessage(),
+                'message' => 'Gagal menghitung ulang COGM: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1996,8 +2071,6 @@ class CostingController extends Controller
         return (float) MaterialBreakdown::where('costing_data_id', $costingData->id)
             ->sum('amount2');
     }
-
-
 
     private function toStoreCostingRequest(Request $request): StoreCostingRequest
     {
@@ -2054,17 +2127,28 @@ class CostingController extends Controller
 
         try {
             $costingData = $this->resolveCostingDataForCogmImport($request, $validated);
+            app(CostingLockService::class)->assertEditable($costingData);
             $rows = $this->parseCogmExcelToMaterialRows($request->file('import_cogm_file')->getPathname());
 
             if (count($rows) === 0) {
                 return back()->with('error', 'Data Material tidak ditemukan di file COGM. Pastikan file memiliki header seperti Part No, Part Name, Qty, Unit, Price, Currency.');
             }
 
+            $importRun = ImportRun::create([
+                'user_id' => $request->user()->id,
+                'costing_data_id' => $costingData->id,
+                'document_revision_id' => $costingData->tracking_revision_id,
+                'type' => 'cogm',
+                'original_name' => $request->file('import_cogm_file')->getClientOriginalName(),
+                'status' => 'previewed',
+                'before_snapshot' => ['material_cost' => $costingData->material_cost, 'materials' => DB::table('material_breakdowns')->where('costing_data_id', $costingData->id)->get()->map(fn ($row) => (array) $row)->all()],
+            ]);
+
             DB::beginTransaction();
 
             MaterialBreakdown::where('costing_data_id', $costingData->id)->delete();
 
-            $columns = \Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns');
+            $columns = Schema::getColumnListing('material_breakdowns');
             $columnMap = array_fill_keys($columns, true);
             $now = now();
 
@@ -2136,13 +2220,15 @@ class CostingController extends Controller
                 'material_cost' => $materialCost,
             ]);
 
+            $importRun->update(['status' => 'applied', 'after_summary' => ['rows' => count($rows), 'material_cost' => $materialCost]]);
+
             DB::commit();
 
             return redirect(route('form', [
                 'id' => $costingData->id,
                 'tracking_revision_id' => $request->input('tracking_revision_id'),
             ], false))
-                ->with('success', 'Import COGM berhasil. ' . count($rows) . ' baris material masuk ke tabel Material.');
+                ->with('success', 'Import COGM berhasil. '.count($rows).' baris material masuk ke tabel Material.');
         } catch (\Throwable $e) {
             DB::rollBack();
 
@@ -2152,13 +2238,57 @@ class CostingController extends Controller
                 'line' => $e->getLine(),
             ]);
 
-            return back()->with('error', 'Gagal import COGM: ' . $e->getMessage())->withInput();
+            return back()->with('error', 'Gagal import COGM: '.$e->getMessage())->withInput();
         }
+    }
+
+    public function previewCogm(Request $request)
+    {
+        $request->validate(['import_cogm_file' => ['required', 'file', 'mimes:xls,xlsx']]);
+        $rows = $this->parseCogmExcelToMaterialRows($request->file('import_cogm_file')->getPathname());
+
+        return response()->json([
+            'success' => true,
+            'summary' => ['rows' => count($rows), 'estimated_rows' => collect($rows)->where('cn_type', 'E')->count(), 'missing_price_rows' => collect($rows)->filter(fn ($row) => (float) ($row['amount1'] ?? 0) <= 0)->count()],
+            'preview' => array_slice($rows, 0, 20),
+        ]);
+    }
+
+    public function previewPartlist(Request $request, CostingImportService $importService)
+    {
+        $request->validate([
+            'import_partlist_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:20480'],
+            'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
+        ]);
+        $result = $importService->previewPartlist($request->only('tracking_revision_id'), $request);
+
+        return response()->json([
+            'success' => ! isset($result['error']) && ! isset($result['warning']),
+            'message' => $result['error'] ?? $result['warning'] ?? null,
+            'summary' => ['rows' => count($result['rows'] ?? []), 'issues' => count($result['issues'] ?? [])],
+            'issues' => array_slice($result['issues'] ?? [], 0, 50),
+            'preview' => array_slice($result['rows'] ?? [], 0, 20),
+        ], isset($result['error']) || isset($result['warning']) ? 422 : 200);
+    }
+
+    public function previewUmh(Request $request, CostingImportService $importService)
+    {
+        $request->validate(['import_umh_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:20480']]);
+        $request->files->set('import_cycle_time_file', $request->file('import_umh_file'));
+        $result = $importService->previewCycleTime($request);
+
+        return response()->json([
+            'success' => ! isset($result['error']) && ! isset($result['warning']),
+            'message' => $result['error'] ?? $result['warning'] ?? null,
+            'summary' => ['rows' => count($result['rows'] ?? []), 'issues' => count($result['issues'] ?? [])],
+            'issues' => array_slice($result['issues'] ?? [], 0, 50),
+            'preview' => array_slice($result['rows'] ?? [], 0, 20),
+        ], isset($result['error']) || isset($result['warning']) ? 422 : 200);
     }
 
     private function resolveCostingDataForCogmImport(Request $request, array $validated): CostingData
     {
-        if (!empty($validated['costing_data_id'])) {
+        if (! empty($validated['costing_data_id'])) {
             return CostingData::findOrFail((int) $validated['costing_data_id']);
         }
 
@@ -2175,7 +2305,7 @@ class CostingController extends Controller
         }
 
         $businessCategory = BusinessCategory::findOrFail((int) $validated['business_category_id']);
-        $productColumns = array_fill_keys(\Illuminate\Support\Facades\Schema::getColumnListing('products'), true);
+        $productColumns = array_fill_keys(Schema::getColumnListing('products'), true);
 
         $productDefaults = [
             'name' => trim((string) $businessCategory->name),
@@ -2197,11 +2327,11 @@ class CostingController extends Controller
         if (isset($productColumns['line']) && trim((string) $product->line) !== trim((string) $businessCategory->name)) {
             $productUpdates['line'] = trim((string) $businessCategory->name);
         }
-        if (!empty($productUpdates)) {
+        if (! empty($productUpdates)) {
             $product->update($productUpdates);
         }
 
-        $costingColumns = array_fill_keys(\Illuminate\Support\Facades\Schema::getColumnListing('costing_data'), true);
+        $costingColumns = array_fill_keys(Schema::getColumnListing('costing_data'), true);
         $payload = [
             'product_id' => $product->id,
             'customer_id' => (int) $validated['customer_id'],
@@ -2229,7 +2359,6 @@ class CostingController extends Controller
 
         return CostingData::create($payload);
     }
-
 
     private function updateMaterialMasterFromCogm(Material $material, array $row): void
     {
@@ -2272,7 +2401,7 @@ class CostingController extends Controller
             $updates['add_cost_import_tax'] = $importTax;
         }
 
-        if (!empty($updates)) {
+        if (! empty($updates)) {
             $material->fill($updates);
             $material->save();
         }
@@ -2300,7 +2429,7 @@ class CostingController extends Controller
 
         $code = $partNo !== '' && $partNo !== '-' ? $partNo : $idCode;
         if ($code === '' || $code === '-') {
-            $code = '__COGM_' . Str::uuid()->toString();
+            $code = '__COGM_'.Str::uuid()->toString();
         }
 
         $material = Material::query()
@@ -2313,7 +2442,7 @@ class CostingController extends Controller
             return (int) $material->id;
         }
 
-        $columns = \Illuminate\Support\Facades\Schema::getColumnListing('materials');
+        $columns = Schema::getColumnListing('materials');
         $columnMap = array_fill_keys($columns, true);
         $now = now();
 
@@ -2339,7 +2468,7 @@ class CostingController extends Controller
 
     private function parseCogmExcelToMaterialRows(string $filePath): array
     {
-        if (!class_exists(IOFactory::class)) {
+        if (! class_exists(IOFactory::class)) {
             throw new \RuntimeException('Parser PhpSpreadsheet tidak tersedia.');
         }
 
@@ -2350,7 +2479,7 @@ class CostingController extends Controller
         $bestRows = [];
 
         foreach ($spreadsheet->getAllSheets() as $sheet) {
-            if (!$sheet instanceof Worksheet) {
+            if (! $sheet instanceof Worksheet) {
                 continue;
             }
 
@@ -2379,10 +2508,10 @@ class CostingController extends Controller
             $candidateMap = [];
 
             for ($col = 1; $col <= $highestColumn; $col++) {
-                $value = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($col) . $row)->getFormattedValue());
+                $value = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($col).$row)->getFormattedValue());
                 $field = $this->mapCogmHeader($value);
 
-                if ($field !== null && !isset($candidateMap[$field])) {
+                if ($field !== null && ! isset($candidateMap[$field])) {
                     $candidateMap[$field] = $col;
                 }
             }
@@ -2413,7 +2542,7 @@ class CostingController extends Controller
             $proCode = $this->getCogmCell($sheet, $headerMap, 'pro_code', $row);
             $amount1 = $this->toCogmFloatValue($this->getCogmCell($sheet, $headerMap, 'amount1', $row));
             $unitPriceBasisText = $this->getCogmCell($sheet, $headerMap, 'unit_price_basis_text', $row);
-            $unitPriceBasis = $this->getCogmNumericCell($sheet, 'L' . $row);
+            $unitPriceBasis = $this->getCogmNumericCell($sheet, 'L'.$row);
             $currency = strtoupper($this->getCogmCell($sheet, $headerMap, 'currency', $row));
             $qtyMoq = $this->toCogmFloatValue($this->getCogmCell($sheet, $headerMap, 'qty_moq', $row));
             $cnType = strtoupper($this->getCogmCell($sheet, $headerMap, 'cn_type', $row));
@@ -2431,7 +2560,7 @@ class CostingController extends Controller
                 || $amount1 > 0
                 || $unitPriceBasis > 0;
 
-            if (!$hasData) {
+            if (! $hasData) {
                 $emptyStreak++;
 
                 if ($emptyStreak >= 50) {
@@ -2447,11 +2576,11 @@ class CostingController extends Controller
                 continue;
             }
 
-            if (!in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
+            if (! in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
                 $currency = 'IDR';
             }
 
-            if (!in_array($cnType, ['C', 'N'], true)) {
+            if (! in_array($cnType, ['C', 'N'], true)) {
                 $cnType = 'N';
             }
 
@@ -2481,7 +2610,6 @@ class CostingController extends Controller
         return $rows;
     }
 
-
     private function toCogmFloatValue($value): float
     {
         $raw = trim((string) $value);
@@ -2509,10 +2637,10 @@ class CostingController extends Controller
                 // Format international: 1,305.46548132
                 $normalized = str_replace(',', '', $normalized);
             }
-        } elseif ($hasComma && !$hasDot) {
+        } elseif ($hasComma && ! $hasDot) {
             // Koma sebagai desimal, contoh: 1305,46548132
             $normalized = str_replace(',', '.', $normalized);
-        } elseif ($hasDot && !$hasComma) {
+        } elseif ($hasDot && ! $hasComma) {
             // Titik bisa desimal atau ribuan.
             // Penting: 0.012 adalah desimal, jangan diubah menjadi 12.
             $dotCount = substr_count($normalized, '.');
@@ -2521,7 +2649,7 @@ class CostingController extends Controller
             $digitsBeforeLastDot = $lastDotPos === false ? 0 : strlen(ltrim(substr($normalized, 0, $lastDotPos), '-'));
 
             $looksLikeLeadingDecimal = preg_match('/^-?0\.\d+$/', $normalized) === 1;
-            $looksLikeThousands = !$looksLikeLeadingDecimal
+            $looksLikeThousands = ! $looksLikeLeadingDecimal
                 && ($dotCount > 1 || ($digitsAfterLastDot === 3 && $digitsBeforeLastDot > 1));
 
             if ($looksLikeThousands) {
@@ -2531,7 +2659,6 @@ class CostingController extends Controller
 
         return is_numeric($normalized) ? (float) $normalized : 0;
     }
-
 
     private function getCogmNumericCell(Worksheet $sheet, string $cellAddress): float
     {
@@ -2586,20 +2713,20 @@ class CostingController extends Controller
              * P = Supplier
              * Q = Import Tax (%)
              */
-            $partNo = trim((string) $sheet->getCell('E' . $row)->getFormattedValue());
-            $idCode = trim((string) $sheet->getCell('F' . $row)->getFormattedValue());
-            $partName = trim((string) $sheet->getCell('G' . $row)->getFormattedValue());
-            $qtyReq = $this->getCogmNumericCell($sheet, 'H' . $row);
-            $unit = $this->normalizeUnitValue($sheet->getCell('I' . $row)->getFormattedValue());
-            $proCode = trim((string) $sheet->getCell('J' . $row)->getFormattedValue());
-            $amount1 = $this->getCogmNumericCell($sheet, 'K' . $row);
-            $unitPriceBasisText = trim((string) $sheet->getCell('L' . $row)->getFormattedValue());
-            $unitPriceBasis = $this->getCogmNumericCell($sheet, 'L' . $row);
-            $currency = strtoupper(trim((string) $sheet->getCell('M' . $row)->getFormattedValue()));
-            $qtyMoq = $this->getCogmNumericCell($sheet, 'N' . $row);
-            $cnType = strtoupper(trim((string) $sheet->getCell('O' . $row)->getFormattedValue()));
-            $supplier = trim((string) $sheet->getCell('P' . $row)->getFormattedValue());
-            $importTax = $this->getCogmNumericCell($sheet, 'Q' . $row);
+            $partNo = trim((string) $sheet->getCell('E'.$row)->getFormattedValue());
+            $idCode = trim((string) $sheet->getCell('F'.$row)->getFormattedValue());
+            $partName = trim((string) $sheet->getCell('G'.$row)->getFormattedValue());
+            $qtyReq = $this->getCogmNumericCell($sheet, 'H'.$row);
+            $unit = $this->normalizeUnitValue($sheet->getCell('I'.$row)->getFormattedValue());
+            $proCode = trim((string) $sheet->getCell('J'.$row)->getFormattedValue());
+            $amount1 = $this->getCogmNumericCell($sheet, 'K'.$row);
+            $unitPriceBasisText = trim((string) $sheet->getCell('L'.$row)->getFormattedValue());
+            $unitPriceBasis = $this->getCogmNumericCell($sheet, 'L'.$row);
+            $currency = strtoupper(trim((string) $sheet->getCell('M'.$row)->getFormattedValue()));
+            $qtyMoq = $this->getCogmNumericCell($sheet, 'N'.$row);
+            $cnType = strtoupper(trim((string) $sheet->getCell('O'.$row)->getFormattedValue()));
+            $supplier = trim((string) $sheet->getCell('P'.$row)->getFormattedValue());
+            $importTax = $this->getCogmNumericCell($sheet, 'Q'.$row);
 
             if ($partNo === '' && $idCode !== '') {
                 $partNo = $idCode;
@@ -2614,11 +2741,12 @@ class CostingController extends Controller
                 || $qtyMoq > 0
                 || $supplier !== '';
 
-            if (!$hasData) {
+            if (! $hasData) {
                 $emptyStreak++;
                 if ($emptyStreak >= 80) {
                     break;
                 }
+
                 continue;
             }
 
@@ -2652,11 +2780,11 @@ class CostingController extends Controller
                 continue;
             }
 
-            if (!in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
+            if (! in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
                 $currency = 'IDR';
             }
 
-            if (!in_array($cnType, ['C', 'N'], true)) {
+            if (! in_array($cnType, ['C', 'N'], true)) {
                 $cnType = 'N';
             }
 
@@ -2684,7 +2812,6 @@ class CostingController extends Controller
 
         return $rows;
     }
-
 
     private function mapCogmHeader(string $value): ?string
     {
@@ -2795,18 +2922,18 @@ class CostingController extends Controller
 
     private function getCogmCell(Worksheet $sheet, array $headerMap, string $field, int $row): string
     {
-        if (!isset($headerMap[$field])) {
+        if (! isset($headerMap[$field])) {
             return '';
         }
 
         $column = Coordinate::stringFromColumnIndex((int) $headerMap[$field]);
 
-        return trim((string) $sheet->getCell($column . $row)->getFormattedValue());
+        return trim((string) $sheet->getCell($column.$row)->getFormattedValue());
     }
 
     public function importUmh(Request $request, CostingImportService $importService, CostingMaterialService $materialService, CostingPersistenceService $persistenceService, CostingStatusService $statusService, CostingResponseService $responseService)
     {
-        if ($request->hasFile('import_umh_file') && !$request->hasFile('import_cycle_time_file')) {
+        if ($request->hasFile('import_umh_file') && ! $request->hasFile('import_cycle_time_file')) {
             $request->files->set('import_cycle_time_file', $request->file('import_umh_file'));
         }
 
@@ -2834,7 +2961,7 @@ class CostingController extends Controller
 
     public function downloadCycleTimeTemplate()
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Cycle Time');
 
@@ -2852,10 +2979,10 @@ class CostingController extends Controller
         $startRow = 17;
         foreach ($sampleRows as $index => $sample) {
             $row = $startRow + $index;
-            $sheet->setCellValue('B' . $row, $sample['no']);
-            $sheet->setCellValue('C' . $row, $sample['process']);
-            $sheet->setCellValue('F' . $row, $sample['qty']);
-            $sheet->setCellValue('G' . $row, $sample['time_hour']);
+            $sheet->setCellValue('B'.$row, $sample['no']);
+            $sheet->setCellValue('C'.$row, $sample['process']);
+            $sheet->setCellValue('F'.$row, $sample['qty']);
+            $sheet->setCellValue('G'.$row, $sample['time_hour']);
         }
 
         foreach (['A', 'B', 'C', 'F', 'G'] as $column) {
@@ -2888,16 +3015,16 @@ class CostingController extends Controller
             $sourcePath = $uploadedPartlistFile->getPathname();
             $extension = strtolower((string) $uploadedPartlistFile->getClientOriginalExtension());
         } else {
-            if (!$trackingRevisionId) {
+            if (! $trackingRevisionId) {
                 return ['rows' => [], 'error' => 'Pilih file partlist terlebih dahulu.'];
             }
 
             $revision = DocumentRevision::find($trackingRevisionId);
-            if (!$revision || empty($revision->partlist_file_path)) {
+            if (! $revision || empty($revision->partlist_file_path)) {
                 return ['rows' => [], 'error' => 'File partlist pada revisi ini tidak tersedia.'];
             }
 
-            if (!Storage::exists($revision->partlist_file_path)) {
+            if (! Storage::exists($revision->partlist_file_path)) {
                 return ['rows' => [], 'error' => 'File partlist tidak ditemukan di storage.'];
             }
 
@@ -2905,11 +3032,11 @@ class CostingController extends Controller
             $extension = strtolower((string) pathinfo($revision->partlist_file_path, PATHINFO_EXTENSION));
         }
 
-        if (!in_array($extension, ['xlsx', 'xls'], true)) {
+        if (! in_array($extension, ['xlsx', 'xls'], true)) {
             return ['rows' => [], 'error' => 'Format partlist tidak didukung untuk import otomatis.'];
         }
 
-        if (!$sourcePath || !is_readable($sourcePath)) {
+        if (! $sourcePath || ! is_readable($sourcePath)) {
             return ['rows' => [], 'error' => 'File partlist tidak dapat diakses oleh server.'];
         }
 
@@ -2922,14 +3049,16 @@ class CostingController extends Controller
             $rows = $this->parsePartlistXlsx((string) $sourcePath);
             if (count($rows) === 0) {
                 $diag = $this->diagnosePartlistFile((string) $sourcePath);
+
                 return [
                     'rows' => [],
-                    'error' => 'Data partlist tidak terdeteksi dari file. Pastikan data ada di kolom D-J mulai baris 12 (NO di kolom D). ' . $diag,
+                    'error' => 'Data partlist tidak terdeteksi dari file. Pastikan data ada di kolom D-J mulai baris 12 (NO di kolom D). '.$diag,
                 ];
             }
+
             return ['rows' => $rows, 'error' => null];
         } catch (\Throwable $e) {
-            return ['rows' => [], 'error' => 'Gagal membaca file partlist: ' . $e->getMessage()];
+            return ['rows' => [], 'error' => 'Gagal membaca file partlist: '.$e->getMessage()];
         }
     }
 
@@ -2937,18 +3066,18 @@ class CostingController extends Controller
     {
         set_time_limit(180);
 
-        if (!$uploadedCycleTimeFile) {
+        if (! $uploadedCycleTimeFile) {
             return ['rows' => [], 'error' => 'File Cycle Time belum dipilih.'];
         }
 
         $sourcePath = $uploadedCycleTimeFile->getPathname();
         $extension = strtolower((string) $uploadedCycleTimeFile->getClientOriginalExtension());
 
-        if (!in_array($extension, ['xlsx', 'xls'], true)) {
+        if (! in_array($extension, ['xlsx', 'xls'], true)) {
             return ['rows' => [], 'error' => 'Format file Cycle Time tidak didukung untuk import otomatis.'];
         }
 
-        if (!$sourcePath || !is_readable($sourcePath)) {
+        if (! $sourcePath || ! is_readable($sourcePath)) {
             return ['rows' => [], 'error' => 'File Cycle Time tidak dapat diakses oleh server.'];
         }
 
@@ -2959,15 +3088,16 @@ class CostingController extends Controller
 
         try {
             $rows = $this->parseCycleTimeXlsx((string) $sourcePath);
+
             return ['rows' => $rows, 'error' => null];
         } catch (\Throwable $e) {
-            return ['rows' => [], 'error' => 'Gagal membaca file Cycle Time: ' . $e->getMessage()];
+            return ['rows' => [], 'error' => 'Gagal membaca file Cycle Time: '.$e->getMessage()];
         }
     }
 
     private function parseCycleTimeXlsx(string $filePath): array
     {
-        if (!class_exists(IOFactory::class)) {
+        if (! class_exists(IOFactory::class)) {
             throw new \RuntimeException('Parser PhpSpreadsheet tidak tersedia.');
         }
 
@@ -2977,7 +3107,7 @@ class CostingController extends Controller
         $bestCycleTimes = [];
 
         foreach ($spreadsheet->getAllSheets() as $sheet) {
-            if (!$sheet instanceof Worksheet) {
+            if (! $sheet instanceof Worksheet) {
                 continue;
             }
 
@@ -3010,17 +3140,17 @@ class CostingController extends Controller
         $emptyStreak = 0;
 
         for ($row = 17; $row <= $scanEnd; $row++) {
-            $noRaw = trim((string) $sheet->getCell('B' . $row)->getFormattedValue());
-            $process = trim((string) $sheet->getCell('C' . $row)->getFormattedValue());
-            $qtyRaw = trim((string) $sheet->getCell('F' . $row)->getFormattedValue());
-            $timeHourRaw = trim((string) $sheet->getCell('G' . $row)->getFormattedValue());
+            $noRaw = trim((string) $sheet->getCell('B'.$row)->getFormattedValue());
+            $process = trim((string) $sheet->getCell('C'.$row)->getFormattedValue());
+            $qtyRaw = trim((string) $sheet->getCell('F'.$row)->getFormattedValue());
+            $timeHourRaw = trim((string) $sheet->getCell('G'.$row)->getFormattedValue());
 
             $hasSignal = $noRaw !== ''
                 || $process !== ''
                 || $qtyRaw !== ''
                 || $timeHourRaw !== '';
 
-            if (!$hasSignal) {
+            if (! $hasSignal) {
                 $emptyStreak++;
 
                 if ($emptyStreak >= 10) {
@@ -3132,7 +3262,7 @@ class CostingController extends Controller
                 && ($rowBasisPrice <= 0)
                 && ($manualPrice <= 0);
 
-            if (!isset($aggregation[$partKey])) {
+            if (! isset($aggregation[$partKey])) {
                 $aggregation[$partKey] = [
                     'part_number' => $partNumber,
                     'part_name' => $partName,
@@ -3140,7 +3270,7 @@ class CostingController extends Controller
                     'manual_price' => $manualPrice > 0 ? $manualPrice : null,
                     'is_unpriced' => false,
                 ];
-            } elseif (empty($aggregation[$partKey]['part_name']) && !empty($partName)) {
+            } elseif (empty($aggregation[$partKey]['part_name']) && ! empty($partName)) {
                 // Update part_name if previously empty but current row has it
                 $aggregation[$partKey]['part_name'] = $partName;
             }
@@ -3191,7 +3321,7 @@ class CostingController extends Controller
                 && ($unitPriceBasis <= 0)
                 && ($manualPrice <= 0);
 
-            if (!isset($aggregation[$partKey])) {
+            if (! isset($aggregation[$partKey])) {
                 $aggregation[$partKey] = [
                     'part_number' => $partNo,
                     'part_name' => $partName,
@@ -3220,26 +3350,26 @@ class CostingController extends Controller
             }
         }
 
-        if (!class_exists(ZipArchive::class)) {
+        if (! class_exists(ZipArchive::class)) {
             throw new \RuntimeException('Ekstensi PHP zip belum aktif. Aktifkan ext-zip untuk import partlist XLSX.');
         }
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $tempCopyPath = null;
         $zipOpenResult = $zip->open($filePath);
         if ($zipOpenResult !== true) {
             $tempCopyPath = tempnam(sys_get_temp_dir(), 'partlist_');
             if ($tempCopyPath && @copy($filePath, $tempCopyPath)) {
-                $retryZip = new ZipArchive();
+                $retryZip = new ZipArchive;
                 $retryResult = $retryZip->open($tempCopyPath);
                 if ($retryResult === true) {
                     $zip = $retryZip;
                 } else {
                     @unlink($tempCopyPath);
-                    throw new \RuntimeException('File Excel tidak dapat dibuka (' . $this->zipOpenErrorToMessage((int) $retryResult) . ').');
+                    throw new \RuntimeException('File Excel tidak dapat dibuka ('.$this->zipOpenErrorToMessage((int) $retryResult).').');
                 }
             } else {
-                throw new \RuntimeException('File Excel tidak dapat dibuka (' . $this->zipOpenErrorToMessage((int) $zipOpenResult) . ').');
+                throw new \RuntimeException('File Excel tidak dapat dibuka ('.$this->zipOpenErrorToMessage((int) $zipOpenResult).').');
             }
         }
 
@@ -3252,7 +3382,7 @@ class CostingController extends Controller
 
         $workbook = @simplexml_load_string($workbookXml);
         $rels = @simplexml_load_string($workbookRelsXml);
-        if (!$workbook || !$rels) {
+        if (! $workbook || ! $rels) {
             $zip->close();
             throw new \RuntimeException('Workbook tidak dapat diparse.');
         }
@@ -3289,6 +3419,7 @@ class CostingController extends Controller
                 foreach ($sharedStringsDoc->si as $si) {
                     if (isset($si->t)) {
                         $sharedStrings[] = trim((string) $si->t);
+
                         continue;
                     }
 
@@ -3305,14 +3436,14 @@ class CostingController extends Controller
         $bestCount = 0;
 
         foreach ($sheetTargets as $sheetTarget) {
-            $sheetPath = 'xl/' . ltrim((string) $sheetTarget, '/');
+            $sheetPath = 'xl/'.ltrim((string) $sheetTarget, '/');
             $sheetXml = $zip->getFromName($sheetPath);
             if ($sheetXml === false) {
                 continue;
             }
 
             $sheet = @simplexml_load_string($sheetXml);
-            if (!$sheet || !isset($sheet->sheetData->row)) {
+            if (! $sheet || ! isset($sheet->sheetData->row)) {
                 continue;
             }
 
@@ -3333,7 +3464,7 @@ class CostingController extends Controller
                     $rowValues[$columnIndex] = $value;
                 }
 
-                if (!empty($rowValues)) {
+                if (! empty($rowValues)) {
                     $rowValues['__row'] = $rowNumber;
                     $rawRows[] = $rowValues;
                 }
@@ -3374,7 +3505,7 @@ class CostingController extends Controller
 
         $bestMaterials = [];
         foreach ($spreadsheet->getAllSheets() as $sheet) {
-            if (!$sheet instanceof Worksheet) {
+            if (! $sheet instanceof Worksheet) {
                 continue;
             }
 
@@ -3388,7 +3519,7 @@ class CostingController extends Controller
         // for files where header labels are missing/shifted but data rows exist.
         if (count($bestMaterials) === 0) {
             foreach ($spreadsheet->getAllSheets() as $sheet) {
-                if (!$sheet instanceof Worksheet) {
+                if (! $sheet instanceof Worksheet) {
                     continue;
                 }
 
@@ -3438,13 +3569,13 @@ class CostingController extends Controller
         $emptyStreak = 0;
 
         for ($row = 12; $row <= $scanEnd; $row++) {
-            $rowNo = trim((string) $sheet->getCell('D' . $row)->getFormattedValue());
-            $partNo = trim((string) $sheet->getCell('E' . $row)->getFormattedValue());
-            $idCode = trim((string) $sheet->getCell('F' . $row)->getFormattedValue());
-            $partName = trim((string) $sheet->getCell('G' . $row)->getFormattedValue());
-            $qtyRaw = trim((string) $sheet->getCell('H' . $row)->getFormattedValue());
-            $unit = trim((string) $sheet->getCell('I' . $row)->getFormattedValue());
-            $proCode = trim((string) $sheet->getCell('J' . $row)->getFormattedValue());
+            $rowNo = trim((string) $sheet->getCell('D'.$row)->getFormattedValue());
+            $partNo = trim((string) $sheet->getCell('E'.$row)->getFormattedValue());
+            $idCode = trim((string) $sheet->getCell('F'.$row)->getFormattedValue());
+            $partName = trim((string) $sheet->getCell('G'.$row)->getFormattedValue());
+            $qtyRaw = trim((string) $sheet->getCell('H'.$row)->getFormattedValue());
+            $unit = trim((string) $sheet->getCell('I'.$row)->getFormattedValue());
+            $proCode = trim((string) $sheet->getCell('J'.$row)->getFormattedValue());
 
             $qtyReq = $this->toFloatValue($qtyRaw);
             $hasRowNumber = $this->hasPartlistRowNumber($rowNo);
@@ -3459,11 +3590,12 @@ class CostingController extends Controller
                 || $qtyReq > 0
                 || $proCode !== '';
 
-            if (!$hasRowNumber && !$hasSignalData) {
+            if (! $hasRowNumber && ! $hasSignalData) {
                 $emptyStreak++;
                 if ($emptyStreak >= 80) {
                     break;
                 }
+
                 continue;
             }
 
@@ -3471,7 +3603,7 @@ class CostingController extends Controller
 
             // Optional requirement: allow rows with no NO if it has signal data
             // Removed strict !$hasRowNumber requirement to permit blanks in NO column.
-            
+
             $partNoUpper = strtoupper($partNo);
             $idCodeUpper = strtoupper($idCode);
             $partNameUpper = strtoupper($partName);
@@ -3513,7 +3645,7 @@ class CostingController extends Controller
         // Find header row (expect row 11) and map column indices dynamically
         $headerRowIndex = 11;
         $headerMap = [];
-        
+
         $headerLabels = [
             'row_no' => ['NO', 'NO.', 'NOMOR'],
             'supplier_part_no' => ['SUPPLIER PART NO', 'PART NO', 'PARTLIST NO'],
@@ -3526,9 +3658,9 @@ class CostingController extends Controller
 
         // Scan row 11 to find headers
         for ($col = 1; $col <= 20; $col++) {
-            $cellValue = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($col) . $headerRowIndex)->getFormattedValue());
+            $cellValue = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($col).$headerRowIndex)->getFormattedValue());
             $cellValueUpper = strtoupper($cellValue);
-            
+
             foreach ($headerLabels as $key => $aliases) {
                 if (in_array($cellValueUpper, $aliases, true)) {
                     $headerMap[$key] = $col;
@@ -3540,7 +3672,7 @@ class CostingController extends Controller
         // If we couldn't find headers, fallback to default columns (E-J)
         if (empty($headerMap)) {
             $headerMap = [
-            'row_no' => 4,            // D
+                'row_no' => 4,            // D
                 'supplier_part_no' => 5,  // E
                 'id_code' => 6,            // F
                 'part_name' => 7,          // G
@@ -3569,19 +3701,19 @@ class CostingController extends Controller
 
         $materials = [];
         for ($row = 12; $row <= $highestRow; $row++) {
-            $rowNo = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['row_no'] ?? 4) . $row)->getFormattedValue());
-            $partNo = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['supplier_part_no'] ?? 5) . $row)->getFormattedValue());
-            
+            $rowNo = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['row_no'] ?? 4).$row)->getFormattedValue());
+            $partNo = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['supplier_part_no'] ?? 5).$row)->getFormattedValue());
+
             // Only read ID CODE if header was explicitly found, otherwise keep empty
             $idCode = '';
             if (isset($headerMap['id_code'])) {
-                $idCode = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['id_code']) . $row)->getFormattedValue());
+                $idCode = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['id_code']).$row)->getFormattedValue());
             }
-            
-            $partName = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['part_name'] ?? 7) . $row)->getFormattedValue());
-            $qtyRaw = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['qty_req'] ?? 8) . $row)->getFormattedValue());
-            $unit = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['unit'] ?? 9) . $row)->getFormattedValue());
-            $proCode = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['pro_code'] ?? 10) . $row)->getFormattedValue());
+
+            $partName = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['part_name'] ?? 7).$row)->getFormattedValue());
+            $qtyRaw = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['qty_req'] ?? 8).$row)->getFormattedValue());
+            $unit = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['unit'] ?? 9).$row)->getFormattedValue());
+            $proCode = trim((string) $sheet->getCell(Coordinate::stringFromColumnIndex($headerMap['pro_code'] ?? 10).$row)->getFormattedValue());
 
             if ($partNo === '' || $partNo === '-') {
                 $partNo = $idCode;
@@ -3596,7 +3728,7 @@ class CostingController extends Controller
                 && $qtyReq <= 0
                 && $proCode === '';
 
-            if ($isRowEmpty && !$hasRowNumber) {
+            if ($isRowEmpty && ! $hasRowNumber) {
                 continue;
             }
 
@@ -3645,12 +3777,12 @@ class CostingController extends Controller
         foreach ($rawRows as $rowIndex => $rowValues) {
             $candidate = [];
             foreach ($rowValues as $columnIndex => $rawValue) {
-                if (!is_int($columnIndex)) {
+                if (! is_int($columnIndex)) {
                     continue;
                 }
 
                 $headerKey = $this->mapPartlistHeader((string) $rawValue);
-                if ($headerKey !== null && !isset($candidate[$headerKey])) {
+                if ($headerKey !== null && ! isset($candidate[$headerKey])) {
                     $candidate[$headerKey] = $columnIndex;
                 }
             }
@@ -3756,8 +3888,10 @@ class CostingController extends Controller
             ];
 
             foreach ($headerRow as $colIndex => $cellValue) {
-                if (!is_int($colIndex)) continue;
-                
+                if (! is_int($colIndex)) {
+                    continue;
+                }
+
                 $headerValueUpper = strtoupper(trim((string) $cellValue));
                 foreach ($headerLabels as $field => $aliases) {
                     if (in_array($headerValueUpper, $aliases, true)) {
@@ -3771,6 +3905,7 @@ class CostingController extends Controller
         // Filter to data rows (12+)
         $rows = array_values(array_filter($rawRows, function ($rowValues) {
             $rowNumber = (int) ($rowValues['__row'] ?? 0);
+
             return $rowNumber >= 12;
         }));
 
@@ -3778,13 +3913,13 @@ class CostingController extends Controller
         foreach ($rows as $rowValues) {
             $rowNo = trim((string) ($rowValues[$headerMap['row_no']] ?? ''));
             $partNo = trim((string) ($rowValues[$headerMap['supplier_part_no']] ?? ''));
-            
+
             // Only read ID CODE if header was explicitly found
             $idCode = '';
             if (isset($headerMap['id_code'])) {
                 $idCode = trim((string) ($rowValues[$headerMap['id_code']] ?? ''));
             }
-            
+
             if ($partNo === '' || $partNo === '-') {
                 $partNo = $idCode;
             }
@@ -3804,7 +3939,7 @@ class CostingController extends Controller
                 || in_array($idCodeUpper, $skipPartNos, true)
                 || in_array(strtoupper($partName), $skipPartNos, true);
 
-            if (($isRowEmpty && !$hasRowNumber) || $isHeaderLike) {
+            if (($isRowEmpty && ! $hasRowNumber) || $isHeaderLike) {
                 continue;
             }
 
@@ -3837,7 +3972,7 @@ class CostingController extends Controller
             return false;
         }
 
-        return !in_array($normalized, ['NO', 'NO.', 'NOMOR'], true);
+        return ! in_array($normalized, ['NO', 'NO.', 'NOMOR'], true);
     }
 
     private function mapPartlistHeader(string $value): ?string
@@ -3875,11 +4010,12 @@ class CostingController extends Controller
 
     private function rowCellValue(array $rowValues, array $headerMap, string $field): string
     {
-        if (!isset($headerMap[$field])) {
+        if (! isset($headerMap[$field])) {
             return '';
         }
 
         $columnIndex = $headerMap[$field];
+
         return isset($rowValues[$columnIndex]) ? (string) $rowValues[$columnIndex] : '';
     }
 
@@ -3889,6 +4025,7 @@ class CostingController extends Controller
 
         if ($type === 's') {
             $sharedIndex = (int) ($cell->v ?? 0);
+
             return trim((string) ($sharedStrings[$sharedIndex] ?? ''));
         }
 
@@ -3961,10 +4098,10 @@ class CostingController extends Controller
                 // Format international: 244,289.30 => 244289.30
                 $normalized = str_replace(',', '', $normalized);
             }
-        } elseif ($hasComma && !$hasDot) {
+        } elseif ($hasComma && ! $hasDot) {
             // Format Indonesia tanpa ribuan: 244289,30 => 244289.30
             $normalized = str_replace(',', '.', $normalized);
-        } elseif ($hasDot && !$hasComma) {
+        } elseif ($hasDot && ! $hasComma) {
             /*
              * Bisa berarti:
              * - raw decimal dari frontend: 244289.3
@@ -3979,7 +4116,7 @@ class CostingController extends Controller
             $digitsBeforeLastDot = $lastDotPos === false ? 0 : strlen(ltrim(substr($normalized, 0, $lastDotPos), '-'));
 
             $looksLikeLeadingDecimal = preg_match('/^-?0\.\d+$/', $normalized) === 1;
-            $looksLikeThousands = !$looksLikeLeadingDecimal
+            $looksLikeThousands = ! $looksLikeLeadingDecimal
                 && ($dotCount > 1 || ($digitsAfterLastDot === 3 && $digitsBeforeLastDot > 1));
 
             if ($looksLikeThousands) {
@@ -4007,6 +4144,7 @@ class CostingController extends Controller
         }
 
         $decoded = json_decode($value, true);
+
         return is_array($decoded) ? $decoded : [];
     }
 
@@ -4096,36 +4234,36 @@ class CostingController extends Controller
             ZipArchive::ER_READ => 'gagal membaca file',
             ZipArchive::ER_OPEN => 'file tidak bisa dibuka',
             ZipArchive::ER_NOENT => 'file tidak ditemukan',
-            default => 'kode error ZIP: ' . $zipErrorCode,
+            default => 'kode error ZIP: '.$zipErrorCode,
         };
     }
 
     private function diagnosePartlistFile(string $filePath): string
     {
-        if (!class_exists(IOFactory::class)) {
+        if (! class_exists(IOFactory::class)) {
             return 'Parser PhpSpreadsheet tidak tersedia.';
         }
 
         try {
             $spreadsheet = IOFactory::load($filePath);
         } catch (\Throwable $e) {
-            return 'File terbaca tetapi gagal didiagnosa: ' . $e->getMessage();
+            return 'File terbaca tetapi gagal didiagnosa: '.$e->getMessage();
         }
 
         $summary = [];
         foreach ($spreadsheet->getAllSheets() as $sheet) {
-            if (!$sheet instanceof Worksheet) {
+            if (! $sheet instanceof Worksheet) {
                 continue;
             }
 
             $highestRow = (int) $sheet->getHighestDataRow();
             $candidates = 0;
             for ($r = 12; $r <= $highestRow; $r++) {
-                $partNo = trim((string) $sheet->getCell('E' . $r)->getFormattedValue());
-                $idCode = trim((string) $sheet->getCell('F' . $r)->getFormattedValue());
-                $partName = trim((string) $sheet->getCell('G' . $r)->getFormattedValue());
-                $qtyRaw = trim((string) $sheet->getCell('H' . $r)->getFormattedValue());
-                $proCode = trim((string) $sheet->getCell('J' . $r)->getFormattedValue());
+                $partNo = trim((string) $sheet->getCell('E'.$r)->getFormattedValue());
+                $idCode = trim((string) $sheet->getCell('F'.$r)->getFormattedValue());
+                $partName = trim((string) $sheet->getCell('G'.$r)->getFormattedValue());
+                $qtyRaw = trim((string) $sheet->getCell('H'.$r)->getFormattedValue());
+                $proCode = trim((string) $sheet->getCell('J'.$r)->getFormattedValue());
                 $qtyReq = $this->toFloatValue($qtyRaw);
 
                 $hasData = ($partNo !== '' && $partNo !== '-')
@@ -4139,14 +4277,14 @@ class CostingController extends Controller
                 }
             }
 
-            $summary[] = $sheet->getTitle() . ': rowData=' . $candidates . ', highestRow=' . $highestRow;
+            $summary[] = $sheet->getTitle().': rowData='.$candidates.', highestRow='.$highestRow;
         }
 
         if (count($summary) === 0) {
             return 'Workbook tidak memiliki sheet yang dapat dibaca.';
         }
 
-        return 'Diagnosa sheet -> ' . implode(' | ', $summary);
+        return 'Diagnosa sheet -> '.implode(' | ', $summary);
     }
 
     private function normalizeUnitValue($value): string
@@ -4169,7 +4307,7 @@ class CostingController extends Controller
             ->where('material_code', '!=', '')
             ->where('material_code', '!=', '-')
             ->where('material_code', 'not like', '__ROW_%')
-            ->whereRaw('UPPER(material_code) NOT IN (' . implode(',', array_fill(0, count($skipCodes), '?')) . ')', $skipCodes);
+            ->whereRaw('UPPER(material_code) NOT IN ('.implode(',', array_fill(0, count($skipCodes), '?')).')', $skipCodes);
     }
 
     private function findMasterMaterialFromCache($cache, ?string $partNo, ?string $idCode): ?Material
@@ -4183,7 +4321,8 @@ class CostingController extends Controller
 
         $candidates = array_values(array_unique(array_filter([$partNo, $idCode], function ($value) {
             $normalized = trim((string) $value);
-            return $normalized !== '' && $normalized !== '-' && !$this->isMaterialMetaCode($normalized);
+
+            return $normalized !== '' && $normalized !== '-' && ! $this->isMaterialMetaCode($normalized);
         })));
 
         foreach ($candidates as $code) {
@@ -4203,7 +4342,8 @@ class CostingController extends Controller
 
         $candidates = array_values(array_unique(array_filter([$partNo, $idCode], function ($value) {
             $normalized = trim((string) $value);
-            return $normalized !== '' && $normalized !== '-' && !$this->isMaterialMetaCode($normalized);
+
+            return $normalized !== '' && $normalized !== '-' && ! $this->isMaterialMetaCode($normalized);
         })));
 
         if (empty($candidates)) {
@@ -4304,15 +4444,14 @@ class CostingController extends Controller
                 'status' => $status,
                 'revision_id' => $revision->id,
                 'redirect' => $redirectUrl,
-                'message' => 'Silakan upload dokumen ' . $status . ' terlebih dahulu. Status belum berubah sampai dokumen disimpan.',
+                'message' => 'Silakan upload dokumen '.$status.' terlebih dahulu. Status belum berubah sampai dokumen disimpan.',
             ]);
         }
 
         return redirect($redirectUrl)
-            ->with('warning', 'Silakan upload dokumen ' . $status . ' terlebih dahulu. Status belum berubah sampai dokumen disimpan.')
+            ->with('warning', 'Silakan upload dokumen '.$status.' terlebih dahulu. Status belum berubah sampai dokumen disimpan.')
             ->with('open_document_revision_id', $revision->id)
             ->with('open_document_target_status', $status)
             ->with('status_project_document_project', $projectLabel);
     }
-
 }

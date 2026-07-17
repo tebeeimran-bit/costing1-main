@@ -1,0 +1,61 @@
+name: Quality Gate
+
+on:
+  push:
+    branches: [main, 'agent/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ':memory:'
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, sqlite3, pdo_sqlite, zip, gd
+          coverage: none
+          tools: composer:v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Validate and audit
+        run: |
+          composer validate --no-check-publish
+          composer audit --locked
+          npm audit --omit=dev
+          find app routes tests database/migrations -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Test and build
+        run: |
+          php artisan migrate --force
+          php artisan test
+          php artisan view:cache
+          npm run build
+      - name: Browser smoke and mobile accessibility
+        env:
+          DB_DATABASE: ${{ github.workspace }}/database/e2e.sqlite
+          E2E_USER: e2e-admin@example.test
+          E2E_PASSWORD: E2E-password-2026
+        run: |
+          touch database/e2e.sqlite
+          php artisan migrate:fresh --force
+          php artisan db:seed --class=E2eTestSeeder --force
+          npx playwright install --with-deps chromium
+          npm run test:e2e

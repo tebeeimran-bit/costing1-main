@@ -40,6 +40,7 @@ use App\Services\Database\DatabaseProjectDocumentService;
 use App\Services\Database\DatabaseSpreadsheetImportService;
 use App\Services\Database\DatabaseWireService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -95,7 +96,8 @@ class DatabaseController extends Controller
 
     public function storeCustomer(StoreCustomerRequest $request, DatabaseMasterDataService $service)
     {
-        $service->create(Customer::class, $request->validated(), ['code', 'name']);
+        $customer = $service->create(Customer::class, $request->validated(), ['code', 'name']);
+        $this->saveCustomerLogo($request, $customer);
 
         return back()
             ->with('success', 'Customer berhasil ditambahkan.');
@@ -106,9 +108,30 @@ class DatabaseController extends Controller
         $customer = Customer::findOrFail($id);
 
         $service->update($customer, $request->validated(), ['code', 'name']);
+        $this->saveCustomerLogo($request, $customer);
 
         return back()
             ->with('success', 'Customer berhasil diperbarui.');
+    }
+
+    private function saveCustomerLogo(Request $request, Customer $customer): void
+    {
+        if (! $request->hasFile('logo')) return;
+        $request->validateWithBag('customerCreate', ['logo' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:2048']]);
+        if ($customer->logo_path) Storage::disk('public')->delete($customer->logo_path);
+        $customer->update(['logo_path' => $request->file('logo')->store('customer-logos', 'public')]);
+    }
+
+    public function updateCustomerLogo(Request $request, $id)
+    {
+        $request->validateWithBag('customerLogo', ['logo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048']]);
+        $customer = Customer::findOrFail($id);
+        if ($customer->logo_path) {
+            Storage::disk('public')->delete($customer->logo_path);
+        }
+        $customer->update(['logo_path' => $request->file('logo')->store('customer-logos', 'public')]);
+
+        return back()->with('success', 'Logo customer berhasil diperbarui.');
     }
 
     public function destroyCustomer($id)

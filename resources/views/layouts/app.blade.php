@@ -25,6 +25,7 @@
         @keyframes lcPopIn{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
     </style>
     <link rel="stylesheet" href="{{ asset('css/app-layout.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/future-ui.css') }}">
     <style>
         .project-selection-button {
             display: inline-flex;
@@ -49,6 +50,11 @@
             background: rgba(255, 255, 255, 0.22);
             border-color: rgba(255, 255, 255, 0.38);
             transform: translateY(-1px);
+        }
+
+        .tour-launch-button {
+            cursor: pointer;
+            font-family: inherit;
         }
 
         .project-selection-button svg {
@@ -86,10 +92,20 @@
         .sidebar-nav {
             padding-bottom: 7rem;
         }
+
+        button.sidebar-nav-item {
+            width: 100%;
+            border: 0;
+            background: transparent;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
     </style>
 </head>
 
 <body>
+    <a class="skip-link" href="#main-content">Lewati ke konten utama</a>
     <!-- Page Loading Overlay -->
     <div id="page-loading-overlay">
         <div class="loading-card">
@@ -119,7 +135,7 @@
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Menu Utama</div>
-                        <a href="{{ route('dashboard', absolute: false) }}"
+                        <a href="{{ route('dashboard', absolute: false) }}" data-tour="dashboard"
                         class="sidebar-nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -129,7 +145,15 @@
                         </svg>
                         <span>Dashboard</span>
                     </a>
-                        <a href="{{ route('project', absolute: false) }}"
+                    <a href="{{ route('my-tasks', absolute: false) }}" data-tour="my-tasks"
+                        class="sidebar-nav-item {{ request()->routeIs('my-tasks') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 11l3 3L22 4" />
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                        </svg>
+                        <span>My Tasks</span>
+                    </a>
+                        <a href="{{ route('project', absolute: false) }}" data-tour="project"
                         class="sidebar-nav-item {{ request()->routeIs('tracking-documents.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M3 3v18h18" />
@@ -137,7 +161,7 @@
                         </svg>
                         <span>Project</span>
                     </a>
-                <a href="{{ route('database.project-documents', absolute: false) }}"
+                <a href="{{ route('database.project-documents', absolute: false) }}" data-tour="project-document"
                                 class="sidebar-nav-item {{ request()->routeIs('database.project-documents*') ? 'active' : '' }}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -146,7 +170,7 @@
                                 </svg>
                                 <span>Project Document</span>
                             </a>
-                            <a href="{{ route('resume-cogm', absolute: false) }}"
+                            <a href="{{ route('resume-cogm', absolute: false) }}" data-tour="cogm-resume"
                         class="sidebar-nav-item {{ request()->routeIs('resume-cogm') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -156,7 +180,7 @@
                         </svg>
                         <span>COGM Resume Analysis</span>
                     </a>
-                    <a href="{{ route('marketing.cogm-inbox', absolute: false) }}"
+                    <a href="{{ route('marketing.cogm-inbox', absolute: false) }}" data-tour="marketing-inbox"
                         class="sidebar-nav-item {{ request()->routeIs('marketing.cogm-inbox') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M4 4h16v16H4z" />
@@ -164,7 +188,7 @@
                         </svg>
                         <span>Marketing COGM Inbox</span>
                     </a>
-                    <a href="{{ route('analisis-tren', absolute: false) }}"
+                    <a href="{{ route('analisis-tren', absolute: false) }}" data-tour="trend-analysis"
                         class="sidebar-nav-item {{ request()->routeIs('analisis-tren') || request()->routeIs('analisis-tren.canceled') || request()->routeIs('analisis-tren.engineering') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -173,7 +197,7 @@
                     </a>
 
                     
-<a href="{{ route('compare.costing', absolute: false) }}"
+<a href="{{ route('compare.costing', absolute: false) }}" data-tour="compare-costing"
                             class="sidebar-nav-item {{ request()->routeIs('compare.costing') ? 'active' : '' }}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M3 6h6" />
@@ -188,9 +212,25 @@
                         </a>
                     </div>
                 <div class="sidebar-nav-section">
+                    <div class="sidebar-nav-title">Help &amp; Support</div>
+                    <a href="{{ route('help-center', absolute: false) }}" data-tour="help-center"
+                        class="sidebar-nav-item {{ request()->routeIs('help-center') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M9.8 9a2.4 2.4 0 1 1 3.5 2.15c-.8.4-1.3 1-1.3 1.85"/>
+                            <path d="M12 17h.01"/>
+                        </svg>
+                        <span>Help Center</span>
+                    </a>
+                    <button type="button" class="sidebar-nav-item" data-uat-open>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8M8 13h5"/></svg>
+                        <span>Laporkan Masalah</span>
+                    </button>
+                </div>
+                <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Input Data</div>
 <div class="sidebar-dropdown">
-                        <button class="sidebar-nav-item sidebar-dropdown-toggle" onclick="toggleDropdown(this)">
+                        <button class="sidebar-nav-item sidebar-dropdown-toggle" data-tour="database" onclick="toggleDropdown(this)">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
                                 <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
@@ -306,7 +346,7 @@
                 </div>
                 <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Laporan</div>
-                    <a href="{{ route('laporan', absolute: false) }}"
+                    <a href="{{ route('laporan', absolute: false) }}" data-tour="reports"
                         class="sidebar-nav-item {{ request()->routeIs('laporan') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
@@ -314,18 +354,38 @@
                         </svg>
                         <span>Laporan & Export</span>
                     </a>
+                    <a href="{{ route('sla-performance', absolute: false) }}" data-tour="sla-performance"
+                        class="sidebar-nav-item {{ request()->routeIs('sla-performance') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/>
+                        </svg>
+                        <span>SLA Performance</span>
+                    </a>
+                    <a href="{{ route('exports.index', absolute: false) }}" data-tour="export-center"
+                        class="sidebar-nav-item {{ request()->routeIs('exports.*') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>Export Center</span>
+                    </a>
 </div>
                 @if(auth()->check() && auth()->user()->role === 'admin')
-                <div class="sidebar-nav-section">
+                <div class="sidebar-nav-section" data-tour="administration">
                     <div class="sidebar-nav-title">Administrasi</div>
                     <a href="{{ route('permissions', absolute: false) }}"
-                        class="sidebar-nav-item {{ request()->routeIs('permissions') ? 'active' : '' }}">
+                        class="sidebar-nav-item {{ request()->routeIs('permissions*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                             <circle cx="8.5" cy="7" r="4"/>
                             <path d="M17 11l2 2 4-4"/>
                         </svg>
                         <span>Permission</span>
+                    </a>
+                    <a href="{{ route('operations.index', absolute: false) }}" data-tour="operations-center"
+                        class="sidebar-nav-item {{ request()->routeIs('operations.*') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3v-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1h.09v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>
+                        <span>Operations Center</span>
+                    </a>
+                    <a href="{{ route('system-center.index', absolute: false) }}" data-tour="system-center"
+                        class="sidebar-nav-item {{ request()->routeIs('system-center.*') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg><span>System Center</span>
                     </a>
                     <a href="{{ route('assistant.training', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('assistant.training') ? 'active' : '' }}">
@@ -335,6 +395,11 @@
                             <path d="M7 16h10" />
                         </svg>
                         <span>Assistant Training</span>
+                    </a>
+                    <a href="{{ route('uat-feedback.index', absolute: false) }}" data-tour="uat-feedback-admin"
+                        class="sidebar-nav-item {{ request()->routeIs('uat-feedback.index') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        <span>UAT Feedback</span>
                     </a>
                 </div>
                 @endif
@@ -474,7 +539,7 @@
                         }
                     </style>
 
-                    <div class="sidebar-user-module">
+                    <div class="sidebar-user-module" data-tour="account">
                         <a href="{{ $profileUrl }}" class="sidebar-user-profile-link" @if($profileUrl === '#') onclick="return false;" @endif>
                             <div class="sidebar-user-avatar">
                                 {{ strtoupper(substr($displayName, 0, 1)) }}
@@ -543,6 +608,18 @@
                     </div>
                     <div class="header-right">
                         @yield('header-filters')
+                        <button type="button" class="project-selection-button productivity-search-launch" data-productivity-open title="Cari cepat (Ctrl+K)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                            <span>Cari</span><kbd>Ctrl K</kbd>
+                        </button>
+                        <button type="button" class="project-selection-button tour-launch-button" onclick="window.CostingTour?.start()" title="Mulai panduan aplikasi">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M9.7 9a2.5 2.5 0 1 1 3.6 2.25c-.8.4-1.3.95-1.3 1.75" />
+                                <path d="M12 17h.01" />
+                            </svg>
+                            <span>Panduan</span>
+                        </button>
                         <a href="{{ route('project-selection', absolute: false) }}" class="project-selection-button" title="Kembali ke Pilih Menu Utama">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15">
                                 <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -552,7 +629,7 @@
                             </svg>
                             <span>Menu Utama</span>
                         </a>
-                        @include('partials.top-notification-bell')
+                        @include('partials.top-notification-bell-v2')
                         <nav class="nav-tabs">
                             <a href="{{ route('dashboard', absolute: false) }}"
                                 class="nav-tab {{ request()->routeIs('dashboard') ? 'active' : '' }}">
@@ -602,6 +679,10 @@
                 </div>
             </header>
 
+            @if(($activeAnnouncements ?? collect())->isNotEmpty())
+                <section class="app-announcements" aria-label="Pengumuman aplikasi" aria-live="polite">@foreach($activeAnnouncements as $announcement)<article class="level-{{ $announcement->level }}"><strong>{{ $announcement->title }}</strong><span>{{ $announcement->body }}</span></article>@endforeach</section>
+            @endif
+
             <!-- Breadcrumb -->
             <div class="breadcrumb">
                 <div class="breadcrumb-content">
@@ -618,7 +699,7 @@
             </div>
 
             <!-- Main Content -->
-            <main class="main-content">
+            <main class="main-content" id="main-content" tabindex="-1">
                 @yield('content')
             </main>
 
@@ -837,6 +918,21 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+            const sidebarNav = document.querySelector('.sidebar-nav');
+            const activeSidebarItem = sidebarNav?.querySelector('.sidebar-nav-item.active');
+            if (sidebarNav && activeSidebarItem) {
+                window.requestAnimationFrame(() => {
+                    const navRect = sidebarNav.getBoundingClientRect();
+                    const itemRect = activeSidebarItem.getBoundingClientRect();
+                    if (itemRect.top < navRect.top || itemRect.bottom > navRect.bottom) {
+                        sidebarNav.scrollTo({
+                            top: activeSidebarItem.offsetTop - (sidebarNav.clientHeight / 2) + (activeSidebarItem.offsetHeight / 2),
+                            behavior: 'auto',
+                        });
+                    }
+                });
+            }
+
             const okButton = document.getElementById('app-confirm-ok');
             const notifyOkButton = document.getElementById('app-notify-ok');
 
@@ -962,6 +1058,9 @@
         setTimeout(forceHideAllLoadingOverlays, 1500);
     </script>
 
+    @include('partials.productivity-center')
+    @include('partials.uat-feedback-modal')
+    @include('partials.guided-tour', ['tourContext' => 'main'])
     @yield('scripts')
 </body>
 

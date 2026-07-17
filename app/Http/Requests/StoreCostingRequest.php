@@ -179,6 +179,11 @@ class StoreCostingRequest extends FormRequest
     {
         return [
             '__invalid_update_section.required' => 'Section update tidak valid.',
+            'required' => ':attribute wajib diisi sebelum data dapat disimpan.',
+            'numeric' => ':attribute harus berupa angka yang valid.',
+            'integer' => ':attribute harus berupa bilangan bulat.',
+            'exists' => ':attribute yang dipilih sudah tidak tersedia. Silakan pilih kembali.',
+            'max' => ':attribute melebihi batas yang diperbolehkan.',
             'import_partlist_file.required' => 'File partlist wajib dipilih.',
             'import_partlist_file.file' => 'File partlist tidak valid.',
             'import_partlist_file.uploaded' => 'Upload gagal. Kemungkinan ukuran file melebihi batas server. Naikkan upload_max_filesize dan post_max_size di PHP.',
@@ -189,6 +194,28 @@ class StoreCostingRequest extends FormRequest
             'import_cycle_time_file.uploaded' => 'Upload file Cycle Time gagal. Kemungkinan ukuran file melebihi batas server. Naikkan upload_max_filesize dan post_max_size di PHP.',
             'import_cycle_time_file.mimes' => 'Format file Cycle Time harus .xlsx atau .xls.',
             'import_cycle_time_file.max' => 'Ukuran file Cycle Time terlalu besar (maks 20MB).',
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'business_category_id' => 'Business Category',
+            'customer_id' => 'Customer',
+            'period' => 'Periode',
+            'pic_engineering' => 'PIC Engineering',
+            'pic_marketing' => 'PIC Marketing',
+            'wire_rate_id' => 'Periode Rate',
+            'exchange_rate_usd' => 'Rate USD',
+            'exchange_rate_jpy' => 'Rate JPY',
+            'lme_rate' => 'Rate LME',
+            'forecast' => 'Forecast',
+            'project_period' => 'Project Period',
+            'materials.*.qty_req' => 'Qty material',
+            'cycle_times.*.qty' => 'Qty Cycle Time',
+            'cycle_times.*.time_hour' => 'Time Hour',
+            'cycle_times.*.time_sec' => 'Time Second',
+            'cycle_times.*.cost_per_sec' => 'Cost per Second',
         ];
     }
 }

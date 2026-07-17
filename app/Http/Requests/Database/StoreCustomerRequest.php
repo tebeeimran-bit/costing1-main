@@ -16,6 +16,7 @@ class StoreCustomerRequest extends FormRequest
         return [
             'code' => 'required|string|max:255|unique:customers,code',
             'name' => 'required|string|max:255|unique:customers,name',
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
     }
 

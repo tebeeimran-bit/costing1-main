@@ -16,6 +16,15 @@
 @include('form.partials.toast-script')
 
     @include('form.partials.unpriced-top-banner')
+    @include('form.partials.autosave')
+
+    @if($isCostingLocked ?? false)
+        <div class="costing-freeze"><div><b>APPROVAL FREEZE AKTIF</b><span>Data terkunci untuk menjaga versi yang sedang direview. Buat revision baru bila perlu mengubah costing.</span></div><span>READ ONLY</span></div>
+        <script>document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('#costingForm input,#costingForm select,#costingForm textarea,#costingForm button').forEach(element=>element.disabled=true));</script>
+    @endif
+    @if(($importRuns ?? collect())->isNotEmpty())
+        <details class="import-safety"><summary>Import Safety · {{ $importRuns->count() }} aktivitas terbaru</summary>@foreach($importRuns as $run)<div><span><b>{{ strtoupper($run->type) }} · {{ $run->original_name }}</b><small>{{ $run->created_at->format('d M Y H:i') }} · {{ strtoupper($run->status) }} · {{ data_get($run->after_summary,'rows',0) }} baris</small></span>@if($run->status==='applied')<form method="POST" action="{{ route('costing.imports.rollback',$run,absolute:false) }}" onsubmit="return confirm('Kembalikan material ke kondisi sebelum import?')">@csrf<button>Rollback</button></form>@endif</div>@endforeach</details>
+    @endif
 
 <div class="form-page">
     <form action="{{ route('costing.store', absolute: false) }}" method="POST" id="costingForm" enctype="multipart/form-data" autocomplete="off">
@@ -349,7 +358,7 @@
 
         </div>
 
-        <div class="card form-section">
+        <div class="card form-section" id="unpricedFormSection">
             <div class="form-section-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 3h18v18H3z" />
@@ -601,7 +610,7 @@
         @include('form.partials.cycle-time-section')
 
         <!-- Section C: Resume COGM -->
-        <div class="card form-section">
+        <div class="card form-section" id="costingResumeSection">
             <div class="form-section-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 1v22" />
@@ -868,7 +877,7 @@
             input.click();
         }
 
-        function submitUmhImport() {
+        async function submitUmhImport() {
             const form = document.getElementById('umhImportForm');
 
             if (!form) {
@@ -876,7 +885,25 @@
                 return;
             }
 
-            form.submit();
+            showAppLoading('Memeriksa isi UMH...');
+            try {
+                const previewData = new FormData();
+                previewData.append('import_umh_file', document.getElementById('importUmhFileInput').files[0]);
+                const response = await fetch(@json(route('costing.import-umh.preview', absolute:false)), {method:'POST', headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token())}, body:previewData});
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Preview UMH gagal.');
+                hideAppLoading();
+                if (!confirm(`Preview UMH\n\n${result.summary.rows} baris ditemukan\n${result.summary.issues} masalah validasi\n\nLanjutkan import?`)) {
+                    document.getElementById('importUmhFileInput').value = '';
+                    return;
+                }
+            } catch (error) {
+                hideAppLoading();
+                alert(error.message);
+                return;
+            }
+            showAppLoading('Mengimport UMH...');
+            form.requestSubmit ? form.requestSubmit() : form.submit();
         }
 
         function triggerMaterialImport() {
@@ -891,7 +918,7 @@
             input.click();
         }
 
-        function submitCogmImport() {
+        async function submitCogmImport() {
             const form = document.getElementById('cogmImportForm');
 
             if (!form) {
@@ -943,6 +970,17 @@
                 }
             }
 
+            showAppLoading('Memeriksa isi COGM...');
+            try {
+                const previewData = new FormData();
+                previewData.append('import_cogm_file', document.getElementById('importCogmFileInput').files[0]);
+                const response = await fetch(@json(route('costing.import-cogm.preview', absolute:false)), {method:'POST', headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token())}, body:previewData});
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Preview gagal.');
+                hideAppLoading();
+                const summary = result.summary;
+                if (!confirm(`Preview COGM\n\n${summary.rows} baris ditemukan\n${summary.missing_price_rows} baris tanpa harga\n${summary.estimated_rows} baris estimate\n\nLanjutkan import?`)) { document.getElementById('importCogmFileInput').value=''; return; }
+            } catch (error) { hideAppLoading(); alert(error.message); return; }
             showAppLoading('Mengimport COGM...');
 
             if (typeof form.requestSubmit === 'function') {
@@ -4404,7 +4442,7 @@
             fileInput.click();
         }
 
-        function submitPartlistImport() {
+        async function submitPartlistImport() {
             const form = document.getElementById('partlistImportForm');
             const importForecast = document.getElementById('importForecast');
             const importProjectPeriod = document.getElementById('importProjectPeriod');
@@ -4448,7 +4486,26 @@
                 if (hidden && main) hidden.value = main.value || '';
             }
 
-            // Submit the import form
+            showAppLoading('Memeriksa isi partlist...');
+            try {
+                const previewData = new FormData();
+                previewData.append('import_partlist_file', document.getElementById('importPartlistFileInput').files[0]);
+                const revisionId = form.querySelector('[name="tracking_revision_id"]')?.value;
+                if (revisionId) previewData.append('tracking_revision_id', revisionId);
+                const response = await fetch(@json(route('costing.import-partlist.preview', absolute:false)), {method:'POST', headers:{'Accept':'application/json','X-CSRF-TOKEN':@json(csrf_token())}, body:previewData});
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Preview partlist gagal.');
+                hideAppLoading();
+                if (!confirm(`Preview Partlist\n\n${result.summary.rows} baris ditemukan\n${result.summary.issues} masalah validasi\n\nLanjutkan import?`)) {
+                    document.getElementById('importPartlistFileInput').value = '';
+                    return;
+                }
+            } catch (error) {
+                hideAppLoading();
+                alert(error.message);
+                return;
+            }
+
             showAppLoading('Mengimport partlist...');
 
             if (typeof form.requestSubmit === 'function') {

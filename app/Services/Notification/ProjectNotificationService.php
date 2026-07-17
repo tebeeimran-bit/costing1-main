@@ -1,0 +1,128 @@
+<?php
+
+namespace App\Services\Notification;
+
+use App\Models\CostingData;
+use App\Models\DocumentRevision;
+use App\Models\NotificationPreference;
+use App\Models\NotificationState;
+use App\Models\ProjectComment;
+use App\Models\ProjectManualTask;
+use App\Models\User;
+use App\Services\Project\ProjectDeadlineService;
+use App\Services\Project\ProjectWorkflowService;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+
+class ProjectNotificationService
+{
+    public function __construct(private readonly ProjectWorkflowService $workflowService, private readonly ProjectDeadlineService $deadlineService) {}
+
+    public function forUser(User $user): Collection
+    {
+        $enabled = NotificationPreference::query()->where('user_id', $user->id)->value('enabled_types') ?? NotificationPreference::TYPES;
+        if (is_string($enabled)) {
+            $enabled = json_decode($enabled, true) ?: NotificationPreference::TYPES;
+        }
+
+        $revisions = DocumentRevision::query()
+            ->latestPerProject()
+            ->with(['project', 'unpricedParts:id,document_revision_id,resolved_at', 'taskSetting'])
+            ->get();
+        $costingByRevision = CostingData::query()
+            ->with(['materialBreakdowns:id,costing_data_id,part_no,amount1,cn_type'])
+            ->whereIn('tracking_revision_id', $revisions->pluck('id'))
+            ->latest('id')->get()->unique('tracking_revision_id')->keyBy('tracking_revision_id');
+
+        $items = collect();
+        foreach ($revisions as $revision) {
+            $project = $revision->project;
+            if (! $project) {
+                continue;
+            }
+            $identity = trim((string) $project->customer).' - '.trim((string) $project->model);
+            $costing = $costingByRevision->get($revision->id);
+            $costingUrl = route('form', array_filter(['id' => $costing?->id, 'tracking_revision_id' => $revision->id]), false);
+            $version = $revision->updated_at?->timestamp ?? 0;
+            $workflow = $this->workflowService->build($revision, $costing, (string) $user->role);
+            $deadline = $this->deadlineService->resolve($revision, $workflow);
+            if (! $workflow['is_complete'] && ($deadline['is_overdue'] || $deadline['days_remaining'] <= 1)) {
+                $severity = $deadline['is_overdue'] ? 'melewati SLA' : ($deadline['days_remaining'] === 0 ? 'jatuh tempo hari ini' : 'jatuh tempo besok');
+                $items->push($this->item('sla:'.$revision->id.':'.$deadline['due_at']->toDateString(), 'sla', 'Peringatan SLA', $identity.' - '.$severity, 'Tahap '.ucfirst($deadline['category']).' memerlukan tindak lanjut. Aging '.$deadline['aging_days'].' hari.', 'Tindak Lanjuti', route('project-collaboration.show', $revision, false), $deadline['is_overdue'] ? 'orange' : 'blue', now()));
+            }
+
+            if (($revision->a00 ?? null) !== 'ada' && ($revision->a04 ?? null) !== 'ada' && ($revision->a05 ?? null) !== 'ada') {
+                $items->push($this->item('document:'.$revision->id.':'.$version, 'document', 'Dokumen project belum ada', $identity.' - A00 belum ada', 'Minimal salah satu dokumen A00, A04, atau A05 harus terisi.', 'Cek Dokumen', route('database.project-documents', ['search' => $project->part_number], false), 'orange', $revision->updated_at));
+            }
+
+            $materials = $costing?->materialBreakdowns ?? collect();
+            if ($materials->isEmpty() || ! $this->hasCycleTime($costing?->cycle_times)) {
+                $items->push($this->item('project:'.$revision->id.':'.$version, 'project', 'Project belum costing', $identity.' - Belum costing', 'Material atau Cycle Time masih perlu dilengkapi.', 'Cek Project', $costingUrl, 'blue', $revision->updated_at));
+
+                continue;
+            }
+
+            $missing = $this->uniqueParts($materials->filter(fn ($row) => (float) ($row->amount1 ?? 0) <= 0));
+            $estimate = $this->uniqueParts($materials->filter(fn ($row) => strtoupper(trim((string) ($row->cn_type ?? ''))) === 'E'));
+            if ($missing || $estimate) {
+                $issues = collect([$missing ? $missing.' part belum ada harga' : null, $estimate ? $estimate.' part masih estimate' : null])->filter()->implode(', ');
+                $items->push($this->item('pricing:'.$revision->id.':'.$version, 'pricing', 'Project belum full priced', $identity.' - '.$issues, 'Harga material belum sepenuhnya final.', 'Cek Harga', $costingUrl, 'purple', $revision->updated_at));
+            }
+        }
+
+        ProjectComment::query()->with(['user:id,name', 'revision.project'])->whereJsonContains('mentioned_user_ids', $user->id)->where('created_at', '>=', now()->subDays(14))->latest()->limit(10)->get()->each(function ($comment) use ($items) {
+            $items->push($this->item('mention:'.$comment->id, 'mention', 'Anda disebut dalam komentar', ($comment->user?->name ?: 'Anggota tim').' menyebut Anda pada '.($comment->revision?->project?->part_number ?: 'project'), Str::limit($comment->body, 90), 'Buka Diskusi', route('project-collaboration.show', $comment->document_revision_id, false), 'purple', $comment->created_at));
+        });
+
+        ProjectManualTask::query()->with(['project:id,part_number,part_name', 'assignee:id,name'])
+            ->where('status', '!=', 'completed')
+            ->where(function ($query) use ($user) {
+                $query->where('assignee_id', $user->id)->orWhere('created_by_id', $user->id);
+                if ($user->role === 'admin') $query->orWhereNotNull('due_at');
+            })->latest()->limit(30)->get()->each(function (ProjectManualTask $task) use ($items, $user) {
+                $due = $task->due_at;
+                $overdue = $due?->isBefore(today()) ?? false;
+                $nearDue = $due && ! $overdue && $due->lte(today()->addDay());
+                $url = route('my-tasks', ['project_id' => $task->document_project_id], false);
+                if ($task->assignee_id === $user->id && ($overdue || $nearDue)) {
+                    $label = $overdue ? 'melewati deadline '.$due->diffForHumans() : ($due->isToday() ? 'jatuh tempo hari ini' : 'jatuh tempo besok');
+                    $items->push($this->item('task:'.$task->id.':'.$due->toDateString(), 'task', 'Deadline task', $task->title.' — '.$label, ($task->project?->part_number ?: 'Project').' · '.($task->project?->part_name ?: ''), 'Buka Task', $url, $overdue ? 'orange' : 'blue', $task->updated_at));
+                } elseif ($task->assignee_id === $user->id && $task->created_at->gte(now()->subDays(3))) {
+                    $items->push($this->item('task:new:'.$task->id, 'task', 'Task baru ditugaskan', $task->title, ($task->project?->part_number ?: 'Project').' · deadline '.($due?->format('d M Y') ?: 'belum diatur'), 'Buka Task', $url, 'blue', $task->created_at));
+                }
+                if ($overdue && $task->assignee_id !== $user->id && ($task->created_by_id === $user->id || $user->role === 'admin')) {
+                    $items->push($this->item('escalation:'.$task->id.':'.$due->toDateString(), 'escalation', 'SLA task perlu dieskalasi', $task->title.' terlambat '.$due->diffInDays(today()).' hari', 'PIC: '.($task->assignee?->name ?: '-').' · Project '.($task->project?->part_number ?: '-'), 'Tindak Lanjuti', $url, 'orange', now()));
+                }
+            });
+
+        $states = NotificationState::query()->where('user_id', $user->id)->whereIn('notification_key', $items->pluck('key'))->get()->keyBy('notification_key');
+
+        return $items->filter(fn ($item) => in_array($item['type'], $enabled, true))
+            ->map(function ($item) use ($states) {
+                $state = $states->get($item['key']);
+                $item['is_read'] = $state?->read_at !== null;
+                $item['is_dismissed'] = $state?->dismissed_at !== null;
+
+                return $item;
+            })->reject(fn ($item) => $item['is_dismissed'])->sortByDesc('created_at')->values();
+    }
+
+    private function item(string $key, string $type, string $title, string $line, string $description, string $button, string $url, string $color, $createdAt): array
+    {
+        return compact('key', 'type', 'title', 'line', 'description', 'url', 'color') + ['button_label' => $button, 'created_at' => $createdAt];
+    }
+
+    private function uniqueParts(Collection $rows): int
+    {
+        return $rows->map(fn ($row, $index) => trim((string) $row->part_no) !== '' ? strtoupper(trim($row->part_no)) : 'ROW-'.$index)->unique()->count();
+    }
+
+    private function hasCycleTime($rows): bool
+    {
+        if (is_string($rows)) {
+            $rows = json_decode($rows, true);
+        }
+
+        return collect(is_array($rows) ? $rows : [])->contains(fn ($row) => is_array($row) && collect($row)->contains(fn ($value) => ! in_array(trim((string) $value), ['', '0', '0.0', '0,0'], true)));
+    }
+}

@@ -2,21 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ApprovalDelegation;
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Models\MaterialBreakdown;
+use App\Services\Project\ProjectCompletenessService;
+use App\Services\Project\ProjectWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 class ProjectGroupController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ProjectWorkflowService $workflowService, ProjectCompletenessService $completenessService)
     {
         $search = trim((string) $request->query('search', ''));
         $perPage = (int) $request->query('per_page', 10);
 
-        if (!in_array($perPage, [10, 15, 25, 50], true)) {
+        if (! in_array($perPage, [10, 15, 25, 50], true)) {
             $perPage = 10;
         }
 
@@ -26,24 +29,28 @@ class ProjectGroupController extends Controller
             'latestApproval.approver',
             'latestApproval.rejecter',
             'latestSubmission',
+            'unpricedParts:id,document_revision_id,resolved_at',
         ])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get();
 
-        $costingByRevisionId = CostingData::with(['customer', 'product'])
+        $costingByRevisionId = CostingData::with(['customer', 'product'])->withCount('materialBreakdowns')
             ->whereNotNull('tracking_revision_id')
             ->get()
             ->keyBy('tracking_revision_id');
 
         $userRole = (string) optional($request->user())->role;
+        $hasApprovalDelegation = $request->user() ? ApprovalDelegation::current()->where('delegate_id', $request->user()->id)->exists() : false;
 
-        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $userRole) {
+        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $userRole, $workflowService, $completenessService, $hasApprovalDelegation) {
             $project = $revision->project;
             $costing = $costingByRevisionId->get($revision->id);
             $latestApproval = $revision->latestApproval;
             $latestSubmission = $revision->latestSubmission;
             $cogmValue = $costing ? $this->cogmValue($costing) : null;
+            $workflow = $workflowService->build($revision, $costing, $userRole);
+            $completeness = $completenessService->build($revision, $costing);
 
             $businessCategory = $this->cleanText(
                 $project->product->name
@@ -84,6 +91,8 @@ class ProjectGroupController extends Controller
                 'latest_approval' => $latestApproval,
                 'latest_submission' => $latestSubmission,
                 'cogm_value' => $cogmValue,
+                'workflow' => $workflow,
+                'completeness' => $completeness,
 
                 'business_category' => $businessCategory,
                 'customer' => $customer,
@@ -92,7 +101,7 @@ class ProjectGroupController extends Controller
                 'part_number' => $partNumber,
                 'part_name' => $partName,
                 'revision_label' => $revision->version_label
-                    ?: ('V' . (string) ($revision->revision_number ?? 0)),
+                    ?: ('V'.(string) ($revision->revision_number ?? 0)),
                 'revision_count' => (int) ($revision->revision_number ?? 0),
                 'pic_engineering' => $this->cleanText(
                     $revision->pic_engineering
@@ -127,9 +136,9 @@ class ProjectGroupController extends Controller
                         DocumentRevision::STATUS_COGM_GENERATED,
                         DocumentRevision::STATUS_REJECTED_BY_COORDINATOR,
                     ], true),
-                'can_approve_approval' => in_array($userRole, ['admin', 'coordinator_costing'], true)
+                'can_approve_approval' => (in_array($userRole, ['admin', 'coordinator_costing'], true) || $hasApprovalDelegation)
                     && $revision->status === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
-                'can_reject_approval' => in_array($userRole, ['admin', 'coordinator_costing'], true)
+                'can_reject_approval' => (in_array($userRole, ['admin', 'coordinator_costing'], true) || $hasApprovalDelegation)
                     && $revision->status === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
                 'can_send_marketing' => in_array($userRole, ['admin', 'coordinator_costing'], true)
                     && $revision->status === DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
@@ -163,6 +172,15 @@ class ProjectGroupController extends Controller
             ->groupBy(fn ($item) => $this->groupKey($item->business_category, $item->customer, $item->model))
             ->map(function (Collection $items) {
                 $first = $items->first();
+                $sortedItems = $items
+                    ->sortBy([
+                        ['part_number', 'asc'],
+                        ['revision_label', 'asc'],
+                    ])
+                    ->values();
+                $workflowAverage = (int) round($items->avg(fn ($item) => $item->workflow['progress']));
+                $workflowCompleted = $items->filter(fn ($item) => $item->workflow['is_complete'])->count();
+                $workflowAttention = $items->count() - $workflowCompleted;
 
                 return (object) [
                     'key' => $this->groupKey($first->business_category, $first->customer, $first->model),
@@ -176,6 +194,9 @@ class ProjectGroupController extends Controller
                     'updated_at' => $items->sortByDesc('updated_at')->first()->updated_at,
                     'total_part_number' => $items->pluck('part_number')->filter()->unique()->count(),
                     'total_items' => $items->count(),
+                    'workflow_progress' => $workflowAverage,
+                    'workflow_completed' => $workflowCompleted,
+                    'workflow_attention' => $workflowAttention,
                     'status_summary' => $items
                         ->groupBy('status_label')
                         ->map(fn (Collection $statusItems) => (object) [
@@ -184,12 +205,7 @@ class ProjectGroupController extends Controller
                             'count' => $statusItems->count(),
                         ])
                         ->values(),
-                    'items' => $items
-                        ->sortBy([
-                            ['part_number', 'asc'],
-                            ['revision_label', 'asc'],
-                        ])
-                        ->values(),
+                    'items' => $sortedItems,
                 ];
             })
             ->sortByDesc('updated_at')
@@ -236,7 +252,7 @@ class ProjectGroupController extends Controller
 
     private function costingHealthMessages(?CostingData $costing): array
     {
-        if (!$costing) {
+        if (! $costing) {
             return [];
         }
 
@@ -260,7 +276,7 @@ class ProjectGroupController extends Controller
         if ($missingMaterialCount > 0) {
             $messages[] = [
                 'type' => 'danger',
-                'label' => $missingMaterialCount . ' part belum ada harga',
+                'label' => $missingMaterialCount.' part belum ada harga',
             ];
         }
 
@@ -299,6 +315,7 @@ class ProjectGroupController extends Controller
     {
         $value = mb_strtolower($this->cleanText((string) $value));
         $value = preg_replace('/\s+/', ' ', $value);
+
         return trim($value);
     }
 
@@ -307,6 +324,7 @@ class ProjectGroupController extends Controller
         $value = (string) $value;
         $value = str_replace(["\r", "\n", "\t"], ' ', $value);
         $value = preg_replace('/\s+/', ' ', $value);
+
         return trim($value) !== '' ? trim($value) : '-';
     }
 
@@ -323,7 +341,7 @@ class ProjectGroupController extends Controller
         }
 
         if ($filtered->count() > 3) {
-            return $filtered->take(3)->implode(', ') . ' +' . ($filtered->count() - 3);
+            return $filtered->take(3)->implode(', ').' +'.($filtered->count() - 3);
         }
 
         return $filtered->implode(', ');

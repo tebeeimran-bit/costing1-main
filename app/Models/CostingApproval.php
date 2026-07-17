@@ -10,8 +10,11 @@ class CostingApproval extends Model
     use HasFactory;
 
     public const STATUS_WAITING = 'waiting_coordinator_approval';
+
     public const STATUS_APPROVED = 'approved_by_coordinator';
+
     public const STATUS_REJECTED = 'rejected_by_coordinator';
+
     public const STATUS_SUBMITTED_TO_MARKETING = 'submitted_to_marketing';
 
     protected $fillable = [
@@ -27,6 +30,8 @@ class CostingApproval extends Model
         'rejected_at',
         'submit_notes',
         'approval_notes',
+        'signature_hash',
+        'delegated_by_id',
         'rejection_notes',
     ];
 

@@ -57,7 +57,7 @@
                     </svg>
                 </button>
             </div>
-            <form action="{{ route('database.customers.store', absolute: false) }}" method="POST" class="customer-form">
+            <form action="{{ route('database.customers.store', absolute: false) }}" method="POST" enctype="multipart/form-data" class="customer-form">
                 @csrf
                 <div class="form-group">
                     <label class="form-label">Code Customer <span style="color: #dc2626;">*</span></label>
@@ -66,6 +66,11 @@
                 <div class="form-group">
                     <label class="form-label">Nama Customer <span style="color: #dc2626;">*</span></label>
                     <input type="text" name="name" class="form-input" value="{{ old('name') }}" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Logo Customer <span style="color:#64748b;font-weight:400;">(opsional)</span></label>
+                    <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="form-input">
+                    <small style="color:#64748b;">PNG, JPG, WEBP, SVG · maksimal 2 MB</small>
                 </div>
                 <div class="customer-form-actions">
                     <button type="button" class="btn-secondary" onclick="closeAddCustomerModal()">Batal</button>
@@ -86,7 +91,7 @@
                     </svg>
                 </button>
             </div>
-            <form id="edit-customer-form" method="POST" class="customer-form">
+            <form id="edit-customer-form" method="POST" enctype="multipart/form-data" class="customer-form">
                 @csrf
                 @method('PUT')
                 <div class="form-group">
@@ -96,6 +101,11 @@
                 <div class="form-group">
                     <label class="form-label">Nama Customer <span style="color: #dc2626;">*</span></label>
                     <input type="text" id="edit-customer-name" name="name" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Logo Customer <span style="color:#64748b;font-weight:400;">(opsional)</span></label>
+                    <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="form-input">
+                    <small style="color:#64748b;">Kosongkan jika tidak ingin mengganti logo.</small>
                 </div>
                 <div class="customer-form-actions">
                     <button type="button" class="btn-secondary" onclick="closeEditCustomerModal()">Batal</button>

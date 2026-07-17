@@ -66,6 +66,14 @@
         }
         .user-name { font-size: 1rem; font-weight: 850; color: #ffffff; line-height: 1; }
         .logout-form { display: inline-flex; }
+        .tour-launch-button {
+            min-height: 38px; padding: 0 .85rem; border: 1px solid rgba(255,255,255,.24);
+            border-radius: 10px; background: rgba(255,255,255,.12); color: #fff;
+            cursor: pointer; display: inline-flex; align-items: center; gap: .45rem;
+            font: inherit; font-size: .82rem; font-weight: 800;
+        }
+        .tour-launch-button:hover { background: rgba(255,255,255,.2); }
+        .tour-launch-button svg { width: 17px; height: 17px; }
         .logout-button {
             margin-left: 0.15rem; border: 0; background: transparent; color: rgba(255,255,255,.92);
             cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
@@ -171,6 +179,15 @@
                     <div class="user-avatar">{{ strtoupper(substr(auth()->user()->name ?? 'A', 0, 1)) }}</div>
                     <div class="user-name">{{ auth()->user()->name ?? 'Admin' }}</div>
 
+                    <button type="button" class="tour-launch-button" onclick="window.CostingTour?.start()" title="Mulai panduan aplikasi">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M9.7 9a2.5 2.5 0 1 1 3.6 2.25c-.8.4-1.3.95-1.3 1.75" />
+                            <path d="M12 17h.01" />
+                        </svg>
+                        Panduan
+                    </button>
+
                     <form method="POST" action="{{ route('logout') }}" class="logout-form">
                         @csrf
                         <button type="submit" class="logout-button" title="Logout">
@@ -189,7 +206,7 @@
                 <p class="welcome-subtitle">Silakan pilih menu utama untuk melanjutkan</p>
 
                 <div class="menu-grid">
-                    <a href="{{ route('dashboard', absolute: false) }}" class="menu-card available">
+                    <a href="{{ route('dashboard', absolute: false) }}" class="menu-card available" data-tour="costing-project">
                         <div class="menu-icon blue">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.05">
                                 <path d="M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1"/>
@@ -245,5 +262,9 @@
 
         <footer class="footer">&copy; {{ date('Y') }} Dharma Electrindo Mfg. All rights reserved.</footer>
     </div>
+    @include('partials.guided-tour', [
+        'tourContext' => 'selection',
+        'tourNextUrl' => route('dashboard', absolute: false),
+    ])
 </body>
 </html>
