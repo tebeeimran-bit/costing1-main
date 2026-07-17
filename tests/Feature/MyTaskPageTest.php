@@ -77,4 +77,18 @@ class MyTaskPageTest extends TestCase
             'id' => $task->id, 'status' => 'completed', 'progress' => 100,
         ]);
     }
+
+    public function test_dependency_blocks_completion_and_recurring_task_creates_next_task(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+        $project = DocumentProject::create(['customer'=>'C','model'=>'M','part_number'=>'P-REC','part_name'=>'Recurring','project_key'=>hash('sha256','recurring')]);
+        $dependency = ProjectManualTask::create(['document_project_id'=>$project->id,'assignee_id'=>$user->id,'created_by_id'=>$user->id,'title'=>'Prerequisite']);
+        $task = ProjectManualTask::create(['document_project_id'=>$project->id,'assignee_id'=>$user->id,'created_by_id'=>$user->id,'depends_on_task_id'=>$dependency->id,'title'=>'Weekly review','due_at'=>'2026-07-20','recurrence'=>'weekly']);
+
+        $this->actingAs($user)->patch(route('my-tasks.update',$task),['progress'=>100,'status'=>'completed'])->assertStatus(422);
+        $dependency->update(['status'=>'completed','progress'=>100]);
+        $this->actingAs($user)->patch(route('my-tasks.update',$task),['progress'=>100,'status'=>'completed'])->assertRedirect();
+
+        $this->assertDatabaseHas('project_manual_tasks',['title'=>'Weekly review','status'=>'open','due_at'=>'2026-07-27 00:00:00']);
+    }
 }

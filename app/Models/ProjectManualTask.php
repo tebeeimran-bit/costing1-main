@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class ProjectManualTask extends Model
 {
     protected $fillable = [
-        'document_project_id', 'assignee_id', 'created_by_id', 'title', 'description',
-        'category', 'priority', 'progress', 'status', 'due_at',
+        'document_project_id', 'assignee_id', 'created_by_id', 'depends_on_task_id', 'title', 'description',
+        'category', 'priority', 'progress', 'status', 'due_at', 'recurrence',
     ];
 
     protected $casts = ['due_at' => 'date'];
@@ -26,5 +26,10 @@ class ProjectManualTask extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by_id');
+    }
+
+    public function dependency()
+    {
+        return $this->belongsTo(self::class, 'depends_on_task_id');
     }
 }

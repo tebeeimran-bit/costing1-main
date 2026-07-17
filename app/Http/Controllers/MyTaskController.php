@@ -89,7 +89,7 @@ class MyTaskController extends Controller
         })->filter()->values();
 
         $manualTasks = ProjectManualTask::query()
-            ->with(['project', 'assignee:id,name'])
+            ->with(['project', 'assignee:id,name', 'dependency:id,title,status'])
             ->where('assignee_id', $request->user()->id)
             ->where('status', '!=', 'completed')
             ->latest('updated_at')
@@ -103,6 +103,9 @@ class MyTaskController extends Controller
                     'id' => 'manual-'.$task->id,
                     'manual_task_id' => $task->id,
                     'is_manual' => true,
+                    'is_blocked' => $task->dependency && $task->dependency->status !== 'completed',
+                    'dependency_title' => $task->dependency?->title,
+                    'recurrence' => $task->recurrence,
                     'project_id' => $project->id,
                     'customer_logo' => $customerLogos->get(mb_strtolower(trim($project->customer)))?->logo_path,
                     'revision_id' => null,
@@ -163,8 +166,9 @@ class MyTaskController extends Controller
         $calendarTasks = $filteredTasks->filter(fn ($task) => $task->deadline['due_at'] ?? null)
             ->sortBy(fn ($task) => $task->deadline['due_at'])
             ->groupBy(fn ($task) => $task->deadline['due_at']->format('Y-m-d'));
+        $dependencyTasks = ProjectManualTask::query()->where('status', '!=', 'completed')->with('project:id,part_number')->orderBy('title')->get();
 
-        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search', 'priorityFilter', 'projectFilter', 'viewMode', 'workloads', 'calendarTasks'));
+        return view('tasks.index', compact('filteredTasks', 'groupedTasks', 'projects', 'assignees', 'counts', 'category', 'role', 'search', 'priorityFilter', 'projectFilter', 'viewMode', 'workloads', 'calendarTasks', 'dependencyTasks'));
     }
 
     public function store(Request $request)
@@ -177,7 +181,13 @@ class MyTaskController extends Controller
             'priority' => ['required', 'in:normal,medium,high'],
             'assignee_id' => ['nullable', 'exists:users,id'],
             'due_at' => ['nullable', 'date'],
+            'depends_on_task_id' => ['nullable', 'exists:project_manual_tasks,id'],
+            'recurrence' => ['nullable', 'in:daily,weekly,monthly'],
         ]);
+        if (! empty($data['depends_on_task_id'])) {
+            $dependency = ProjectManualTask::findOrFail($data['depends_on_task_id']);
+            abort_unless((int) $dependency->document_project_id === (int) $data['document_project_id'], 422, 'Dependency harus berasal dari project yang sama.');
+        }
         $data['assignee_id'] = $data['assignee_id'] ?? $request->user()->id;
         $data['created_by_id'] = $request->user()->id;
         ProjectManualTask::create($data);
@@ -195,7 +205,17 @@ class MyTaskController extends Controller
         if ($data['status'] === 'completed') {
             $data['progress'] = 100;
         }
+        abort_if($data['status'] === 'completed' && $manualTask->dependency && $manualTask->dependency->status !== 'completed', 422, 'Task dependency harus diselesaikan lebih dahulu.');
         $manualTask->update($data);
+        if ($data['status'] === 'completed' && $manualTask->recurrence) {
+            $nextDue = match ($manualTask->recurrence) {
+                'daily' => ($manualTask->due_at ?? today())->addDay(),
+                'weekly' => ($manualTask->due_at ?? today())->addWeek(),
+                'monthly' => ($manualTask->due_at ?? today())->addMonthNoOverflow(),
+            };
+            $next = $manualTask->replicate(['status', 'progress', 'due_at']);
+            $next->status = 'open'; $next->progress = 0; $next->due_at = $nextDue; $next->save();
+        }
 
         return back()->with('success', 'Task berhasil diperbarui.');
     }
