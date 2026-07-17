@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DocumentProject;
 use App\Models\DocumentRevision;
+use App\Models\ProjectManualTask;
 use App\Models\User;
 use App\Services\Notification\ProjectNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +32,18 @@ class NotificationCenterTest extends TestCase
 
         $this->actingAs($user)->put(route('notifications.preferences'), ['enabled_types' => ['mention']])->assertRedirect();
         $this->assertCount(0, $service->forUser($user));
+    }
+
+    public function test_manual_task_deadline_notifies_assignee_and_escalates_to_creator(): void
+    {
+        $creator = User::factory()->create(['role' => 'admin_costing']);
+        $assignee = User::factory()->create(['role' => 'editor']);
+        $project = DocumentProject::create(['customer'=>'Customer','model'=>'Model','part_number'=>'TASK-01','part_name'=>'Task Project','project_key'=>hash('sha256',uniqid('',true))]);
+        ProjectManualTask::create(['document_project_id'=>$project->id,'assignee_id'=>$assignee->id,'created_by_id'=>$creator->id,'title'=>'Review quotation','due_at'=>today()->subDays(2)]);
+        $service = app(ProjectNotificationService::class);
+
+        $this->assertTrue($service->forUser($assignee)->contains(fn($item)=>$item['type']==='task' && str_contains($item['line'],'Review quotation')));
+        $this->assertTrue($service->forUser($creator)->contains(fn($item)=>$item['type']==='escalation' && str_contains($item['line'],'Review quotation')));
     }
 
     private function revision(User $user): DocumentRevision

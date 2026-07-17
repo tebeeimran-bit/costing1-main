@@ -7,6 +7,7 @@ use App\Models\DocumentRevision;
 use App\Models\NotificationPreference;
 use App\Models\NotificationState;
 use App\Models\ProjectComment;
+use App\Models\ProjectManualTask;
 use App\Models\User;
 use App\Services\Project\ProjectDeadlineService;
 use App\Services\Project\ProjectWorkflowService;
@@ -72,6 +73,27 @@ class ProjectNotificationService
         ProjectComment::query()->with(['user:id,name', 'revision.project'])->whereJsonContains('mentioned_user_ids', $user->id)->where('created_at', '>=', now()->subDays(14))->latest()->limit(10)->get()->each(function ($comment) use ($items) {
             $items->push($this->item('mention:'.$comment->id, 'mention', 'Anda disebut dalam komentar', ($comment->user?->name ?: 'Anggota tim').' menyebut Anda pada '.($comment->revision?->project?->part_number ?: 'project'), Str::limit($comment->body, 90), 'Buka Diskusi', route('project-collaboration.show', $comment->document_revision_id, false), 'purple', $comment->created_at));
         });
+
+        ProjectManualTask::query()->with(['project:id,part_number,part_name', 'assignee:id,name'])
+            ->where('status', '!=', 'completed')
+            ->where(function ($query) use ($user) {
+                $query->where('assignee_id', $user->id)->orWhere('created_by_id', $user->id);
+                if ($user->role === 'admin') $query->orWhereNotNull('due_at');
+            })->latest()->limit(30)->get()->each(function (ProjectManualTask $task) use ($items, $user) {
+                $due = $task->due_at;
+                $overdue = $due?->isBefore(today()) ?? false;
+                $nearDue = $due && ! $overdue && $due->lte(today()->addDay());
+                $url = route('my-tasks', ['project_id' => $task->document_project_id], false);
+                if ($task->assignee_id === $user->id && ($overdue || $nearDue)) {
+                    $label = $overdue ? 'melewati deadline '.$due->diffForHumans() : ($due->isToday() ? 'jatuh tempo hari ini' : 'jatuh tempo besok');
+                    $items->push($this->item('task:'.$task->id.':'.$due->toDateString(), 'task', 'Deadline task', $task->title.' — '.$label, ($task->project?->part_number ?: 'Project').' · '.($task->project?->part_name ?: ''), 'Buka Task', $url, $overdue ? 'orange' : 'blue', $task->updated_at));
+                } elseif ($task->assignee_id === $user->id && $task->created_at->gte(now()->subDays(3))) {
+                    $items->push($this->item('task:new:'.$task->id, 'task', 'Task baru ditugaskan', $task->title, ($task->project?->part_number ?: 'Project').' · deadline '.($due?->format('d M Y') ?: 'belum diatur'), 'Buka Task', $url, 'blue', $task->created_at));
+                }
+                if ($overdue && $task->assignee_id !== $user->id && ($task->created_by_id === $user->id || $user->role === 'admin')) {
+                    $items->push($this->item('escalation:'.$task->id.':'.$due->toDateString(), 'escalation', 'SLA task perlu dieskalasi', $task->title.' terlambat '.$due->diffInDays(today()).' hari', 'PIC: '.($task->assignee?->name ?: '-').' · Project '.($task->project?->part_number ?: '-'), 'Tindak Lanjuti', $url, 'orange', now()));
+                }
+            });
 
         $states = NotificationState::query()->where('user_id', $user->id)->whereIn('notification_key', $items->pluck('key'))->get()->keyBy('notification_key');
 

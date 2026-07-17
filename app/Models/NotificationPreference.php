@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class NotificationPreference extends Model
 {
-    public const TYPES = ['document', 'project', 'pricing', 'mention', 'sla'];
+    public const TYPES = ['document', 'project', 'pricing', 'mention', 'sla', 'task', 'escalation'];
 
     protected $fillable = ['user_id', 'enabled_types'];
 
