@@ -67,13 +67,15 @@ class AuthController extends Controller
     {
         $users = User::orderBy('name')->get();
         $permissionMatrix = RolePermission::getMatrix();
-        $roles = ['admin', 'admin_costing', 'coordinator_costing', 'marketing', 'editor', 'viewer'];
+        $roles = ['admin', 'admin_control_project', 'admin_costing', 'coordinator_costing', 'document_control', 'marketing', 'editor', 'viewer'];
         $modules = [
             'dashboard' => 'Dashboard',
             'input_data' => 'Input Data',
             'database' => 'Database',
             'laporan' => 'Laporan',
             'user_management' => 'User Management',
+            'document_control' => 'Document Control',
+            'control_project' => 'Control Project',
         ];
 
         return view('auth.permissions', compact('users', 'permissionMatrix', 'roles', 'modules'));
@@ -82,8 +84,8 @@ class AuthController extends Controller
     public function updatePermission(Request $request)
     {
         $validated = $request->validate([
-            'role' => ['required', 'in:admin,admin_costing,coordinator_costing,marketing,editor,viewer'],
-            'module' => ['required', 'in:dashboard,input_data,database,laporan,user_management'],
+            'role' => ['required', 'in:admin,admin_control_project,admin_costing,coordinator_costing,document_control,marketing,editor,viewer'],
+            'module' => ['required', 'in:dashboard,input_data,database,laporan,user_management,document_control,control_project'],
             'access' => ['required', 'in:full,view,none'],
         ]);
 
@@ -111,7 +113,7 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
-            'role' => ['required', 'in:admin,admin_costing,coordinator_costing,marketing,editor,viewer'],
+            'role' => ['required', 'in:admin,admin_control_project,admin_costing,coordinator_costing,document_control,marketing,editor,viewer'],
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
@@ -128,7 +130,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'role' => ['required', 'in:admin,admin_costing,coordinator_costing,marketing,editor,viewer'],
+            'role' => ['required', 'in:admin,admin_control_project,admin_costing,coordinator_costing,document_control,marketing,editor,viewer'],
             'password' => ['nullable', 'string', 'min:6'],
         ]);
 

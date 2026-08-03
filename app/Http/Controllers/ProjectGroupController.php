@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
+use App\Models\DocumentControlRegistration;
 use App\Models\MaterialBreakdown;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -31,14 +32,22 @@ class ProjectGroupController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $costingByRevisionId = CostingData::with(['customer', 'product'])
+        $costingByRevisionId = CostingData::with(['customer', 'product', 'materialBreakdowns'])
             ->whereNotNull('tracking_revision_id')
             ->get()
             ->keyBy('tracking_revision_id');
 
+        $drawingByPartNumber = DocumentControlRegistration::query()
+            ->whereNotNull('part_number')
+            ->orderByDesc('registration_date')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy(fn ($drawing) => $this->normalizePartNumber($drawing->part_number))
+            ->map->first();
+
         $userRole = (string) optional($request->user())->role;
 
-        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $userRole) {
+        $children = $revisions->map(function (DocumentRevision $revision) use ($costingByRevisionId, $drawingByPartNumber, $userRole) {
             $project = $revision->project;
             $costing = $costingByRevisionId->get($revision->id);
             $latestApproval = $revision->latestApproval;
@@ -76,6 +85,8 @@ class ProjectGroupController extends Controller
                     ?? $project->part_name
                     ?? '-'
             );
+            $drawing = $drawingByPartNumber->get($this->normalizePartNumber($partNumber));
+            $progress = $this->buildProgress($revision, $costing, $drawing, $latestApproval, $latestSubmission);
 
             return (object) [
                 'revision' => $revision,
@@ -120,6 +131,7 @@ class ProjectGroupController extends Controller
                 'approval_submitted_at' => $latestApproval?->submitted_at,
                 'approval_approved_at' => $latestApproval?->approved_at,
                 'marketing_submitted_at' => $latestSubmission?->submitted_at,
+                'progress' => $progress,
                 'can_submit_approval' => in_array($userRole, ['admin', 'admin_costing', 'editor'], true)
                     && $costing
                     && in_array($revision->status, [
@@ -184,6 +196,20 @@ class ProjectGroupController extends Controller
                             'count' => $statusItems->count(),
                         ])
                         ->values(),
+                    'progress' => collect(['a00','drawing','breakdown','costing','submit','cogm'])->map(function ($key) use ($items) {
+                        $steps = $items->map(fn ($item) => collect($item->progress)->firstWhere('key', $key));
+                        $completed = $steps->every(fn ($step) => ($step['state'] ?? null) === 'done');
+                        $active = !$completed && $steps->contains(fn ($step) => ($step['state'] ?? null) === 'active');
+                        $sample = $steps->first();
+                        return [
+                            'key' => $key,
+                            'label' => $sample['label'],
+                            'state' => $completed ? 'done' : ($active ? 'active' : 'pending'),
+                            'status' => $completed ? 'Selesai' : ($active ? 'Sedang proses' : 'Belum dimulai'),
+                            'date' => $steps->pluck('date')->filter()->sortDesc()->first(),
+                            'pic' => $completed || $active ? $steps->pluck('pic')->filter(fn ($pic) => $pic && $pic !== '-')->unique()->implode(', ') : '-',
+                        ];
+                    })->values(),
                     'items' => $items
                         ->sortBy([
                             ['part_number', 'asc'],
@@ -209,6 +235,42 @@ class ProjectGroupController extends Controller
             'search' => $search,
             'perPage' => $perPage,
         ]);
+    }
+
+    private function buildProgress(DocumentRevision $revision, ?CostingData $costing, $drawing, $approval, $submission): array
+    {
+        $hasA00 = $revision->a00 === 'ada' || $revision->a00_received_date || $revision->status === DocumentRevision::STATUS_A00_ISSUED;
+        $hasDrawing = (bool) $drawing;
+        $hasBreakdown = $costing && $costing->materialBreakdowns->isNotEmpty();
+        $hasCosting = (bool) $costing;
+        $hasSubmit = (bool) $approval?->submitted_at;
+        $hasCogm = (bool) $submission?->submitted_at;
+
+        $definitions = [
+            ['key'=>'a00','label'=>'A00','done'=>$hasA00,'date'=>$revision->a00_received_date ?? $revision->created_at,'pic'=>$revision->pic_marketing],
+            ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'date'=>$drawing?->registration_date ?? $drawing?->created_at,'pic'=>$hasDrawing ? 'Document Control' : '-'],
+            ['key'=>'breakdown','label'=>'Breakdown','done'=>$hasBreakdown,'date'=>$hasBreakdown ? $costing->updated_at : null,'pic'=>$revision->pic_engineering],
+            ['key'=>'costing','label'=>'Costing','done'=>$hasCosting,'date'=>$costing?->updated_at,'pic'=>$revision->pic_engineering],
+            ['key'=>'submit','label'=>'Submit','done'=>$hasSubmit,'date'=>$approval?->submitted_at,'pic'=>$approval?->submitter?->name ?? '-'],
+            ['key'=>'cogm','label'=>'COGM','done'=>$hasCogm,'date'=>$submission?->submitted_at,'pic'=>$submission?->submitted_by ?? $submission?->pic_marketing ?? '-'],
+        ];
+        $lastDone = collect($definitions)->search(fn ($step) => !$step['done']);
+        $activeIndex = $lastDone === false ? null : $lastDone;
+
+        return collect($definitions)->map(function ($step, $index) use ($activeIndex) {
+            $state = $step['done'] ? 'done' : ($index === $activeIndex ? 'active' : 'pending');
+            return [
+                'key'=>$step['key'],'label'=>$step['label'],'state'=>$state,
+                'status'=>$state === 'done' ? 'Selesai' : ($state === 'active' ? 'Sedang proses' : 'Belum dimulai'),
+                'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->format('d/m/Y H:i') : null,
+                'pic'=>$step['pic'] ?: '-',
+            ];
+        })->all();
+    }
+
+    private function normalizePartNumber(?string $value): string
+    {
+        return mb_strtolower(preg_replace('/[^a-zA-Z0-9]/', '', (string) $value));
     }
 
     private function revisionStatusClass(DocumentRevision $revision): string

@@ -7,6 +7,9 @@ use App\Http\Controllers\CostingAssistantController;
 use App\Http\Controllers\Database\DocumentRecapController;
 use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\DocumentReceiptController;
+use App\Http\Controllers\DocumentControlRegistrationController;
+use App\Http\Controllers\DocumentControlInboxController;
+use App\Http\Controllers\ProjectA00Controller;
 use App\Http\Controllers\ProjectGroupController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TrackingDocumentController;
@@ -20,6 +23,26 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // All app routes require authentication
 Route::middleware('auth')->group(function () {
+    Route::middleware('permission:control_project')->prefix('control-project')->name('control-project.')->group(function(){
+        Route::get('/a00',[ProjectA00Controller::class,'index'])->name('a00.index');
+        Route::get('/a00/create',[ProjectA00Controller::class,'create'])->name('a00.create');
+        Route::post('/a00',[ProjectA00Controller::class,'store'])->name('a00.store');
+        Route::get('/a00/{a00}',[ProjectA00Controller::class,'show'])->name('a00.show');
+    });
+    Route::middleware('permission:document_control')->prefix('document-control')->name('document-control.')->group(function () {
+        Route::get('/inbox', [DocumentControlInboxController::class, 'index'])->name('inbox');
+        Route::get('/registrations', [DocumentControlRegistrationController::class, 'index'])->name('index');
+        Route::post('/registrations', [DocumentControlRegistrationController::class, 'store'])->name('store');
+        Route::put('/registrations/{registration}', [DocumentControlRegistrationController::class, 'update'])->name('update');
+        Route::patch('/registrations/{registration}/cell', [DocumentControlRegistrationController::class, 'updateCell'])->name('update-cell');
+        Route::post('/rows', [DocumentControlRegistrationController::class, 'insertRow'])->name('rows.insert');
+        Route::patch('/registrations/{registration}/custom-cell', [DocumentControlRegistrationController::class, 'updateCustomCell'])->name('custom-cell.update');
+        Route::post('/columns', [DocumentControlRegistrationController::class, 'storeColumn'])->name('columns.store');
+        Route::patch('/columns/{column}', [DocumentControlRegistrationController::class, 'updateColumn'])->name('columns.update');
+        Route::delete('/columns/{column}', [DocumentControlRegistrationController::class, 'destroyColumn'])->name('columns.destroy');
+        Route::delete('/registrations/{registration}', [DocumentControlRegistrationController::class, 'destroy'])->name('destroy');
+        Route::post('/registrations/import', [DocumentControlRegistrationController::class, 'import'])->name('import');
+    });
     Route::get('/project-selection', [AuthController::class, 'projectSelection'])->name('project-selection');
     Route::get('/costing-product-performance', [AuthController::class, 'productPerformance'])->name('costing-product-performance');
 

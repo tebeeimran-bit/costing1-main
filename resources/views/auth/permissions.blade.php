@@ -14,6 +14,8 @@
         'admin_costing' => ['label' => 'Admin Costing', 'style' => 'background: #e0f2fe; color: #0369a1; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
         'coordinator_costing' => ['label' => 'Coordinator Costing', 'style' => 'background: #fef3c7; color: #92400e; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
         'marketing' => ['label' => 'Marketing', 'style' => 'background: #ccfbf1; color: #0f766e; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
+        'document_control' => ['label' => 'Document Control', 'style' => 'background: #ede9fe; color: #6d28d9; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
+        'admin_control_project' => ['label' => 'Admin Control Project', 'style' => 'background: #ffedd5; color: #9a3412; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
         'editor' => ['label' => 'Editor', 'style' => 'background: #fef3c7; color: #92400e; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
         'viewer' => ['label' => 'Viewer', 'style' => 'background: #f1f5f9; color: #475569; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
     ];
@@ -22,6 +24,8 @@
         'admin_costing' => 'Admin Costing',
         'coordinator_costing' => 'Coordinator Costing',
         'marketing' => 'Marketing',
+        'document_control' => 'Document Control',
+        'admin_control_project' => 'Admin Control Project',
         'editor' => 'Editor',
         'viewer' => 'Viewer',
         'admin' => 'Admin',

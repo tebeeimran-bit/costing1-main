@@ -17,6 +17,7 @@ class DocumentRevision extends Model
     public const STATUS_APPROVED_BY_COORDINATOR = 'approved_by_coordinator';
     public const STATUS_REJECTED_BY_COORDINATOR = 'rejected_by_coordinator';
     public const STATUS_SUBMITTED_TO_MARKETING = 'submitted_to_marketing';
+    public const STATUS_A00_ISSUED = 'a00_issued_waiting_decision';
 
     protected $fillable = [
         'document_project_id',
@@ -90,6 +91,8 @@ class DocumentRevision extends Model
         return $this->hasMany(UnpricedPart::class, 'document_revision_id');
     }
 
+    public function workflowTasks(){return $this->hasMany(ProjectWorkflowTask::class,'document_revision_id');}
+
     public function getVersionLabelAttribute(): string
     {
         $displayVersion = max(0, (int) $this->version_number - 1);
@@ -107,6 +110,7 @@ class DocumentRevision extends Model
             self::STATUS_APPROVED_BY_COORDINATOR => 'Approved by Coordinator',
             self::STATUS_REJECTED_BY_COORDINATOR => 'Rejected by Coordinator',
             self::STATUS_SUBMITTED_TO_MARKETING => 'Submitted to Marketing',
+            self::STATUS_A00_ISSUED => 'A00 Issued / Waiting Decision',
             default => ucfirst(str_replace('_', ' ', $this->status)),
         };
     }

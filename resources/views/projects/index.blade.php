@@ -442,12 +442,48 @@
         line-height: 1.35;
     }
 
+    /* Compact project list */
+    .project-card { padding: 1rem; border-radius: 10px; }
+    .project-card-header { margin-bottom: .8rem; }
+    .project-card-title { font-size: 1.05rem; }
+    .project-table { min-width: 980px; }
+    .project-table th { padding: .72rem .65rem; font-size: .64rem; }
+    .project-table .group-row td { padding: .7rem .65rem; vertical-align: middle; font-size: .73rem; }
+    .project-main { display: grid; gap: .18rem; }
+    .project-main strong { color: #0f172a; font-size: .76rem; font-weight: 850; }
+    .project-main small { color: #64748b; font-size: .65rem; font-weight: 650; }
+    .part-summary { white-space: nowrap; }
+    .pic-compact { display: grid; gap: .24rem; min-width: 155px; }
+    .pic-compact div { display: grid; grid-template-columns: 66px 1fr; gap: .35rem; line-height: 1.25; }
+    .pic-compact span { color: #64748b; font-size: .62rem; font-weight: 700; }
+    .pic-compact strong { color: #334155; font-size: .68rem; font-weight: 750; }
+    .group-row .status-stack { display: flex; flex-wrap: wrap; gap: .25rem; }
+    .group-row .status-pill { padding: .25rem .48rem; font-size: .62rem; }
+    .updated-compact { color: #475569; white-space: nowrap; line-height: 1.35; }
+    .updated-compact small { display: block; color: #94a3b8; font-size: .62rem; }
+    .row-actions { position: relative; display: flex; justify-content: center; }
+    .row-actions summary { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #334155; cursor: pointer; font-size: 1.05rem; font-weight: 900; list-style: none; }
+    .row-actions summary::-webkit-details-marker { display: none; }
+    .row-actions[open] summary { border-color: #93c5fd; background: #eff6ff; color: #2563eb; }
+    .row-action-menu { position: absolute; z-index: 20; top: 36px; right: 0; width: 180px; padding: .35rem; border: 1px solid #dbe5f2; border-radius: 9px; background: #fff; box-shadow: 0 12px 28px rgba(15,23,42,.16); }
+    .row-action-menu a,.row-action-menu button { box-sizing: border-box; display: flex; width: 100%; align-items: center; padding: .55rem .65rem; border: 0; border-radius: 6px; background: transparent; color: #334155; font-size: .69rem; font-weight: 750; text-align: left; text-decoration: none; cursor: pointer; }
+    .row-action-menu a:hover,.row-action-menu button:hover { background: #eff6ff; color: #1d4ed8; }
+    .progress-trigger{display:block;width:100%;min-width:300px;padding:.2rem 0;border:0;background:transparent;text-align:left;cursor:pointer}.progress-track{display:grid;grid-template-columns:repeat(6,1fr);align-items:start}.progress-step{position:relative;display:grid;justify-items:center;gap:.28rem;color:#94a3b8;font-size:.55rem;font-weight:750}.progress-step:not(:first-child)::before{content:"";position:absolute;top:9px;right:50%;width:100%;height:2px;background:#dbe3ef;z-index:0}.progress-dot{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;width:19px;height:19px;border:2px solid #cbd5e1;border-radius:50%;background:#fff;color:#94a3b8;font-size:.58rem;font-weight:900}.progress-step.done{color:#159447}.progress-step.done .progress-dot{border-color:#22b45b;background:#22b45b;color:#fff}.progress-step.done::before{background:#22b45b}.progress-step.active{color:#2563eb}.progress-step.active .progress-dot{border-color:#2563eb;background:#2563eb;color:#fff}.progress-step.active::before{background:linear-gradient(90deg,#22b45b,#2563eb)}.progress-caption{margin-top:.38rem;color:#64748b;font-size:.61rem}.progress-dialog{width:min(620px,calc(100vw - 30px));padding:0;border:0;border-radius:13px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.progress-dialog::backdrop{background:rgba(15,23,42,.42)}.progress-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1rem;border-bottom:1px solid #e2e8f0}.progress-dialog-head strong{color:#0f172a;font-size:.86rem}.progress-dialog-close{width:30px;height:30px;border:0;border-radius:7px;background:#f1f5f9;color:#475569;cursor:pointer;font-size:1.1rem}.progress-dialog-body{padding:.25rem 1rem .8rem}.progress-detail-row{display:grid;grid-template-columns:28px 100px 1fr 130px;gap:.6rem;align-items:center;padding:.7rem 0;border-bottom:1px solid #e2e8f0;font-size:.7rem}.progress-detail-row:last-child{border-bottom:0}.progress-detail-state{font-weight:800}.progress-detail-state.done{color:#159447}.progress-detail-state.active{color:#2563eb}.progress-detail-state.pending{color:#64748b}.progress-detail-meta{display:grid;gap:.14rem;color:#475569}.progress-detail-meta small{color:#94a3b8;font-size:.6rem}@media(max-width:1100px){.progress-trigger{min-width:260px}.project-table{min-width:1080px}}
+
+    .progress-dialog {
+        position: fixed !important;
+        inset: 0 !important;
+        width: min(620px, calc(100vw - 30px));
+        max-height: min(720px, calc(100vh - 30px));
+        margin: auto !important;
+        overflow: auto;
+    }
 
 </style>
 
 <div class="project-card">
     <div class="project-card-header">
-        <h3 class="project-card-title">List Project</h3>
+        <h3 class="project-card-title">Project</h3>
 
         <form method="GET" action="{{ url()->current() }}" class="project-toolbar">
             <input
@@ -457,8 +493,8 @@
                 value="{{ $search ?? '' }}"
                 placeholder="Cari project, customer, model, atau part number..."
             >
-            <button type="submit" class="btn-project">Search</button>
-            <a href="{{ url('/tracking-documents/new') }}" class="btn-project primary">+ New Project</a>
+            <button type="submit" class="btn-project">Cari</button>
+            <a href="{{ url('/tracking-documents/new') }}" class="btn-project primary">+ Project Baru</a>
         </form>
     </div>
 
@@ -466,15 +502,7 @@
         <table class="project-table">
             <thead>
                 <tr>
-                    <th style="width:44px;"></th>
-                    <th style="width:115px;">Tanggal</th>
-                    <th>Informasi Project</th>
-                    <th style="width:130px;">Total Part Number</th>
-                    <th style="width:130px;">PIC Engineering</th>
-                    <th style="width:130px;">PIC Marketing</th>
-                    <th style="width:150px;">Status Summary</th>
-                    <th style="width:120px;">Last Updated</th>
-                    <th style="width:220px;">Action</th>
+                    <th>Project</th><th style="width:130px;">Customer</th><th style="width:100px;">Model</th><th style="width:110px;">Part</th><th style="width:210px;">PIC</th><th style="width:340px;">Progress</th><th style="width:125px;">Update</th><th style="width:64px;text-align:center;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -483,39 +511,14 @@
                         $rowId = 'groupRow' . md5($group->key);
                     @endphp
                     <tr class="group-row" id="{{ $rowId }}Main">
-                        <td class="expand-cell">
-                            <button type="button" class="expand-btn" onclick="toggleProjectGroup('{{ $rowId }}')" aria-label="Expand project group">›</button>
-                        </td>
-                        <td>
-                            {{ $group->created_at ? \Carbon\Carbon::parse($group->created_at)->format('d/m/Y') : '-' }}
-                        </td>
-                        <td>
-                            <div class="project-info-box">
-                                <div>
-                                    <div class="info-label">Business Categories</div>
-                                    <div class="info-value">{{ $group->business_category }}</div>
-                                </div>
-                                <div>
-                                    <div class="info-label">Customer</div>
-                                    <div class="info-value">{{ $group->customer }}</div>
-                                </div>
-                                <div>
-                                    <div class="info-label">Model</div>
-                                    <div class="info-value">{{ $group->model }}</div>
-                                </div>
-                                <div>
-                                    <div class="info-label">Nama Project</div>
-                                    <div class="info-value">{{ $group->project_name }}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td>
-                            <strong>{{ $group->total_part_number }}</strong> Part Number
+                        <td><div class="project-main"><strong>{{ $group->project_name }}</strong><small>{{ $group->business_category }}</small></div></td>
+                        <td>{{ $group->customer }}</td><td>{{ $group->model }}</td>
+                        <td class="part-summary"><strong>{{ $group->total_part_number }}</strong> Part
                             @if($group->total_items !== $group->total_part_number)
                                 <div style="font-size:.7rem;color:#64748b;margin-top:.18rem;">{{ $group->total_items }} item/revisi</div>
                             @endif
                         </td>
-                        <td>
+                        <td><div class="pic-compact"><div><span>Engineering</span><strong>
                             @php
                                 $picEngineeringList = collect(explode(',', (string) $group->pic_engineering))
                                     ->map(fn ($pic) => trim($pic))
@@ -534,8 +537,7 @@
                             @else
                                 -
                             @endif
-                        </td>
-                        <td>
+                        </strong></div><div><span>Marketing</span><strong>
                             @php
                                 $picMarketingList = collect(explode(',', (string) $group->pic_marketing))
                                     ->map(fn ($pic) => trim($pic))
@@ -554,38 +556,29 @@
                             @else
                                 -
                             @endif
-                        </td>
-                        <td>
-                            <div class="status-stack">
-                                @foreach($group->status_summary as $status)
-                                    <span class="status-pill {{ $status->class }}">{{ $status->count }} {{ $status->label }}</span>
-                                @endforeach
-                            </div>
-                        </td>
-                        <td>
-                            {{ $group->updated_at ? \Carbon\Carbon::parse($group->updated_at)->format('d/m/Y H:i') : '-' }}
-                        </td>
-                        <td>
-                            <div class="action-stack">
-                                <a class="action-link" href="{{ route('tracking-documents.create', [
+                        </strong></div></div></td>
+                        <td><button type="button" class="progress-trigger" onclick="openProjectProgress('{{ $rowId }}')"><span class="progress-track">@foreach($group->progress as $step)<span class="progress-step {{ $step['state'] }}"><span class="progress-dot">{{ $step['state']==='done'?'✓':$loop->iteration }}</span><span>{{ $step['label'] }}</span></span>@endforeach</span>@php $currentStep=collect($group->progress)->firstWhere('state','active'); @endphp<span class="progress-caption">{{ $currentStep ? 'Sedang '.$currentStep['label'] : 'Semua tahapan selesai' }} · klik untuk detail</span></button>
+                        <template id="{{ $rowId }}Progress"><div class="progress-dialog-head"><strong>Progress Project — {{ $group->project_name }}</strong><button type="button" class="progress-dialog-close" onclick="closeProjectProgress()">×</button></div><div class="progress-dialog-body">@foreach($group->progress as $step)<div class="progress-detail-row"><span class="progress-dot" @if($step['state']==='done') style="border-color:#22b45b;background:#22b45b;color:#fff" @elseif($step['state']==='active') style="border-color:#2563eb;background:#2563eb;color:#fff" @endif>{{ $step['state']==='done'?'✓':$loop->iteration }}</span><strong>{{ $step['label'] }}</strong><span class="progress-detail-state {{ $step['state'] }}">{{ $step['status'] }}</span><span class="progress-detail-meta"><span>{{ $step['date'] ?: '—' }}</span><small>{{ $step['pic'] ?: '—' }}</small></span></div>@endforeach</div></template></td>
+                        <td class="updated-compact">@if($group->updated_at){{ \Carbon\Carbon::parse($group->updated_at)->format('d/m/Y') }}<small>{{ \Carbon\Carbon::parse($group->updated_at)->format('H:i') }}</small>@else - @endif</td>
+                        <td><details class="row-actions"><summary aria-label="Buka aksi">⋮</summary><div class="row-action-menu">
+                                <a href="{{ route('tracking-documents.create', [
                                     'business_category' => $group->business_category,
                                     'customer' => $group->customer,
                                     'model' => $group->model,
                                 ], false) }}">
-                                    + New Project
+                                    + Tambah Project
                                 </a>
-                                <button type="button" class="action-link" onclick="toggleProjectGroup('{{ $rowId }}')">
+                                <button type="button" onclick="toggleProjectGroup('{{ $rowId }}'); this.closest('details').removeAttribute('open')">
                                     Lihat Semua Part
                                 </button>
-                                <a class="action-link" href="{{ route('database.project-documents', ['search' => $group->customer . ' ' . $group->model], false) }}">
+                                <a href="{{ route('database.project-documents', ['search' => $group->customer . ' ' . $group->model], false) }}">
                                     Lihat Dokumen Group
                                 </a>
-                            </div>
-                        </td>
+                        </div></details></td>
                     </tr>
 
                     <tr class="child-row" id="{{ $rowId }}Child">
-                        <td colspan="9" class="child-cell">
+                        <td colspan="8" class="child-cell">
                             <div class="child-panel">
                                 <div class="child-panel-head">
                                     <span>ⓘ</span>
@@ -711,7 +704,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9">
+                        <td colspan="8">
                             <div class="empty-state">Belum ada project yang bisa ditampilkan.</div>
                         </td>
                     </tr>
@@ -730,7 +723,26 @@
     </div>
 </div>
 
+<dialog class="progress-dialog" id="projectProgressDialog"><div id="projectProgressContent"></div></dialog>
+
 <script>
+    function openProjectProgress(rowId) {
+        const template = document.getElementById(rowId + 'Progress');
+        const dialog = document.getElementById('projectProgressDialog');
+        const content = document.getElementById('projectProgressContent');
+        if (!template || !dialog || !content) return;
+        content.replaceChildren(template.content.cloneNode(true));
+        dialog.showModal();
+    }
+
+    function closeProjectProgress() {
+        document.getElementById('projectProgressDialog')?.close();
+    }
+
+    document.getElementById('projectProgressDialog')?.addEventListener('click', function (event) {
+        if (event.target === this) this.close();
+    });
+
     function toggleProjectGroup(rowId) {
         const child = document.getElementById(rowId + 'Child');
         const main = document.getElementById(rowId + 'Main');
@@ -744,5 +756,20 @@
         main?.classList.toggle('is-open');
         button?.classList.toggle('is-open');
     }
+
+    document.addEventListener('click', function (event) {
+        document.querySelectorAll('.row-actions[open]').forEach(function (menu) {
+            if (!menu.contains(event.target)) menu.removeAttribute('open');
+        });
+    });
+
+    document.querySelectorAll('.row-actions').forEach(function (menu) {
+        menu.addEventListener('toggle', function () {
+            if (!menu.open) return;
+            document.querySelectorAll('.row-actions[open]').forEach(function (other) {
+                if (other !== menu) other.removeAttribute('open');
+            });
+        });
+    });
 </script>
 @endsection

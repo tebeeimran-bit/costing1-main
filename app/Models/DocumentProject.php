@@ -27,4 +27,11 @@ class DocumentProject extends Model
     {
         return $this->hasMany(DocumentRevision::class);
     }
+
+    public function a00Form()
+    {
+        return $this->hasOne(ProjectA00Form::class);
+    }
+
+    public function workflowTasks(){return $this->hasMany(ProjectWorkflowTask::class,'document_project_id');}
 }
