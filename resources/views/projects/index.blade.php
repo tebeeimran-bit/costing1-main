@@ -478,6 +478,8 @@
         margin: auto !important;
         overflow: auto;
     }
+    .new-project-dialog{position:fixed;inset:0;width:min(1180px,calc(100vw - 30px));height:min(820px,calc(100vh - 30px));margin:auto;padding:0;border:0;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.3)}
+    .new-project-dialog::backdrop{background:rgba(15,23,42,.55)}.new-project-frame{display:block;width:100%;height:100%;border:0;background:#f8fafc}
 
 </style>
 
@@ -494,7 +496,7 @@
                 placeholder="Cari project, customer, model, atau part number..."
             >
             <button type="submit" class="btn-project">Cari</button>
-            <a href="{{ url('/tracking-documents/new') }}" class="btn-project primary">+ Project Baru</a>
+            <button type="button" class="btn-project primary" onclick="openNewProjectModal()">+ Project Baru</button>
         </form>
     </div>
 
@@ -502,7 +504,7 @@
         <table class="project-table">
             <thead>
                 <tr>
-                    <th>Project</th><th style="width:130px;">Customer</th><th style="width:100px;">Model</th><th style="width:110px;">Part</th><th style="width:210px;">PIC</th><th style="width:340px;">Progress</th><th style="width:125px;">Update</th><th style="width:64px;text-align:center;">Aksi</th>
+                    <th>Project</th><th style="width:130px;">Customer</th><th style="width:100px;">Model</th><th style="width:140px;">No. Assy</th><th style="width:210px;">PIC</th><th style="width:340px;">Progress</th><th style="width:125px;">Update</th><th style="width:64px;text-align:center;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -513,11 +515,7 @@
                     <tr class="group-row" id="{{ $rowId }}Main">
                         <td><div class="project-main"><strong>{{ $group->project_name }}</strong><small>{{ $group->business_category }}</small></div></td>
                         <td>{{ $group->customer }}</td><td>{{ $group->model }}</td>
-                        <td class="part-summary"><strong>{{ $group->total_part_number }}</strong> Part
-                            @if($group->total_items !== $group->total_part_number)
-                                <div style="font-size:.7rem;color:#64748b;margin-top:.18rem;">{{ $group->total_items }} item/revisi</div>
-                            @endif
-                        </td>
+                        <td class="part-summary"><strong>{{ $group->assy_numbers ?: '-' }}</strong></td>
                         <td><div class="pic-compact"><div><span>Engineering</span><strong>
                             @php
                                 $picEngineeringList = collect(explode(',', (string) $group->pic_engineering))
@@ -574,6 +572,14 @@
                                 <a href="{{ route('database.project-documents', ['search' => $group->customer . ' ' . $group->model], false) }}">
                                     Lihat Dokumen Group
                                 </a>
+                                <form method="POST" action="{{ route('project.group.destroy', absolute:false) }}" class="js-confirm-form" data-confirm-message="Apakah yakin akan hapus project?">
+                                    @csrf
+                                    @method('DELETE')
+                                    @foreach($group->items->pluck('project.id')->filter()->unique() as $projectId)
+                                        <input type="hidden" name="project_ids[]" value="{{ $projectId }}">
+                                    @endforeach
+                                    <button type="submit" style="color:#dc2626">Hapus Project</button>
+                                </form>
                         </div></details></td>
                     </tr>
 
@@ -724,6 +730,7 @@
 </div>
 
 <dialog class="progress-dialog" id="projectProgressDialog"><div id="projectProgressContent"></div></dialog>
+<dialog class="new-project-dialog" id="newProjectDialog"><iframe id="newProjectFrame" class="new-project-frame" title="Form New Project"></iframe></dialog>
 
 <script>
     function openProjectProgress(rowId) {
@@ -738,6 +745,10 @@
     function closeProjectProgress() {
         document.getElementById('projectProgressDialog')?.close();
     }
+
+    function openNewProjectModal(){const dialog=document.getElementById('newProjectDialog'),frame=document.getElementById('newProjectFrame');frame.src=@json(route('tracking-documents.create',['embedded'=>1],false));dialog.showModal()}
+    function closeNewProjectModal(reload=false){const dialog=document.getElementById('newProjectDialog'),frame=document.getElementById('newProjectFrame');dialog.close();frame.src='';if(reload)location.reload()}
+    window.addEventListener('message',event=>{if(event.origin!==location.origin)return;if(event.data?.type==='new-project-cancel')closeNewProjectModal(false);if(event.data?.type==='new-project-created')closeNewProjectModal(true)});
 
     document.getElementById('projectProgressDialog')?.addEventListener('click', function (event) {
         if (event.target === this) this.close();

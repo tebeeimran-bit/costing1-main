@@ -761,21 +761,40 @@ class ReportController extends Controller
 
     public function storeExchangeRate(Request $request)
     {
-        $request->validate([
-            'period_date' => 'required|date',
-            'usd_to_idr' => 'nullable|numeric',
-            'jpy_to_idr' => 'nullable|numeric',
-            'lme_copper' => 'nullable|numeric',
-            'source' => 'nullable|string|max:100',
-        ]);
-        ExchangeRate::create($request->only('period_date', 'usd_to_idr', 'jpy_to_idr', 'lme_copper', 'source'));
+        $validated = $this->validateExchangeRate($request);
+        ExchangeRate::create($validated);
+
         return back()->with('success', 'Exchange rate berhasil ditambahkan.');
+    }
+
+    public function updateExchangeRate(Request $request, $id)
+    {
+        $exchangeRate = ExchangeRate::findOrFail($id);
+        $exchangeRate->update($this->validateExchangeRate($request));
+
+        return back()->with('success', 'Exchange rate berhasil diperbarui.');
     }
 
     public function destroyExchangeRate($id)
     {
         ExchangeRate::findOrFail($id)->delete();
         return back()->with('success', 'Exchange rate berhasil dihapus.');
+    }
+
+    private function validateExchangeRate(Request $request): array
+    {
+        $validated = $request->validate([
+            'period_date' => 'required|date',
+            'usd_to_idr' => 'nullable|numeric',
+            'jpy_to_idr' => 'nullable|numeric',
+            'lme_copper' => 'nullable|numeric',
+            'source' => 'nullable|string|max:100',
+        ]);
+        $validated['source'] = filled($validated['source'] ?? null)
+            ? trim((string) $validated['source'])
+            : 'Manual';
+
+        return $validated;
     }
 
     /**

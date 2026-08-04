@@ -124,7 +124,7 @@ $worksheetWidth = 42 + array_sum($columnWidths);
    </section>
    @endforeach
   </div>
-  <div class="dc-modal-foot"><button type="button" id="deleteButton" class="dc-btn danger" style="display:none;margin-right:auto" onclick="deleteRegistration()">Hapus</button><button type="button" class="dc-btn secondary" onclick="registrationModal.close()">Batal</button><button class="dc-btn">Simpan</button></div>
+  <div class="dc-modal-foot"><span id="registrationSaveStatus" style="display:none;color:#475569;font-size:.76rem;font-weight:700"></span><button type="button" id="deleteButton" class="dc-btn danger" style="display:none;margin-right:auto" onclick="deleteRegistration()">Hapus</button><button type="button" class="dc-btn secondary" onclick="registrationModal.close()">Batal</button><button id="registrationSaveButton" type="submit" class="dc-btn">Simpan</button></div>
  </form>
  <form id="deleteForm" method="POST" style="display:none">@csrf @method('DELETE')</form>
 </dialog>
@@ -154,6 +154,22 @@ editRegistration(@json($editRegistration));
 @endif
 @if(request()->boolean('embedded'))
 registrationModal.addEventListener('close',()=>parent.postMessage({type:'registration-detail-close'},location.origin));
+registrationForm.addEventListener('submit',async event=>{
+ event.preventDefault();
+ const button=document.getElementById('registrationSaveButton');
+ const status=document.getElementById('registrationSaveStatus');
+ button.disabled=true;button.textContent='Menyimpan...';status.style.display='inline';status.style.color='#475569';status.textContent='Menyimpan perubahan...';
+ try{
+  const response=await fetch(registrationForm.action,{method:'POST',headers:{'Accept':'application/json','X-CSRF-TOKEN':registrationForm.querySelector('[name="_token"]').value},body:new FormData(registrationForm)});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(result.message||Object.values(result.errors||{})[0]?.[0]||'Registrasi gagal disimpan.');
+  status.style.color='#15803d';status.textContent=result.message||'Registrasi berhasil diperbarui.';
+  parent.postMessage({type:'registration-detail-saved'},location.origin);
+ }catch(error){
+  status.style.color='#b91c1c';status.textContent=error.message||'Registrasi gagal disimpan.';
+  button.disabled=false;button.textContent='Simpan';
+ }
+});
 @endif
 
 const inlineCells=[...document.querySelectorAll('.excel-cell')];

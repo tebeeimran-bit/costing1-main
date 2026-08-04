@@ -16,6 +16,7 @@ class MaterialBreakdown extends Model
         'part_no',
         'id_code',
         'part_name',
+        'unit',
         'pro_code',
         'qty_req',
         'amount1',

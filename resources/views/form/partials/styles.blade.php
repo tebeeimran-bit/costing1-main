@@ -111,6 +111,21 @@
             padding: 0.4rem 0.35rem;
         }
 
+        .form-page #materialTableBody tr.material-row-active > td {
+            background: #dbeafe !important;
+            box-shadow: inset 0 1px 0 #93c5fd, inset 0 -1px 0 #93c5fd;
+        }
+
+        .form-page #materialTableBody tr.material-row-active > td:first-child {
+            box-shadow: inset 3px 0 0 #2563eb, inset 0 1px 0 #93c5fd, inset 0 -1px 0 #93c5fd;
+        }
+
+        .form-page #materialTableBody tr.material-row-active input.form-input,
+        .form-page #materialTableBody tr.material-row-active select.form-select {
+            border-color: #60a5fa;
+            background-color: #eff6ff;
+        }
+
         .form-page .material-table .form-input,
         .form-page .material-table .form-select {
             min-width: 0;

@@ -27,4 +27,9 @@ class CogmSubmission extends Model
     {
         return $this->belongsTo(DocumentRevision::class, 'document_revision_id');
     }
+
+    public function comments()
+    {
+        return $this->hasMany(CogmSubmissionComment::class)->latest();
+    }
 }

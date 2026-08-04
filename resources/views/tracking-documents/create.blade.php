@@ -12,6 +12,9 @@
 @endsection
 
 @section('content')
+    @if(request()->boolean('embedded'))
+    <style>html,body{margin:0!important;width:100%!important;min-width:0!important;background:#f8fafc!important}.sidebar,.sidebar-overlay,.header,.breadcrumb,.footer,.costing-assistant{display:none!important}.app-wrapper,.main-wrapper,.main-content{display:block!important;width:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important}.new-project-page{padding:1rem}.card{margin:0!important;box-shadow:none!important}</style>
+    @endif
     <style>
         .new-project-page {
             display: flex;
@@ -149,11 +152,12 @@
         <div class="card">
             <div class="page-head" style="margin-bottom: 1rem;">
                 <h3 class="card-title" style="margin: 0;">Form New Project</h3>
-                <a href="{{ route('project', absolute: false) }}" class="btn btn-secondary">Kembali ke Project</a>
+                @if(request()->boolean('embedded'))<button type="button" class="btn btn-secondary" onclick="parent.postMessage({type:'new-project-cancel'},location.origin)">Batal</button>@else<a href="{{ route('project', absolute: false) }}" class="btn btn-secondary">Kembali ke Project</a>@endif
             </div>
 
             <form id="receiptForm" action="{{ route('tracking-documents.store-receipt', absolute: false) }}" method="POST" enctype="multipart/form-data">
                 @csrf
+                @if(request()->boolean('embedded'))<input type="hidden" name="embedded" value="1">@endif
 
                 <div class="receipt-grid" style="margin-bottom: 1rem;">
                     <div class="form-group">

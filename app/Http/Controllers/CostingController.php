@@ -15,6 +15,7 @@ use App\Models\Plant;
 use App\Models\BusinessCategory;
 use App\Models\Wire;
 use App\Models\WireRate;
+use App\Models\ExchangeRate;
 use App\Models\Pic;
 use App\Http\Requests\StoreCostingRequest;
 use App\Http\Requests\UpdateStatusProjectRequest;
@@ -38,6 +39,17 @@ use ZipArchive;
 
 class CostingController extends Controller
 {
+    public function marketingCostingView(Request $request, \App\Models\CogmSubmission $submission, CostingImportService $importService)
+    {
+        $role = (string) ($request->user()->role ?? '');
+        abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing'], true), 403);
+
+        $request->query->set('tracking_revision_id', $submission->document_revision_id);
+        $request->query->set('view_only', '1');
+
+        return $this->form($request, $importService);
+    }
+
     public function dashboard(Request $request)
     {
         $periods = CostingData::query()
@@ -1245,8 +1257,10 @@ class CostingController extends Controller
         return $options;
     }
 
-    public function form(Request $request)
+    public function form(Request $request, CostingImportService $importService)
     {
+        $readOnlyMode = $request->boolean('view_only');
+        $cogmSubmission = null;
         $products = Product::all();
         $businessCategories = BusinessCategory::orderBy('code')->orderBy('name')->get();
         $customers = Customer::all();
@@ -1257,6 +1271,7 @@ class CostingController extends Controller
         $plants = Plant::orderBy('code')->orderBy('name')->get();
         $periods = CostingData::distinct('period')->orderBy('period', 'desc')->pluck('period');
         $wireRates = WireRate::orderBy('period_month', 'asc')->orderBy('id', 'asc')->get();
+        $exchangeRates = ExchangeRate::orderByDesc('period_date')->orderByDesc('id')->get();
         $picsEngineering = Pic::where('type', 'engineering')->orderBy('name')->get();
         $picsMarketing = Pic::where('type', 'marketing')->orderBy('name')->get();
 
@@ -1292,12 +1307,17 @@ class CostingController extends Controller
             'assy_name' => null,
             'pic_engineering' => null,
             'pic_marketing' => null,
+            'plant_code' => null,
+            'period' => null,
         ];
 
         if ($trackingRevisionId) {
-            $trackingRevision = DocumentRevision::with('project')->find($trackingRevisionId);
+            $trackingRevision = DocumentRevision::with(['project','plant'])->find($trackingRevisionId);
 
             if ($trackingRevision) {
+                if (filled($trackingRevision->period)) {
+                    $periods = $periods->push($trackingRevision->period)->filter()->unique()->sortDesc()->values();
+                }
                 $openUnpricedParts = UnpricedPart::where('document_revision_id', $trackingRevision->id)
                     ->whereNull('resolved_at')
                     ->orderBy('part_number')
@@ -1489,6 +1509,8 @@ class CostingController extends Controller
                         'assy_name' => $project->part_name,
                         'pic_engineering' => $trackingRevision->pic_engineering ?? null,
                         'pic_marketing' => $trackingRevision->pic_marketing ?? null,
+                        'plant_code' => $trackingRevision->plant?->code,
+                        'period' => $trackingRevision->period,
                     ];
                 }
 
@@ -1501,6 +1523,13 @@ class CostingController extends Controller
             }
         }
 
+        if ($trackingRevisionId) {
+            $cogmSubmission = \App\Models\CogmSubmission::with('comments.user')
+                ->where('document_revision_id', $trackingRevisionId)
+                ->latest('submitted_at')
+                ->first();
+        }
+
         if (!$costingDataId && $trackingRevisionId) {
             $costingDataId = CostingData::where('tracking_revision_id', $trackingRevisionId)
                 ->latest('id')
@@ -1510,7 +1539,51 @@ class CostingController extends Controller
         if ($costingDataId) {
             $costingData = CostingData::with('materialBreakdowns.material')->find($costingDataId);
             if ($costingData) {
+                $importService->backfillMissingMaterialUnits($costingData);
+                $costingData->load('materialBreakdowns.material');
                 $materialBreakdowns = $costingData->materialBreakdowns;
+            }
+        }
+        $rateSelectionKey = $costingData
+            ? 'costing_' . $costingData->id
+            : ($trackingRevisionId ? 'revision_' . $trackingRevisionId : 'new');
+        $rememberedRateSelections = (array) session('costing_rate_selections', []);
+        $rememberedExchangeRateId = array_key_exists($rateSelectionKey, $rememberedRateSelections)
+            ? (int) $rememberedRateSelections[$rateSelectionKey]
+            : (int) ($costingData->exchange_rate_id ?? 0);
+        $selectedExchangeRateId = (int) old('exchange_rate_id', $rememberedExchangeRateId);
+        $partlistAutoImportMessage = null;
+        if (!$costingData && $trackingRevision && filled($trackingRevision->partlist_file_path)) {
+            $importResult = $importService->preparePartlistImport(
+                ['tracking_revision_id' => (int) $trackingRevision->id],
+                $request
+            );
+
+            if (!empty($importResult['rows'])) {
+                $materialBreakdowns = collect($importResult['rows'])->map(function (array $row) {
+                    $breakdown = new MaterialBreakdown();
+                    $breakdown->forceFill([
+                        'row_no' => $row['row_no'] ?? null,
+                        'part_no' => $row['part_no'] ?? null,
+                        'id_code' => $row['id_code'] ?? null,
+                        'part_name' => $row['part_name'] ?? null,
+                        'qty_req' => is_numeric($row['qty_req'] ?? null) ? (int) $row['qty_req'] : 0,
+                        'pro_code' => $row['pro_code'] ?? null,
+                        'amount1' => $row['amount1'] ?? 0,
+                        'unit_price_basis' => $row['unit_price_basis'] ?? null,
+                        'currency' => $row['currency'] ?? 'IDR',
+                        'qty_moq' => $row['qty_moq'] ?? 0,
+                        'cn_type' => $row['cn_type'] ?? 'N',
+                        'import_tax_percent' => $row['import_tax'] ?? 0,
+                    ]);
+                    $breakdown->setAttribute('unit', $row['unit'] ?? null);
+                    $breakdown->setAttribute('supplier', $row['supplier'] ?? null);
+                    $breakdown->setRelation('material', null);
+                    return $breakdown;
+                });
+                $partlistAutoImportMessage = count($importResult['rows']).' baris Material dimuat otomatis dari '.$trackingRevision->partlist_original_name.'. Klik Update untuk menyimpan.';
+            } else {
+                $partlistAutoImportMessage = $importResult['error'] ?? $importResult['warning'] ?? 'Partlist tidak dapat dimuat otomatis.';
             }
         }
         $initialCycleTimes = $request->old('cycle_times', $costingData->cycle_times ?? []);
@@ -1548,6 +1621,9 @@ class CostingController extends Controller
             'plants',
             'periods',
             'wireRates',
+            'exchangeRates',
+            'selectedExchangeRateId',
+            'rateSelectionKey',
             'activeWireRate',
             'selectedWireRateId',
             'costingData',
@@ -1555,9 +1631,12 @@ class CostingController extends Controller
             'trackingRevision',
             'trackingRevisionId',
             'openUnpricedParts',
+            'partlistAutoImportMessage',
             'trackingProjectPrefill',
             'picsEngineering',
-            'picsMarketing'
+            'picsMarketing',
+            'readOnlyMode',
+            'cogmSubmission'
         ));
     }
 
@@ -1575,7 +1654,7 @@ class CostingController extends Controller
         $importCycleTimeFileUploaded = $request->hasFile('import_cycle_time_file');
         $validated = $request->validated();
 
-        $persistenceService->applySelectedWireRate($request, $validated, $updateSection);
+        $persistenceService->applySelectedExchangeRate($request, $validated, $updateSection);
 
         $importRequested = $updateSection === 'material' && ($request->boolean('import_partlist') || $importPartlistFileUploaded);
         $importFromPartlist = $updateSection === 'material' && $importPartlistFileUploaded;
@@ -1831,7 +1910,7 @@ class CostingController extends Controller
                     'part_no' => trim((string) ($row['part_no'] ?? '')),
                     'id_code' => trim((string) ($row['id_code'] ?? '')) ?: null,
                     'part_name' => trim((string) ($row['part_name'] ?? '')),
-                    'qty_req' => round($this->toFloatValue($row['qty_req'] ?? 0), 6),
+                    'qty_req' => $this->parseQuantityValue($row['qty_req'] ?? 0),
                     'pro_code' => trim((string) ($row['pro_code'] ?? '')),
                     'amount1' => round($this->toFloatValue($row['amount1'] ?? 0), 6),
                     'unit_price_basis' => round($this->toFloatValue($row['unit_price_basis'] ?? 0), 6),
@@ -1889,6 +1968,312 @@ class CostingController extends Controller
                 'message' => 'Gagal menyimpan Material: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function exportMaterialEditor(Request $request)
+    {
+        // Template v9 memuat sheet MM60 yang besar; beri waktu cukup hanya untuk proses export ini.
+        @set_time_limit(180);
+        @ini_set('max_execution_time', '180');
+        @ini_set('memory_limit', '1536M');
+
+        $validated = $request->validate([
+            'materials_json' => ['required', 'string'],
+            'cycle_times_json' => ['nullable', 'string'],
+            'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
+            'assy_no' => ['nullable', 'string', 'max:255'],
+            'assy_name' => ['nullable', 'string', 'max:255'],
+            'customer' => ['nullable', 'string', 'max:255'],
+            'model' => ['nullable', 'string', 'max:255'],
+            'project_date' => ['nullable', 'date'],
+            'sop_mp_date' => ['nullable', 'date'],
+            'forecast' => ['nullable', 'numeric'],
+            'project_period' => ['nullable', 'numeric'],
+            'plant' => ['nullable', 'string', 'max:255'],
+            'rate_usd' => ['nullable', 'numeric'],
+            'rate_jpy' => ['nullable', 'numeric'],
+            'rate_idr' => ['nullable', 'numeric'],
+            'rate_lme' => ['nullable', 'numeric'],
+            'rate_period' => ['nullable', 'date_format:Y-m-d,Y-m'],
+        ]);
+        $rows = json_decode($validated['materials_json'], true);
+        abort_unless(is_array($rows), 422, 'Data material tidak valid.');
+        $cycleRows = json_decode((string) ($validated['cycle_times_json'] ?? '[]'), true);
+        abort_unless(is_array($cycleRows), 422, 'Data Cycle Time tidak valid.');
+        abort_if(count($rows) > 739, 422, 'Template Costing maksimal menampung 739 baris material.');
+
+        $templatePath = storage_path('app/templates/form-costing-v9.xlsx');
+        abort_unless(is_file($templatePath), 500, 'Template Form Costing v9 tidak ditemukan.');
+        $spreadsheet = IOFactory::load($templatePath);
+        $sheet = $spreadsheet->getSheetByName('Material Cost');
+        $lookupSheet = $spreadsheet->getSheetByName('Lembar1');
+        $umhSheet = $spreadsheet->getSheetByName('UMH ');
+        abort_unless($sheet && $lookupSheet && $umhSheet, 500, 'Struktur template Form Costing v9 tidak valid.');
+
+        // Template sumber membawa ribuan defined name usang dari workbook eksternal.
+        // Excel akan menganggap hasil export rusak jika metadata tersebut ditulis kembali.
+        foreach ($spreadsheet->getDefinedNames() as $definedName) {
+            if (!str_starts_with($definedName->getName(), '_xlnm.')) {
+                $spreadsheet->removeDefinedName(
+                    $definedName->getName(),
+                    $definedName->getLocalOnly() ? $definedName->getWorksheet() : null
+                );
+            }
+        }
+
+        // Hilangkan referensi workbook eksternal lama yang ditolak Excel.
+        $resumeSheet = $spreadsheet->getSheetByName('Resume');
+        if ($resumeSheet) {
+            $resumeSheet->setCellValue('H44', "='COGM'!H12");
+        }
+
+        $formulaColumns = ['A', 'B', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W'];
+        $baseFormulas = [];
+        foreach ($formulaColumns as $column) {
+            $baseFormulas[$column] = (string) $sheet->getCell("{$column}18")->getValue();
+        }
+
+        foreach (['A', 'B', 'C', 'D', 'F', 'G', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB'] as $column) {
+            for ($excelRow = 18; $excelRow <= 756; $excelRow++) {
+                $sheet->setCellValue("{$column}{$excelRow}", null);
+            }
+        }
+        for ($excelRow = 1; $excelRow <= max(102, $lookupSheet->getHighestRow()); $excelRow++) {
+            for ($column = 2; $column <= 16; $column++) {
+                $lookupSheet->setCellValue([$column, $excelRow], null);
+            }
+        }
+
+        $sheet->setCellValueExplicit('F5', (string) ($validated['assy_no'] ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('F6', (string) ($validated['assy_name'] ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('F7', (string) ($validated['customer'] ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('F8', (string) ($validated['model'] ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        if (!empty($validated['project_date'])) {
+            $sheet->setCellValue('F9', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel(new \DateTimeImmutable($validated['project_date'])));
+            $sheet->getStyle('F9')->getNumberFormat()->setFormatCode('dd/mm/yyyy');
+        }
+        if (!empty($validated['sop_mp_date'])) {
+            $sheet->setCellValue('F11', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel(new \DateTimeImmutable($validated['sop_mp_date'])));
+            $sheet->getStyle('F11')->getNumberFormat()->setFormatCode('mmm-yy');
+        } else {
+            $sheet->setCellValueExplicit('F11', 'NEW', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        }
+        $sheet->setCellValue('F12', (float) ($validated['forecast'] ?? 0));
+        $sheet->setCellValue('F13', (float) ($validated['project_period'] ?? 0));
+        $plant = trim((string) preg_replace('/^\s*\d+\s*[\-–—]\s*/u', '', (string) ($validated['plant'] ?? '')));
+        $sheet->setCellValueExplicit('F14', strtoupper($plant), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+
+        foreach (['N8' => 'rate_usd', 'N9' => 'rate_jpy', 'N10' => 'rate_idr', 'N11' => 'rate_lme'] as $cell => $field) {
+            $sheet->setCellValue($cell, (float) ($validated[$field] ?? ($cell === 'N10' ? 1 : 0)));
+        }
+        $sheet->getStyle('N8:N11')->getNumberFormat()->setFormatCode('#,##0.00');
+        if (!empty($validated['rate_period'])) {
+            $ratePeriod = strlen($validated['rate_period']) === 7 ? $validated['rate_period'] . '-01' : $validated['rate_period'];
+            $sheet->setCellValue('N12', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel(new \DateTimeImmutable($ratePeriod)));
+            $sheet->getStyle('N12')->getNumberFormat()->setFormatCode('mmm-yyyy');
+        } else {
+            $sheet->setCellValue('N12', null);
+        }
+
+        $engineeringExtras = [];
+        if (!empty($validated['tracking_revision_id'])) {
+            $revision = DocumentRevision::find((int) $validated['tracking_revision_id']);
+            $partlistPath = $revision?->partlist_file_path
+                ? storage_path('app/private/' . ltrim((string) $revision->partlist_file_path, '/'))
+                : null;
+            if ($partlistPath && is_file($partlistPath)) {
+                $partlist = IOFactory::load($partlistPath)->getSheetByName('PART LIST');
+                if ($partlist) {
+                    foreach ($rows as $index => $_) {
+                        $sourceRow = $index + 12;
+                        $engineeringExtras[$index] = array_map(
+                            fn ($column) => $partlist->getCell("{$column}{$sourceRow}")->getValue(),
+                            ['K', 'L', 'M', 'N', 'O']
+                        );
+                    }
+                }
+            }
+        }
+
+        foreach ($rows as $index => $row) {
+            $excelRow = $index + 18;
+            $sheet->setCellValue("C{$excelRow}", $index + 1);
+            foreach (['D' => 'part_no', 'F' => 'id_code', 'G' => 'part_name', 'J' => 'unit', 'K' => 'pro_code'] as $column => $field) {
+                $sheet->setCellValueExplicit("{$column}{$excelRow}", (string) ($row[$field] ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+            $sheet->setCellValue("I{$excelRow}", $this->parseQuantityValue($row['qty_req'] ?? 0));
+            foreach (array_combine(['X', 'Y', 'Z', 'AA', 'AB'], $engineeringExtras[$index] ?? array_fill(0, 5, '')) as $column => $value) {
+                $sheet->setCellValue("{$column}{$excelRow}", $value);
+            }
+        }
+
+        $referenceHelper = \PhpOffice\PhpSpreadsheet\ReferenceHelper::getInstance();
+        foreach ($rows as $index => $_) {
+            $excelRow = $index + 18;
+            foreach ($baseFormulas as $column => $formula) {
+                if ($formula !== '') {
+                    $sheet->setCellValue("{$column}{$excelRow}", $referenceHelper->updateFormulaReferences($formula, 'A18', 0, $excelRow - 18, 'Material Cost'));
+                }
+            }
+        }
+
+        for ($index = 1; $index <= 15; $index++) {
+            $lookupSheet->setCellValue([$index + 1, 1], $index);
+        }
+        $seenPartNumbers = [];
+        $lookupRow = 2;
+        foreach ($rows as $index => $row) {
+            $key = mb_strtolower(trim((string) ($row['part_no'] ?? '')), 'UTF-8');
+            if (array_key_exists($key, $seenPartNumbers)) {
+                continue;
+            }
+            $seenPartNumbers[$key] = true;
+            $sourceRow = $index + 18;
+            for ($offset = 0; $offset < 8; $offset++) {
+                $lookupSheet->setCellValue([$offset + 2, $lookupRow], $sheet->getCell([$offset + 4, $sourceRow])->getValue());
+            }
+            $lookupRow++;
+        }
+
+        $umhClearUntil = max(52, $umhSheet->getHighestRow(), 9 + count($cycleRows));
+        for ($excelRow = 9; $excelRow <= $umhClearUntil; $excelRow++) {
+            for ($column = 1; $column <= 10; $column++) {
+                $umhSheet->setCellValue([$column, $excelRow], null);
+            }
+        }
+        foreach ($cycleRows as $index => $cycle) {
+            $excelRow = $index + 9;
+            if ($excelRow > 52) {
+                $umhSheet->duplicateStyle($umhSheet->getStyle('A9:J9'), "A{$excelRow}:J{$excelRow}");
+            }
+            $umhSheet->setCellValue("A{$excelRow}", $index + 1);
+            $umhSheet->setCellValueExplicit("B{$excelRow}", (string) ($cycle['process'] ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            foreach (['E' => 'qty', 'F' => 'time_hour', 'G' => 'time_sec', 'H' => 'time_sec_per_qty', 'I' => 'cost_per_sec', 'J' => 'cost_per_unit'] as $column => $field) {
+                $umhSheet->setCellValue("{$column}{$excelRow}", $this->toFloatValue($cycle[$field] ?? 0));
+            }
+        }
+        $lastCycleRow = count($cycleRows) > 0 ? 8 + count($cycleRows) : 8;
+        $totalRow = $lastCycleRow + 1;
+        if ($totalRow > 52) {
+            $umhSheet->duplicateStyle($umhSheet->getStyle('A9:J9'), "A{$totalRow}:J{$totalRow}");
+        }
+        if ($lastCycleRow >= 9) {
+            $umhSheet->setCellValue("F{$totalRow}", "=SUM(F9:F{$lastCycleRow})");
+            $umhSheet->setCellValue("G{$totalRow}", "=SUM(G9:G{$lastCycleRow})");
+            $umhSheet->setCellValue("J{$totalRow}", "=SUM(J9:J{$lastCycleRow})");
+        }
+
+        $spreadsheet->setActiveSheetIndex($spreadsheet->getIndex($sheet));
+        $sheet->setSelectedCell('D18');
+        $writer = new Xlsx($spreadsheet);
+        $writer->setPreCalculateFormulas(false);
+        $temporaryBasePath = tempnam(sys_get_temp_dir(), 'costing-v9-');
+        abort_if($temporaryBasePath === false, 500, 'Gagal menyiapkan file export sementara.');
+        $temporaryPath = $temporaryBasePath . '.xlsx';
+        @unlink($temporaryBasePath);
+        $writer->save($temporaryPath);
+        $safeAssy = Str::slug((string) ($validated['assy_no'] ?? 'project')) ?: 'project';
+
+        return response()->download($temporaryPath, "form-costing-{$safeAssy}.xlsx", [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    public function rememberSelectedExchangeRate(Request $request)
+    {
+        $validated = $request->validate([
+            'exchange_rate_id' => ['nullable', 'integer', 'exists:exchange_rates,id'],
+            'selection_key' => ['required', 'string', 'regex:/^(costing|revision)_\d+$|^new$/'],
+        ]);
+
+        $selections = (array) session('costing_rate_selections', []);
+        $selections[$validated['selection_key']] = (int) ($validated['exchange_rate_id'] ?? 0);
+        session(['costing_rate_selections' => $selections]);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function importMaterialEditor(Request $request)
+    {
+        // Workbook Form Costing memuat sheet MM60 yang sangat besar. Import hanya
+        // membutuhkan Material Cost, sehingga beri limit khusus dan jangan muat sheet lain.
+        @set_time_limit(180);
+        @ini_set('max_execution_time', '180');
+        @ini_set('memory_limit', '1536M');
+
+        $validated = $request->validate([
+            'material_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:10240'],
+        ]);
+
+        try {
+            $reader = IOFactory::createReaderForFile($validated['material_file']->getRealPath());
+            $reader->setReadDataOnly(true);
+            $reader->setLoadSheetsOnly(['Material Cost']);
+            $workbook = $reader->load($validated['material_file']->getRealPath());
+            $sheet = $workbook->getSheetByName('Material Cost');
+            if (!$sheet) {
+                return response()->json(['success' => false, 'message' => 'Sheet Material Cost tidak ditemukan. Gunakan file hasil Export Excel dari sistem.'], 422);
+            }
+            $rows = [];
+            $errors = [];
+            $seenIds = [];
+            $columnMap = ['part_no' => 'D', 'id_code' => 'F', 'part_name' => 'G', 'qty_req' => 'I', 'unit' => 'J', 'pro_code' => 'K', 'amount1' => 'L', 'unit_price_basis' => 'M', 'currency' => 'N', 'qty_moq' => 'O', 'cn_type' => 'P', 'supplier' => 'Q', 'import_tax' => 'R'];
+
+            for ($excelRow = 18; $excelRow <= $sheet->getHighestRow(); $excelRow++) {
+                $rowId = (int) $this->materialEditorCellValue($sheet->getCell("C{$excelRow}"));
+                if ($rowId <= 0) break;
+                if (isset($seenIds[$rowId])) {
+                    $errors[] = "Baris {$excelRow}: Row ID {$rowId} duplikat.";
+                    continue;
+                }
+                $seenIds[$rowId] = true;
+
+                $row = ['__row_no' => $rowId];
+                foreach ($columnMap as $field => $column) {
+                    $row[$field] = trim((string) $this->materialEditorCellValue($sheet->getCell("{$column}{$excelRow}")));
+                }
+
+                $row['currency'] = strtoupper($row['currency'] ?: 'IDR');
+                $row['cn_type'] = strtoupper($row['cn_type'] ?: 'N');
+                if (!in_array($row['currency'], ['IDR', 'USD', 'JPY'], true)) {
+                    $errors[] = "Baris {$excelRow}: Currency harus IDR, USD, atau JPY.";
+                }
+                if (!in_array($row['cn_type'], ['N', 'C', 'E'], true)) {
+                    $errors[] = "Baris {$excelRow}: C/N harus N, C, atau E.";
+                }
+                foreach (['qty_req', 'amount1', 'qty_moq', 'import_tax'] as $numericField) {
+                    if ($row[$numericField] !== '' && !preg_match('/^-?[\d.,\s]+$/', $row[$numericField])) {
+                        $errors[] = "Baris {$excelRow}: {$numericField} harus berupa angka.";
+                    } else {
+                        $row[$numericField] = (string) $this->toFloatValue($row[$numericField]);
+                    }
+                }
+                $rows[] = $row;
+            }
+
+            if ($errors) {
+                return response()->json(['success' => false, 'message' => 'File belum dapat diterapkan.', 'errors' => $errors], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => count($rows) . ' baris valid dan siap diterapkan.',
+                'rows' => $rows,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'File Excel tidak dapat dibaca: ' . $e->getMessage()], 422);
+        }
+    }
+
+    private function materialEditorCellValue(\PhpOffice\PhpSpreadsheet\Cell\Cell $cell): mixed
+    {
+        // Hindari kalkulasi ulang ribuan formula saat import. Excel menyimpan hasil
+        // kalkulasi terakhir di file; untuk input biasa, gunakan nilai sel langsung.
+        if ($cell->isFormula()) {
+            return $cell->getOldCalculatedValue() ?? '';
+        }
+
+        return $cell->getValue();
     }
 
     public function recalculateMaterial(Request $request)
@@ -3988,6 +4373,22 @@ class CostingController extends Controller
         }
 
         return is_numeric($normalized) ? (float) $normalized : 0;
+    }
+
+    private function parseQuantityValue($value): int
+    {
+        if (is_int($value) || is_float($value)) {
+            return max(0, (int) round($value));
+        }
+
+        // Qty Req ditampilkan sebagai bilangan bulat berformat Indonesia.
+        // Karena itu titik/koma pada "3.500" atau "15,000" adalah pemisah ribuan.
+        $digits = preg_replace('/[^0-9\-]/', '', trim((string) $value));
+        if ($digits === '' || $digits === '-') {
+            return 0;
+        }
+
+        return max(0, (int) $digits);
     }
 
     private function parseNumericInput($value): float

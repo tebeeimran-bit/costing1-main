@@ -78,6 +78,7 @@
     .marketing-inbox-table tr:last-child td {
         border-bottom: 0;
     }
+    .marketing-inbox-table tbody tr[data-href]{cursor:pointer;transition:background .15s}.marketing-inbox-table tbody tr[data-href]:hover{background:#eff6ff}.project-open-hint{display:block;margin-top:.25rem;color:#2563eb;font-size:.63rem;font-weight:800}
 
     .inbox-cogm {
         color: #047857;
@@ -132,10 +133,11 @@
                         $revision = $submission->revision;
                         $project = $revision?->project;
                     @endphp
-                    <tr>
+                    <tr data-href="{{ route('marketing.cogm-costing.show',$submission,absolute:false) }}" tabindex="0" aria-label="Lihat Form Costing {{ $project?->part_number }}">
                         <td>
                             <strong>{{ $project?->part_number ?? '-' }}</strong><br>
                             <span style="color:#64748b;">{{ $project?->part_name ?? '-' }}</span>
+                            <span class="project-open-hint">Klik untuk lihat Form Costing</span>
                         </td>
                         <td>{{ $project?->customer ?? '-' }}</td>
                         <td>{{ $project?->model ?? '-' }}</td>
@@ -158,4 +160,11 @@
 <div style="margin-top: 1rem;">
     {{ $submissions->onEachSide(1)->links() }}
 </div>
+<script>
+document.querySelectorAll('.marketing-inbox-table tbody tr[data-href]').forEach(function(row){
+    const open=function(){ window.location.href=row.dataset.href; };
+    row.addEventListener('click',open);
+    row.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
+});
+</script>
 @endsection

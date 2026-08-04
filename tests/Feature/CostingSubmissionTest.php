@@ -92,6 +92,7 @@ class CostingSubmissionTest extends TestCase
             'part_no' => 'P-123',
             'id_code' => 'MAT-001',
             'part_name' => 'Steel Component',
+            'unit' => 'PCS',
         ]);
 
         $material = Material::where('material_code', '__PLACEHOLDER__')->first();

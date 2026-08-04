@@ -1,4 +1,6 @@
 *
 !private/
 !public/
+!templates/
+!templates/form-costing-v9.xlsx
 !.gitignore

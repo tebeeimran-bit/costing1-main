@@ -46,6 +46,7 @@ class StoreCostingRequest extends FormRequest
             'import_partlist' => 'nullable|boolean',
             'import_cycle_time' => 'nullable|boolean',
             'wire_rate_id' => 'nullable|exists:wire_rates,id',
+            'exchange_rate_id' => 'nullable|exists:exchange_rates,id',
             'costing_resume_overrides' => 'nullable|string',
         ];
 
@@ -63,6 +64,7 @@ class StoreCostingRequest extends FormRequest
             'exchange_rate_jpy' => 'required|numeric',
             'lme_rate' => 'nullable|numeric',
             'wire_rate_id' => 'nullable|exists:wire_rates,id',
+            'exchange_rate_id' => 'nullable|exists:exchange_rates,id',
             'forecast' => 'required|integer',
             'project_period' => 'required|integer',
             'material_cost' => 'nullable|numeric',
@@ -109,7 +111,7 @@ class StoreCostingRequest extends FormRequest
                 'project_period' => 'required|integer',
             ],
             'rates' => [
-                'wire_rate_id' => 'required|exists:wire_rates,id',
+                'exchange_rate_id' => 'nullable|exists:exchange_rates,id',
                 'exchange_rate_usd' => 'required|numeric',
                 'exchange_rate_jpy' => 'required|numeric',
                 'lme_rate' => 'nullable|numeric',

@@ -26,4 +26,35 @@ class DocumentControlRegistration extends Model
     public function project(){return $this->belongsTo(DocumentProject::class,'document_project_id');}
     public function revision(){return $this->belongsTo(DocumentRevision::class,'document_revision_id');}
     public function workflowTask(){return $this->belongsTo(ProjectWorkflowTask::class,'workflow_task_id');}
+
+    public function hasCompleteDistribution(): bool
+    {
+        return filled($this->registration_no)
+            && filled($this->registration_date)
+            && $this->hasAnyDistribution();
+    }
+
+    public function hasAnyDistribution(): bool
+    {
+        return collect($this->distributionValues())->contains(fn ($value) => filled($value));
+    }
+
+    public function missingDistributionLabels(): array
+    {
+        return collect($this->distributionValues())
+            ->filter(fn ($value) => blank($value))
+            ->keys()
+            ->values()
+            ->all();
+    }
+
+    private function distributionValues(): array
+    {
+        return [
+            'PD' => $this->pd_distribution,
+            'QA' => $this->qa_distribution,
+            'PNP & QT' => $this->pnp_qt_distribution,
+            'PPE/PME' => $this->ppe_pme_distribution,
+        ];
+    }
 }

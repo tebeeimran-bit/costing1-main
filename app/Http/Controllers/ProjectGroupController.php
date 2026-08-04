@@ -4,14 +4,130 @@ namespace App\Http\Controllers;
 
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
+use App\Models\DocumentProject;
 use App\Models\DocumentControlRegistration;
 use App\Models\MaterialBreakdown;
+use App\Services\TrackingDocument\TrackingDocumentFileService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 class ProjectGroupController extends Controller
 {
+    public function costingInbox(Request $request)
+    {
+        $search = trim((string) $request->query('search', ''));
+        $status = trim((string) $request->query('status', 'active'));
+        $allowedStatuses = ['active', 'draft', 'pricing', 'rejected', 'waiting', 'approved', 'sent', 'all'];
+        if (!in_array($status, $allowedStatuses, true)) {
+            $status = 'active';
+        }
+
+        $query = CostingData::query()
+            ->with([
+                'customer', 'product', 'materialBreakdowns',
+                'trackingRevision.project.product',
+                'trackingRevision.latestApproval.submitter',
+                'trackingRevision.latestApproval.approver',
+            ])
+            ->whereNotNull('tracking_revision_id')
+            ->orderByDesc('updated_at');
+
+        if ($search !== '') {
+            $query->where(function ($builder) use ($search) {
+                $builder->where('assy_no', 'like', "%{$search}%")
+                    ->orWhere('assy_name', 'like', "%{$search}%")
+                    ->orWhere('model', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn ($customer) => $customer->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('trackingRevision.project', function ($project) use ($search) {
+                        $project->where('customer', 'like', "%{$search}%")
+                            ->orWhere('model', 'like', "%{$search}%")
+                            ->orWhere('part_number', 'like', "%{$search}%")
+                            ->orWhere('part_name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $statusMap = [
+            'draft' => [DocumentRevision::STATUS_PENDING_FORM_INPUT, DocumentRevision::STATUS_SUDAH_COSTING, DocumentRevision::STATUS_COGM_GENERATED],
+            'pricing' => [DocumentRevision::STATUS_PENDING_PRICING],
+            'rejected' => [DocumentRevision::STATUS_REJECTED_BY_COORDINATOR],
+            'waiting' => [DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL],
+            'approved' => [DocumentRevision::STATUS_APPROVED_BY_COORDINATOR],
+            'sent' => [DocumentRevision::STATUS_SUBMITTED_TO_MARKETING],
+            'active' => [
+                DocumentRevision::STATUS_PENDING_FORM_INPUT,
+                DocumentRevision::STATUS_SUDAH_COSTING,
+                DocumentRevision::STATUS_PENDING_PRICING,
+                DocumentRevision::STATUS_COGM_GENERATED,
+                DocumentRevision::STATUS_REJECTED_BY_COORDINATOR,
+                DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
+                DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
+            ],
+        ];
+        if (isset($statusMap[$status])) {
+            $query->whereHas('trackingRevision', fn ($revision) => $revision->whereIn('status', $statusMap[$status]));
+        }
+
+        $items = $query->paginate(20)->withQueryString();
+        $userRole = (string) optional($request->user())->role;
+        $items->getCollection()->transform(function (CostingData $costing) use ($userRole) {
+            $revision = $costing->trackingRevision;
+            $approval = $revision?->latestApproval;
+            $openUnpriced = $revision?->unpricedParts()->where('status', 'open')->count() ?? 0;
+            $revisionStatus = (string) ($revision?->status ?? '');
+
+            $costing->workflow_label = match ($revisionStatus) {
+                DocumentRevision::STATUS_PENDING_PRICING => 'Menunggu harga material',
+                DocumentRevision::STATUS_REJECTED_BY_COORDINATOR => 'Perlu revisi costing',
+                DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL => 'Menunggu approval coordinator',
+                DocumentRevision::STATUS_APPROVED_BY_COORDINATOR => 'Approved, siap dikirim',
+                DocumentRevision::STATUS_SUBMITTED_TO_MARKETING => 'Sudah dikirim ke Marketing',
+                default => $openUnpriced > 0 ? 'Ada part belum memiliki harga' : 'Costing sedang dikerjakan',
+            };
+            $costing->workflow_class = match ($revisionStatus) {
+                DocumentRevision::STATUS_REJECTED_BY_COORDINATOR => 'danger',
+                DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL, DocumentRevision::STATUS_PENDING_PRICING => 'warning',
+                DocumentRevision::STATUS_APPROVED_BY_COORDINATOR, DocumentRevision::STATUS_SUBMITTED_TO_MARKETING => 'success',
+                default => 'info',
+            };
+            $costing->open_unpriced_count = $openUnpriced;
+            $costing->can_submit_approval = in_array($userRole, ['admin', 'admin_costing', 'editor'], true)
+                && $openUnpriced === 0
+                && in_array($revisionStatus, [DocumentRevision::STATUS_SUDAH_COSTING, DocumentRevision::STATUS_COGM_GENERATED, DocumentRevision::STATUS_REJECTED_BY_COORDINATOR], true);
+            $costing->can_approve = in_array($userRole, ['admin', 'coordinator_costing'], true)
+                && $revisionStatus === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL;
+            $costing->can_send = in_array($userRole, ['admin', 'coordinator_costing'], true)
+                && $revisionStatus === DocumentRevision::STATUS_APPROVED_BY_COORDINATOR;
+            $costing->cogm_value = (float) $costing->material_cost + (float) $costing->labor_cost
+                + (float) $costing->overhead_cost + (float) $costing->scrap_cost;
+            $costing->approval = $approval;
+
+            return $costing;
+        });
+
+        return view('costing.inbox', compact('items', 'search', 'status'));
+    }
+
+    public function destroyGroup(Request $request, TrackingDocumentFileService $fileService)
+    {
+        $validated = $request->validate([
+            'project_ids' => ['required','array','min:1'],
+            'project_ids.*' => ['required','integer','distinct','exists:document_projects,id'],
+        ]);
+        $projects = DocumentProject::whereIn('id', $validated['project_ids'])->get();
+
+        DB::transaction(function () use ($projects, $fileService) {
+            foreach ($projects as $project) {
+                $fileService->deletePaths($fileService->collectProjectFilePaths($project));
+                $project->delete();
+            }
+        });
+
+        return redirect()->route('project')->with('success', 'Project berhasil dihapus.');
+    }
+
     public function index(Request $request)
     {
         $search = trim((string) $request->query('search', ''));
@@ -27,6 +143,8 @@ class ProjectGroupController extends Controller
             'latestApproval.approver',
             'latestApproval.rejecter',
             'latestSubmission',
+            'workflowTasks.completedBy',
+            'workflowTasks.assignedUser',
         ])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -182,6 +300,7 @@ class ProjectGroupController extends Controller
                     'customer' => $first->customer,
                     'model' => $first->model,
                     'project_name' => $this->joinUnique($items->pluck('part_name')),
+                    'assy_numbers' => $this->joinUnique($items->pluck('part_number')),
                     'pic_engineering' => $this->joinUnique($items->pluck('pic_engineering')),
                     'pic_marketing' => $this->joinUnique($items->pluck('pic_marketing')),
                     'created_at' => $items->sortBy('created_at')->first()->created_at,
@@ -201,11 +320,13 @@ class ProjectGroupController extends Controller
                         $completed = $steps->every(fn ($step) => ($step['state'] ?? null) === 'done');
                         $active = !$completed && $steps->contains(fn ($step) => ($step['state'] ?? null) === 'active');
                         $sample = $steps->first();
+                        $activeStatuses = $steps->filter(fn ($step) => ($step['state'] ?? null) === 'active')
+                            ->pluck('status')->filter()->unique()->implode(' / ');
                         return [
                             'key' => $key,
                             'label' => $sample['label'],
                             'state' => $completed ? 'done' : ($active ? 'active' : 'pending'),
-                            'status' => $completed ? 'Selesai' : ($active ? 'Sedang proses' : 'Belum dimulai'),
+                            'status' => $completed ? 'Selesai' : ($active ? ($activeStatuses ?: 'Sedang proses') : 'Belum dimulai'),
                             'date' => $steps->pluck('date')->filter()->sortDesc()->first(),
                             'pic' => $completed || $active ? $steps->pluck('pic')->filter(fn ($pic) => $pic && $pic !== '-')->unique()->implode(', ') : '-',
                         ];
@@ -239,29 +360,53 @@ class ProjectGroupController extends Controller
 
     private function buildProgress(DocumentRevision $revision, ?CostingData $costing, $drawing, $approval, $submission): array
     {
+        $workflowTasks = $revision->workflowTasks->keyBy('stage');
+        $drawingTask = $workflowTasks->get('drawing');
+        $breakdownTask = $workflowTasks->get('breakdown');
+        $costingTask = $workflowTasks->get('costing');
         $hasA00 = $revision->a00 === 'ada' || $revision->a00_received_date || $revision->status === DocumentRevision::STATUS_A00_ISSUED;
-        $hasDrawing = (bool) $drawing;
-        $hasBreakdown = $costing && $costing->materialBreakdowns->isNotEmpty();
-        $hasCosting = (bool) $costing;
-        $hasSubmit = (bool) $approval?->submitted_at;
+        $hasDrawing = $drawingTask
+            ? $drawingTask->status === 'completed'
+            : (bool) $drawing;
+        $hasBreakdown = $breakdownTask
+            ? $breakdownTask->status === 'completed'
+            : ($costing && $costing->materialBreakdowns->isNotEmpty());
+        $revisionStatus = (string) $revision->status;
+        $isRejected = $revisionStatus === DocumentRevision::STATUS_REJECTED_BY_COORDINATOR;
+        $hasCosting = !$isRejected && in_array($revisionStatus, [
+            DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
+            DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
+            DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
+        ], true);
+        $hasSubmit = in_array($revisionStatus, [
+            DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
+            DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
+        ], true);
         $hasCogm = (bool) $submission?->submitted_at;
+        $hasPartlist = filled($revision->partlist_file_path);
+        $hasUmh = filled($revision->umh_file_path);
+        $breakdownStatus = $hasBreakdown
+            ? 'Selesai'
+            : ($hasPartlist
+                ? ($hasUmh ? 'Dokumen lengkap' : 'Menunggu UMH')
+                : ($hasUmh ? 'Menunggu Partlist' : 'Menunggu dokumen Engineering'));
 
         $definitions = [
             ['key'=>'a00','label'=>'A00','done'=>$hasA00,'date'=>$revision->a00_received_date ?? $revision->created_at,'pic'=>$revision->pic_marketing],
-            ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'date'=>$drawing?->registration_date ?? $drawing?->created_at,'pic'=>$hasDrawing ? 'Document Control' : '-'],
-            ['key'=>'breakdown','label'=>'Breakdown','done'=>$hasBreakdown,'date'=>$hasBreakdown ? $costing->updated_at : null,'pic'=>$revision->pic_engineering],
-            ['key'=>'costing','label'=>'Costing','done'=>$hasCosting,'date'=>$costing?->updated_at,'pic'=>$revision->pic_engineering],
-            ['key'=>'submit','label'=>'Submit','done'=>$hasSubmit,'date'=>$approval?->submitted_at,'pic'=>$approval?->submitter?->name ?? '-'],
+            ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'date'=>$hasDrawing ? ($drawingTask?->completed_at ?? $drawing?->registration_date ?? $drawing?->created_at) : null,'pic'=>$drawingTask?->completedBy?->name ?? ($hasDrawing ? 'Document Control' : '-')],
+            ['key'=>'breakdown','label'=>'Breakdown','done'=>$hasBreakdown,'active'=>(bool)$breakdownTask,'status'=>$breakdownStatus,'date'=>$breakdownTask?->completed_at ?? $breakdownTask?->started_at ?? $breakdownTask?->available_at ?? ($hasBreakdown ? $costing?->updated_at : null),'pic'=>$breakdownTask?->completedBy?->name ?? $breakdownTask?->assignedUser?->name ?? $revision->pic_engineering],
+            ['key'=>'costing','label'=>'Costing','done'=>$hasCosting,'active'=>(bool)$costing || (bool)$costingTask,'status'=>$isRejected ? 'Perlu revisi' : ((bool)$costing ? 'Sedang proses' : 'Siap dimulai'),'date'=>$approval?->submitted_at ?? $costingTask?->started_at ?? $costingTask?->available_at ?? $costing?->updated_at,'pic'=>$costingTask?->assignedUser?->name ?? $revision->pic_engineering],
+            ['key'=>'submit','label'=>'Submit','done'=>$hasSubmit,'active'=>$revisionStatus === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,'status'=>'Menunggu approval coordinator','date'=>$approval?->approved_at ?? $approval?->submitted_at,'pic'=>$approval?->approver?->name ?? $approval?->submitter?->name ?? '-'],
             ['key'=>'cogm','label'=>'COGM','done'=>$hasCogm,'date'=>$submission?->submitted_at,'pic'=>$submission?->submitted_by ?? $submission?->pic_marketing ?? '-'],
         ];
         $lastDone = collect($definitions)->search(fn ($step) => !$step['done']);
         $activeIndex = $lastDone === false ? null : $lastDone;
 
         return collect($definitions)->map(function ($step, $index) use ($activeIndex) {
-            $state = $step['done'] ? 'done' : ($index === $activeIndex ? 'active' : 'pending');
+            $state = $step['done'] ? 'done' : (($step['active'] ?? false) || $index === $activeIndex ? 'active' : 'pending');
             return [
                 'key'=>$step['key'],'label'=>$step['label'],'state'=>$state,
-                'status'=>$state === 'done' ? 'Selesai' : ($state === 'active' ? 'Sedang proses' : 'Belum dimulai'),
+                'status'=>$state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai'),
                 'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->format('d/m/Y H:i') : null,
                 'pic'=>$step['pic'] ?: '-',
             ];

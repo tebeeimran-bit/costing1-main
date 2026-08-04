@@ -16,22 +16,27 @@
             <div class="form-grid param-grid">
                 <div class="form-group" style="grid-column: 1 / -1;">
                     <label class="form-label">Rate Aktif</label>
-                    <select name="wire_rate_id" id="wireRateSelector" class="form-select" onchange="updateRatesFromWireRate(this)">
-                        @foreach($wireRates as $wr)
-                            @php
-                                $wrLabel = $wr->period_month
-                                    ? $wr->period_month->format('M-Y')
-                                    : ($wr->request_name ?? 'Request #' . $wr->id);
-                            @endphp
-                            <option value="{{ $wr->id }}"
-                                data-usd="{{ $wr->usd_rate }}"
-                                data-jpy="{{ $wr->jpy_rate }}"
-                                data-lme="{{ $wr->lme_active }}"
-                                {{ (int) $selectedWireRateId === (int) $wr->id ? 'selected' : '' }}>
-                                {{ $wrLabel }} | JPY: {{ rtrim(rtrim(number_format((float)$wr->jpy_rate, 2, ',', '.'), '0'), ',') }} | USD: {{ number_format((float)$wr->usd_rate, 0, ',', '.') }} | LME: {{ number_format((float)$wr->lme_active, 0, ',', '.') }}
+                    <select name="exchange_rate_id" id="exchangeRateSelector" class="form-select"
+                        data-selection-key="{{ $rateSelectionKey }}"
+                        data-remember-url="{{ route('costing.selected-exchange-rate', absolute: false) }}"
+                        onchange="updateRatesFromExchangeRate(this, true)">
+                        <option value="" {{ $selectedExchangeRateId === 0 ? 'selected' : '' }}>Input manual</option>
+                        @foreach($exchangeRates as $rate)
+                            <option value="{{ $rate->id }}"
+                                data-period="{{ $rate->period_date->format('Y-m-d') }}"
+                                data-usd="{{ $rate->usd_to_idr }}"
+                                data-jpy="{{ $rate->jpy_to_idr }}"
+                                data-lme="{{ $rate->lme_copper }}"
+                                {{ (int) $selectedExchangeRateId === (int) $rate->id ? 'selected' : '' }}>
+                                {{ $rate->period_date->translatedFormat('M Y') }} | USD: Rp {{ number_format((float)$rate->usd_to_idr, 0, ',', '.') }} | JPY: Rp {{ rtrim(rtrim(number_format((float)$rate->jpy_to_idr, 2, ',', '.'), '0'), ',') }} | LME: Rp {{ number_format((float)$rate->lme_copper, 0, ',', '.') }}
                             </option>
                         @endforeach
                     </select>
+                    @if($exchangeRates->isEmpty())
+                        <small style="display:block; margin-top:0.35rem; color:var(--slate-500);">Belum ada data Rate &amp; Kurs. Isi nilai secara manual atau tambahkan data melalui menu Rate &amp; Kurs.</small>
+                    @else
+                        <small style="display:block; margin-top:0.35rem; color:var(--slate-500);">Pilih periode untuk mengisi otomatis, atau pilih Input manual untuk mengetik nilai sendiri.</small>
+                    @endif
                 </div>
                 <div class="form-group">
                     <label class="form-label">USD</label>

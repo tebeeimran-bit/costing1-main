@@ -15,9 +15,31 @@
 @include('form.partials.alerts')
 @include('form.partials.toast-script')
 
+<style>
+.readonly-toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:12px;padding:12px 14px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff}.readonly-toolbar strong{display:block;color:#1e3a8a;font-size:.82rem}.readonly-toolbar span{color:#52647c;font-size:.68rem}.readonly-back{padding:7px 11px;border:1px solid #93b4df;border-radius:7px;background:#fff;color:#1d4ed8;text-decoration:none;font-size:.68rem;font-weight:800}.costing-comment-card{margin-bottom:12px;padding:14px;border:1px solid #d8e2ef;border-radius:10px;background:#fff}.costing-comment-card h3{margin:0 0 9px;font-size:.8rem;color:#0f172a}.costing-comment-form{display:flex;gap:8px}.costing-comment-form textarea{flex:1;min-height:62px;padding:9px;border:1px solid #cbd8ea;border-radius:7px;resize:vertical;font:inherit;font-size:.72rem}.costing-comment-form button{align-self:flex-end;padding:9px 13px;border:0;border-radius:7px;background:#2864e8;color:#fff;font-size:.68rem;font-weight:800}.comment-history{display:grid;gap:7px;margin-top:10px}.comment-item{padding:9px 10px;border-radius:7px;background:#f8fafc;color:#475569;font-size:.69rem}.comment-item strong{color:#1e3a8a}.comment-item small{float:right;color:#94a3b8}.readonly-costing input,.readonly-costing select,.readonly-costing textarea{pointer-events:none;background:#f4f7fb!important;color:#475569!important}.readonly-costing button{display:none!important}@media(max-width:700px){.readonly-toolbar,.costing-comment-form{align-items:stretch;flex-direction:column}.costing-comment-form button{align-self:stretch}}
+</style>
+@if(!empty($readOnlyMode))
+<div class="readonly-toolbar"><div><strong>Mode Lihat Saja — Form Costing</strong><span>Data telah dikirim ke Marketing dan tidak dapat diubah dari halaman ini.</span></div><a class="readonly-back" href="{{ route('marketing.cogm-inbox', absolute:false) }}">Kembali ke Inbox</a></div>
+@endif
+@if($cogmSubmission && (!empty($readOnlyMode) || $cogmSubmission->comments->isNotEmpty()))
+<div class="costing-comment-card">
+    <h3>Komentar untuk Team Costing</h3>
+    @if(!empty($readOnlyMode) && in_array(auth()->user()->role, ['admin','marketing'], true))
+    <form class="costing-comment-form" method="POST" action="{{ route('marketing.cogm-comments.store',$cogmSubmission,absolute:false) }}">@csrf<textarea name="comment" required maxlength="2000" placeholder="Tulis catatan atau pertanyaan untuk Team Costing..."></textarea><button type="submit">Kirim Komentar</button></form>
+    @endif
+    <div class="comment-history">@forelse($cogmSubmission->comments as $comment)<div class="comment-item"><strong>{{ $comment->user?->name ?? 'User' }}</strong><small>{{ $comment->created_at->format('d/m/Y H:i') }}</small><div>{{ $comment->comment }}</div></div>@empty<div class="comment-item">Belum ada komentar.</div>@endforelse</div>
+</div>
+@endif
+
+@if(!empty($partlistAutoImportMessage))
+<div style="margin-bottom:1rem;padding:.75rem 1rem;border:1px solid #93c5fd;border-radius:9px;background:#eff6ff;color:#1e40af;font-size:.75rem;font-weight:700">
+    {{ $partlistAutoImportMessage }}
+</div>
+@endif
+
     @include('form.partials.unpriced-top-banner')
 
-<div class="form-page">
+<div class="form-page {{ !empty($readOnlyMode) ? 'readonly-costing' : '' }}">
     <form action="{{ route('costing.store', absolute: false) }}" method="POST" id="costingForm" enctype="multipart/form-data" autocomplete="off">
         @csrf
         <input type="hidden" name="update_section" id="updateSectionInput" value="">
@@ -36,6 +58,10 @@
             value="{{ isset($trackingRevision) && $trackingRevision ? route('tracking-documents.bulk-delete-unpriced-parts', ['revision' => $trackingRevision->id], absolute: false) : '' }}">
         <input type="hidden" id="quickMaterialUpdateUrl"
             value="{{ route('costing.material-quick-update', absolute: false) }}">
+        <input type="hidden" id="materialExcelExportUrl" value="{{ route('costing.material-excel.export', absolute: false) }}">
+        <input type="hidden" id="materialExcelImportUrl" value="{{ route('costing.material-excel.import', absolute: false) }}">
+        <input type="hidden" id="exportSopMpDate" value="{{ $trackingRevision?->project?->a00Form?->sop_mp_date?->format('Y-m-d') ?? '' }}">
+        <input type="hidden" id="exportProjectDate" value="{{ $trackingRevision?->received_date?->format('Y-m-d') ?? now()->format('Y-m-d') }}">
 
         @include('form.partials.project-info-section')
 
@@ -60,6 +86,12 @@
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="triggerMaterialImport()">
                         Import COGM
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="exportMaterialEditor()">
+                        Export Excel
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('materialEditorFileInput').click()">
+                        Import Hasil Edit
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" id="materialUndoBtn" onclick="undoMaterialTable()" disabled aria-label="Undo" title="Undo">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -172,7 +204,7 @@
                                 <td><input type="text" class="form-input import-tax number-format" name="materials[{{ $index }}][import_tax]"
                                     value="{{ rtrim(rtrim(number_format((float) ($row['import_tax'] ?? 0), 2, ',', '.'), '0'), ',') ?: '0' }}" onchange="calculateRow(this)"></td>
                                 <td class="calculated multiply-factor">1</td>
-                                <td class="calculated amount2" data-original-amount2="{{ $row['amount2'] ?? 0 }}">{{ rtrim(rtrim(number_format((float) ($row['amount2'] ?? 0), 4, ',', '.'), '0'), ',') ?: '0' }}</td>
+                                <td class="calculated amount2" data-original-amount2="{{ $row['amount2'] ?? 0 }}">{{ rtrim(rtrim(number_format((float) ($row['amount2'] ?? 0), 5, ',', '.'), '0'), ',') ?: '0' }}</td>
                                 <td class="calculated currency2">{{ $rowCurrency }}</td>
                                 <td class="calculated unit-price2">{{ isset($row['unit']) ? strtoupper(trim((string) $row['unit'])) : '' }}</td>
                                 <td class="calculated total-price">Rp {{ rtrim(rtrim(number_format((float) ($row['amount1'] ?? 0), 4, ',', '.'), '0'), ',') }}</td>
@@ -203,7 +235,7 @@
                                     if ($partNameDisplay === '') {
                                         $partNameDisplay = $breakdown->material->material_description ?? '';
                                     }
-                                    $unitDisplay = strtoupper(trim((string) ($breakdown->material?->base_uom ?? '')));
+                                    $unitDisplay = strtoupper(trim((string) ($breakdown->unit ?? $breakdown->material?->base_uom ?? '')));
                                 @endphp
                                 <tr data-row="{{ $index }}">
                                     <td>
@@ -252,7 +284,7 @@
                                             value="{{ rtrim(rtrim(number_format((float) ($breakdown->import_tax_percent ?? 0), 2, ',', '.'), '0'), ',') ?: '0' }}" onchange="calculateRow(this)">
                                     </td>
                                     <td class="calculated multiply-factor">1</td>
-                                    <td class="calculated amount2" data-original-amount2="{{ $breakdown->amount2 ?? 0 }}">{{ rtrim(rtrim(number_format($breakdown->amount2 ?? 0, 4, ',', '.'), '0'), ',') }}</td>
+                                    <td class="calculated amount2" data-original-amount2="{{ $breakdown->amount2 ?? 0 }}">{{ rtrim(rtrim(number_format($breakdown->amount2 ?? 0, 5, ',', '.'), '0'), ',') }}</td>
                                     <td class="calculated currency2">{{ $breakdown->currency ?? 'IDR' }}</td>
                                         <td class="calculated unit-price2">{{ isset($breakdown->material?->base_uom) ? strtoupper(trim((string) $breakdown->material->base_uom)) : '' }}</td>
                                     <td class="calculated total-price">Rp {{ rtrim(rtrim(number_format((float) ($breakdown->amount1 ?? 0), 4, ',', '.'), '0'), ',') }}</td>
@@ -766,6 +798,8 @@
         </div>
     </form>
 
+    <input type="file" id="materialEditorFileInput" accept=".xls,.xlsx" hidden onchange="importMaterialEditor(this)">
+
     <form action="{{ route('costing.import-partlist', absolute: false) }}" method="POST" id="partlistImportForm" enctype="multipart/form-data" style="position:absolute; width:0; height:0; overflow:hidden;">
         @csrf
         @if(isset($costingData) && $costingData)
@@ -844,6 +878,23 @@
 
 @section('scripts')
     <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const materialBody = document.getElementById('materialTableBody');
+            if (!materialBody) return;
+
+            const activateMaterialRow = (target) => {
+                const row = target.closest('tr');
+                if (!row || !materialBody.contains(row)) return;
+                materialBody.querySelectorAll('tr.material-row-active').forEach(activeRow => {
+                    if (activeRow !== row) activeRow.classList.remove('material-row-active');
+                });
+                row.classList.add('material-row-active');
+            };
+
+            materialBody.addEventListener('pointerdown', event => activateMaterialRow(event.target));
+            materialBody.addEventListener('focusin', event => activateMaterialRow(event.target));
+        });
+
         const initialCostingResumeOverrides = @json($costingData->costing_resume_overrides ?? []);
         let costingResumeOverrides = { ...(initialCostingResumeOverrides || {}) };
 
@@ -1516,24 +1567,6 @@
                 return;
             }
 
-            const validationResult = getMaterialSectionValidationResult();
-
-            if (shouldShowMaterialValidationNotice(validationResult)) {
-                event.preventDefault();
-                event.stopPropagation();
-
-                showMaterialValidationModal(validationResult.message, validationResult.type, function () {
-                    acknowledgeMaterialValidationNotice(validationResult);
-                    bypassMaterialValidationNoticeOnce = true;
-
-                    if (targetAction && typeof targetAction.click === 'function') {
-                        setTimeout(() => targetAction.click(), 50);
-                    }
-                });
-
-                return;
-            }
-
             if (isMaterialDirty) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1691,8 +1724,20 @@
             } else if (hasComma && !hasDot) {
                 str = str.replace(/,/g, '.');
             } else if (hasDot && !hasComma) {
-                // If it only has dots, assume they are ALL thousand separators from our formatter
-                str = str.replace(/\./g, '');
+                // Nilai dari server/import bisa berupa desimal baku (contoh 1138.15),
+                // sedangkan input Indonesia memakai titik sebagai pemisah ribuan.
+                // Anggap titik sebagai ribuan hanya jika polanya memang kelompok 3 digit.
+                const dotCount = (str.match(/\./g) || []).length;
+                const lastDotPos = str.lastIndexOf('.');
+                const digitsAfterLastDot = str.length - lastDotPos - 1;
+                const digitsBeforeLastDot = str.substring(0, lastDotPos).replace('-', '').length;
+                const looksLikeLeadingDecimal = /^-?0\.\d+$/.test(str);
+                const looksLikeThousands = !looksLikeLeadingDecimal
+                    && (dotCount > 1 || (digitsAfterLastDot === 3 && digitsBeforeLastDot > 1));
+
+                if (looksLikeThousands) {
+                    str = str.replace(/\./g, '');
+                }
             }
 
             return parseFloat(str) || 0;
@@ -1805,7 +1850,7 @@
             }
 
             const amount2Raw = (unitDivisor !== 0) ? (numerator / unitDivisor) : 0;
-            const amount2Display = Number(amount2Raw.toFixed(4));
+            const amount2Display = Number(amount2Raw.toFixed(5));
 
             const amount2Element = row.querySelector('.amount2');
             if (amount2Element) {
@@ -2505,8 +2550,8 @@
             const periodMonths = projectLifeYears > 0 ? projectLifeYears * 12 : 0;
             const totalCycleSec = parseCycleNumber(document.getElementById('cycleTotalSec')?.textContent || 0);
             const totalCycleHour = parseCycleNumber(document.getElementById('cycleTotalHour')?.textContent || 0);
-            const selectedRate = document.getElementById('wireRateSelector')?.selectedOptions?.[0]?.textContent?.trim() || 'Rate Request';
-            const rateTitle = selectedRate.split('|')[0]?.trim() || 'Rate Request';
+            const selectedRate = document.getElementById('exchangeRateSelector')?.selectedOptions?.[0]?.textContent?.trim() || 'Input manual';
+            const rateTitle = selectedRate.split('|')[0]?.trim() || 'Input manual';
 
             costingResumeSetText('crCustomer', costingResumeFieldValue('select[name="customer_id"]'));
             costingResumeSetText('crModel', costingResumeFieldValue('input[name="model"]'));
@@ -2726,6 +2771,173 @@
             });
 
             return rows;
+        }
+
+        function collectCycleRowsForExcel() {
+            return Array.from(document.querySelectorAll('#cycleTimeTableBody tr')).map((row, index) => ({
+                no: index + 1,
+                process: row.querySelector('.ct-process')?.value || '',
+                qty: parseCycleNumber(row.querySelector('.ct-qty')?.value || 0),
+                time_hour: parseCycleNumber(row.querySelector('.ct-hour')?.value || 0),
+                time_sec: parseCycleNumber(row.querySelector('.ct-sec')?.value || 0),
+                time_sec_per_qty: parseCycleNumber(row.querySelector('.ct-sec-per')?.value || 0),
+                cost_per_sec: parseCycleNumber(row.querySelector('.ct-cost-sec')?.value || 0),
+                cost_per_unit: parseCycleNumber(row.querySelector('.ct-cost-unit')?.value || 0),
+            }));
+        }
+
+        async function exportMaterialEditor() {
+            const url = document.getElementById('materialExcelExportUrl')?.value || '';
+            const token = document.querySelector('#costingForm input[name="_token"]')?.value || '';
+            const rows = collectMaterialRowsForPayload();
+
+            if (!url || rows.length === 0) {
+                openAppNotify('Belum ada baris Material yang dapat diexport.', 'info');
+                return;
+            }
+
+            showAppLoading('Membuat file Excel Material...');
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    },
+                    body: JSON.stringify({
+                        materials_json: JSON.stringify(rows),
+                        cycle_times_json: JSON.stringify(collectCycleRowsForExcel()),
+                        tracking_revision_id: document.querySelector('#costingForm [name="tracking_revision_id"]')?.value || '',
+                        assy_no: document.querySelector('#costingForm [name="assy_no"]')?.value || '',
+                        assy_name: document.querySelector('#costingForm [name="assy_name"]')?.value || '',
+                        customer: (() => {
+                            const text = document.querySelector('#costingForm [name="customer_id"]')?.selectedOptions?.[0]?.textContent?.trim() || '';
+                            return text.includes(' - ') ? text.split(' - ').slice(1).join(' - ').trim() : text;
+                        })(),
+                        model: document.querySelector('#costingForm [name="model"]')?.value || '',
+                        project_date: document.getElementById('exportProjectDate')?.value || '',
+                        sop_mp_date: document.getElementById('exportSopMpDate')?.value || '',
+                        forecast: document.getElementById('forecast')?.value || '0',
+                        project_period: document.getElementById('projectPeriod')?.value || '0',
+                        plant: document.querySelector('#costingForm [name="line"]')?.selectedOptions?.[0]?.textContent?.trim() || '',
+                        rate_usd: parseRateInputValue(document.getElementById('rateUSD')?.value || 0),
+                        rate_jpy: parseRateInputValue(document.getElementById('rateJPY')?.value || 0),
+                        rate_idr: parseRateInputValue(document.getElementById('rateIDR')?.value || 1),
+                        rate_lme: parseRateInputValue(document.getElementById('lmeRate')?.value || 0),
+                        rate_period: document.getElementById('exchangeRateSelector')?.selectedOptions?.[0]?.dataset?.period
+                            || document.getElementById('periodInput')?.value
+                            || '',
+                    }),
+                });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    let message = 'File Excel gagal dibuat.';
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        message = errorData.message || message;
+                    } catch (error) {
+                        if (response.status === 500) {
+                            message = 'Proses export dihentikan server. Silakan coba kembali; template besar dapat membutuhkan sekitar 30–60 detik.';
+                        }
+                    }
+                    throw new Error(message);
+                }
+
+                const blob = await response.blob();
+                const disposition = response.headers.get('Content-Disposition') || '';
+                const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+                const filename = filenameMatch ? filenameMatch[1] : 'material-costing-edit.xlsx';
+                const downloadUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(downloadUrl);
+                openAppNotify(rows.length + ' baris Material berhasil diexport.', 'success');
+            } catch (error) {
+                openAppNotify(error.message || 'Export Excel gagal.', 'error');
+            } finally {
+                hideAppLoading();
+            }
+        }
+
+        async function importMaterialEditor(input) {
+            const file = input?.files?.[0];
+            if (!file) return;
+
+            const url = document.getElementById('materialExcelImportUrl')?.value || '';
+            const token = document.querySelector('#costingForm input[name="_token"]')?.value || '';
+            const formData = new FormData();
+            formData.append('material_file', file);
+
+            showAppLoading('Memeriksa file Excel Material...');
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
+                    body: formData,
+                });
+                const data = await response.json();
+                if (!response.ok || data.success === false) {
+                    const details = Array.isArray(data.errors) ? '\n' + data.errors.slice(0, 8).join('\n') : '';
+                    throw new Error((data.message || 'Import Excel gagal.') + details);
+                }
+
+                const currentRows = Array.from(document.querySelectorAll('#materialTableBody tr'));
+                const invalidIds = data.rows.filter((row) => Number(row.__row_no) < 1 || Number(row.__row_no) > currentRows.length);
+                if (invalidIds.length > 0 || data.rows.length !== currentRows.length) {
+                    throw new Error('Jumlah atau Row ID pada Excel tidak sesuai tabel saat ini. Gunakan file export terbaru dan jangan menambah/menghapus baris di Excel.');
+                }
+
+                const changedRows = data.rows.filter((incoming) => {
+                    const current = currentRows[Number(incoming.__row_no) - 1];
+                    return Object.entries(incoming).some(([field, value]) => {
+                        if (field === '__row_no') return false;
+                        const control = current?.querySelector(`[name$="[${field}]"]`);
+                        return control && String(control.value ?? '').trim() !== String(value ?? '').trim();
+                    });
+                });
+
+                hideAppLoading();
+                openAppConfirm(
+                    `${data.rows.length} baris valid. ${changedRows.length} baris terdeteksi berubah. Terapkan ke tabel Material?`,
+                    function () { applyMaterialEditorRows(data.rows); }
+                );
+            } catch (error) {
+                hideAppLoading();
+                openAppNotify(error.message || 'Import Excel gagal.', 'error');
+            } finally {
+                input.value = '';
+            }
+        }
+
+        function applyMaterialEditorRows(rows) {
+            const tableRows = Array.from(document.querySelectorAll('#materialTableBody tr'));
+            const beforeSnapshot = getMaterialStateSnapshot();
+
+            rows.forEach((incoming) => {
+                const row = tableRows[Number(incoming.__row_no) - 1];
+                if (!row) return;
+
+                Object.entries(incoming).forEach(([field, value]) => {
+                    if (field === '__row_no') return;
+                    const control = row.querySelector(`[name$="[${field}]"]`);
+                    if (control) control.value = value ?? '';
+                });
+                row.dataset.materialDirty = '1';
+                const calculatorControl = row.querySelector('.qty-req, .amount1, .currency');
+                if (calculatorControl) calculateRow(calculatorControl);
+            });
+
+            isMaterialDirty = true;
+            const afterSnapshot = getMaterialStateSnapshot();
+            pushMaterialHistoryAction({ type: 'snapshot', before: beforeSnapshot, after: afterSnapshot });
+            calculateTableTotal();
+            refreshUnpricedRecap();
+            openAppNotify(rows.length + ' baris diterapkan. Periksa hasilnya lalu tekan Update untuk menyimpan.', 'success');
         }
 
         function normalizeMaterialRowsForCompare(rows) {
@@ -4131,11 +4343,71 @@
             });
         }
 
-        function updateRatesFromWireRate(select) {
+        function setRateInputsLocked(locked) {
+            ['rateUSD', 'rateJPY', 'lmeRate'].forEach((id) => {
+                const input = document.getElementById(id);
+                if (!input) return;
+
+                input.readOnly = locked;
+                input.setAttribute('aria-readonly', locked ? 'true' : 'false');
+                input.style.backgroundColor = locked ? '#f1f5f9' : '';
+                input.style.cursor = locked ? 'not-allowed' : '';
+            });
+        }
+
+        function rememberSelectedExchangeRate(select) {
+            const selectionKey = select?.dataset?.selectionKey || 'new';
+            const selectedId = select?.value || '';
+            const storageKey = `costing-rate-selection:${selectionKey}`;
+
+            try {
+                window.localStorage.setItem(storageKey, selectedId);
+            } catch (error) {}
+
+            const url = select?.dataset?.rememberUrl || '';
+            const token = document.querySelector('#costingForm input[name="_token"]')?.value || '';
+            if (!url) return;
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    exchange_rate_id: selectedId || null,
+                    selection_key: selectionKey,
+                }),
+            }).catch(() => {});
+        }
+
+        function restoreSelectedExchangeRate(select) {
             if (!select) return;
+            const selectionKey = select.dataset.selectionKey || 'new';
+            try {
+                const rememberedId = window.localStorage.getItem(`costing-rate-selection:${selectionKey}`);
+                if (rememberedId !== null && Array.from(select.options).some((option) => option.value === rememberedId)) {
+                    select.value = rememberedId;
+                }
+            } catch (error) {}
+        }
+
+        function updateRatesFromExchangeRate(select, shouldRemember = false) {
+            if (!select) return;
+
+            if (shouldRemember) {
+                rememberSelectedExchangeRate(select);
+            }
 
             const option = select.options[select.selectedIndex];
             if (!option) return;
+
+            // Pilihan kosong berarti pengguna ingin mempertahankan/mengisi rate secara manual.
+            if (!option.value) {
+                setRateInputsLocked(false);
+                return;
+            }
 
             const usd = option.getAttribute('data-usd');
             const jpy = option.getAttribute('data-jpy');
@@ -4161,6 +4433,8 @@
             if (lmeInput && lme !== null && lme !== '') {
                 lmeInput.value = formatRateDisplayValue(lme);
             }
+
+            setRateInputsLocked(true);
 
             // Setelah rate berubah, hitung ulang Material karena Total Price (IDR)
             // bergantung pada USD/JPY.
@@ -4538,9 +4812,10 @@
             updateMaterialSelectAllRowsState();
             formatForecastDisplay();
 
-            const wireRateSelector = document.getElementById('wireRateSelector');
-            if (wireRateSelector) {
-                updateRatesFromWireRate(wireRateSelector);
+            const exchangeRateSelector = document.getElementById('exchangeRateSelector');
+            if (exchangeRateSelector) {
+                restoreSelectedExchangeRate(exchangeRateSelector);
+                updateRatesFromExchangeRate(exchangeRateSelector);
             }
 
             // Recalculate material rows on load so Multiply Factor follows the Excel formula.
@@ -4606,7 +4881,7 @@
                         updateSectionInput.value = section;
                     }
 
-                    if (section !== 'material') {
+                    if (section === 'material') {
                         const validationResult = getMaterialSectionValidationResult();
 
                         if (shouldShowMaterialValidationNotice(validationResult)) {
@@ -4751,7 +5026,7 @@
                 qtyReqInput.value = floatToInput(Math.round(qtyReq));
                 amount1Input.value = floatToInput(normalizedAmount1.toFixed(4));
                 qtyMoqInput.value = floatToInput(Number(moq.toFixed(4)));
-                amount2Element.textContent = floatToInput(Number(normalizedAmount2.toFixed(4)));
+                amount2Element.textContent = floatToInput(Number(normalizedAmount2.toFixed(5)));
             });
         }
 
@@ -4920,4 +5195,14 @@
         });
 
     </script>
+    @if(!empty($readOnlyMode))
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.readonly-costing input, .readonly-costing select, .readonly-costing textarea, .readonly-costing button').forEach(function (control) {
+                control.disabled = true;
+                control.setAttribute('aria-disabled', 'true');
+            });
+        });
+    </script>
+    @endif
 @endsection

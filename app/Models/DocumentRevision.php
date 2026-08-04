@@ -23,6 +23,8 @@ class DocumentRevision extends Model
         'document_project_id',
         'version_number',
         'received_date',
+        'plant_id',
+        'period',
         'pic_engineering',
         'status',
         'cogm_generated_at',
@@ -64,6 +66,11 @@ class DocumentRevision extends Model
     public function project()
     {
         return $this->belongsTo(DocumentProject::class, 'document_project_id');
+    }
+
+    public function plant()
+    {
+        return $this->belongsTo(Plant::class);
     }
 
     public function cogmSubmissions()

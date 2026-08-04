@@ -4,8 +4,8 @@ namespace App\Services\Costing;
 
 use App\Models\BusinessCategory;
 use App\Models\CostingData;
+use App\Models\ExchangeRate;
 use App\Models\Product;
-use App\Models\WireRate;
 use Illuminate\Http\Request;
 
 class CostingPersistenceService
@@ -18,6 +18,7 @@ class CostingPersistenceService
         'model',
         'assy_no',
         'assy_name',
+        'exchange_rate_id',
         'exchange_rate_usd',
         'exchange_rate_jpy',
         'lme_rate',
@@ -35,7 +36,7 @@ class CostingPersistenceService
 
     private const SECTION_PAYLOAD_MAP = [
         'informasi_project' => ['customer_id', 'tracking_revision_id', 'period', 'line', 'model', 'assy_no', 'assy_name', 'forecast', 'project_period', 'costing_resume_overrides'],
-        'rates' => ['exchange_rate_usd', 'exchange_rate_jpy', 'lme_rate', 'tracking_revision_id', 'costing_resume_overrides'],
+        'rates' => ['exchange_rate_id', 'exchange_rate_usd', 'exchange_rate_jpy', 'lme_rate', 'tracking_revision_id', 'costing_resume_overrides'],
         'material' => ['forecast', 'project_period', 'material_cost', 'labor_cost', 'overhead_cost', 'scrap_cost', 'revenue', 'qty_good', 'tracking_revision_id', 'costing_resume_overrides'],
         'unpriced_parts' => ['tracking_revision_id', 'costing_resume_overrides'],
         'cycle_time' => ['cycle_times', 'tracking_revision_id', 'costing_resume_overrides'],
@@ -57,23 +58,27 @@ class CostingPersistenceService
         'costing_resume_overrides' => [],
     ];
 
-    public function applySelectedWireRate(Request $request, array $validated, string $updateSection): void
+    public function applySelectedExchangeRate(Request $request, array $validated, string $updateSection): void
     {
-        if ($updateSection !== 'rates' || empty($validated['wire_rate_id'])) {
+        if ($updateSection !== 'rates') {
             return;
         }
 
-        $selectedWireRate = WireRate::find((int) $validated['wire_rate_id']);
-        if (!$selectedWireRate) {
+        if (empty($validated['exchange_rate_id'])) {
+            $request->merge(['exchange_rate_id' => null]);
             return;
         }
 
-        session(['wire_selected_rate_id' => (int) $selectedWireRate->id]);
+        $selectedRate = ExchangeRate::find((int) $validated['exchange_rate_id']);
+        if (!$selectedRate) {
+            return;
+        }
 
         $request->merge([
-            'exchange_rate_usd' => (float) ($selectedWireRate->usd_rate ?? 0),
-            'exchange_rate_jpy' => (float) ($selectedWireRate->jpy_rate ?? 0),
-            'lme_rate' => (float) ($selectedWireRate->lme_active ?? 0),
+            'exchange_rate_id' => (int) $selectedRate->id,
+            'exchange_rate_usd' => (float) ($selectedRate->usd_to_idr ?? 0),
+            'exchange_rate_jpy' => (float) ($selectedRate->jpy_to_idr ?? 0),
+            'lme_rate' => (float) ($selectedRate->lme_copper ?? 0),
         ]);
     }
 

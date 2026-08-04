@@ -5,9 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\DocumentControlRegistration;
 use App\Models\DocumentControlColumn;
 use App\Models\DocumentControlCustomCell;
+use App\Models\DocumentProject;
+use App\Models\DocumentRevision;
+use App\Models\Product;
 use App\Models\ProjectWorkflowTask;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class DocumentControlRegistrationController extends Controller
@@ -54,6 +59,47 @@ class DocumentControlRegistrationController extends Controller
             ? ProjectWorkflowTask::where('stage',ProjectWorkflowTask::STAGE_DRAWING)->findOrFail($request->integer('workflow_task_id'))
             : null;
         $payload=$this->validated($request);
+        if (!$workflowTask && $request->boolean('create_manual_project')) {
+            $request->validate([
+                'customer' => ['required','string','max:500'],
+                'project' => ['required','string','max:500'],
+                'part_number' => ['required','string','max:500'],
+                'part_name' => ['required','string','max:500'],
+                'business_category' => ['required','string','max:500'],
+            ]);
+            $workflowTask = DB::transaction(function () use ($payload, $request) {
+                $categoryName = trim((string) $payload['business_category']);
+                $product = Product::firstOrCreate(
+                    ['name' => $categoryName],
+                    ['code' => strtoupper(Str::slug($categoryName, '-')), 'line' => '']
+                );
+                $projectKey = hash('sha256', mb_strtolower(implode('|', [
+                    trim((string) $payload['customer']), trim((string) $payload['project']),
+                    trim((string) $payload['part_number']), trim((string) $payload['part_name']),
+                ])));
+                $project = DocumentProject::firstOrCreate(['project_key' => $projectKey], [
+                    'product_id' => $product->id, 'customer' => $payload['customer'],
+                    'model' => $payload['project'], 'part_number' => $payload['part_number'],
+                    'part_name' => $payload['part_name'],
+                ]);
+                $version = ((int) $project->revisions()->max('version_number')) + 1;
+                $revision = DocumentRevision::create([
+                    'document_project_id' => $project->id, 'version_number' => $version,
+                    'received_date' => $payload['registration_date'], 'pic_engineering' => $request->user()->name,
+                    'status' => DocumentRevision::STATUS_PENDING_FORM_INPUT, 'a00' => 'tidak ada',
+                    'partlist_original_name' => '', 'partlist_file_path' => '',
+                    'umh_original_name' => '', 'umh_file_path' => '',
+                    'change_remark' => 'Registrasi Drawing manual tanpa proses A00.',
+                ]);
+                return ProjectWorkflowTask::create([
+                    'document_project_id' => $project->id, 'document_revision_id' => $revision->id,
+                    'stage' => ProjectWorkflowTask::STAGE_DRAWING, 'assigned_role' => 'document_control',
+                    'status' => ProjectWorkflowTask::STATUS_PENDING, 'available_at' => now(),
+                    'metadata' => ['source' => 'manual_drawing_registration', 'without_a00' => true],
+                ]);
+            });
+            $payload['a00'] = 'tidak ada';
+        }
         if($workflowTask){
             $registration=DocumentControlRegistration::firstOrNew(['workflow_task_id'=>$workflowTask->id]);
             $isNew=!$registration->exists;
@@ -67,19 +113,85 @@ class DocumentControlRegistrationController extends Controller
             }
             $registration->save();
         }else{
-            DocumentControlRegistration::create($payload+[
+            $registration=DocumentControlRegistration::create($payload+[
                 'created_by'=>$request->user()->id,
                 'row_order'=>((int)DocumentControlRegistration::max('row_order'))+1000,
             ]);
         }
         if($workflowTask && $workflowTask->status===ProjectWorkflowTask::STATUS_PENDING) $workflowTask->update(['status'=>ProjectWorkflowTask::STATUS_IN_PROGRESS,'assigned_user_id'=>$request->user()->id,'started_at'=>now()]);
-        return back()->with('success', $workflowTask ? 'Registrasi drawing berhasil disimpan.' : 'Registrasi document control berhasil ditambahkan.');
+        if ($workflowTask && $request->boolean('complete_distribution')) {
+            return $this->completeDistribution($request, $workflowTask->fresh());
+        }
+        $message = $workflowTask ? 'Registrasi drawing berhasil disimpan.' : 'Registrasi document control berhasil ditambahkan.';
+        if ($request->expectsJson()) return response()->json(['message' => $message]);
+        return back()->with('success', $message);
     }
 
     public function update(Request $request, DocumentControlRegistration $registration)
     {
         $registration->update($this->validated($request));
+        if ($request->expectsJson()) return response()->json(['message' => 'Registrasi berhasil diperbarui.']);
         return back()->with('success', 'Registrasi berhasil diperbarui.');
+    }
+
+    public function completeDistribution(Request $request, ProjectWorkflowTask $task)
+    {
+        abort_unless($task->stage === ProjectWorkflowTask::STAGE_DRAWING && $task->assigned_role === 'document_control', 404);
+
+        $registration = DocumentControlRegistration::where('workflow_task_id', $task->id)->first();
+        if (!$registration) {
+            return back()->with('error', 'Registrasi drawing harus disimpan sebelum distribusi diselesaikan.');
+        }
+
+        $required = [
+            'registration_no' => 'nomor registrasi',
+            'registration_date' => 'tanggal registrasi',
+        ];
+        $missing = collect($required)->filter(fn ($label, $field) => blank($registration->{$field}))->values();
+        if ($missing->isNotEmpty()) {
+            return back()->with('error', 'Lengkapi '. $missing->join(', ', ' dan ') .' sebelum menyelesaikan distribusi.');
+        }
+        if (!$registration->hasAnyDistribution()) {
+            return back()->with('error', 'Isi minimal satu tanggal distribusi sebelum menyelesaikan proses drawing.');
+        }
+
+        $pendingDistributions = $registration->missingDistributionLabels();
+
+        DB::transaction(function () use ($request, $task, $registration, $pendingDistributions) {
+            $task->lockForUpdate()->find($task->id);
+            if ($task->status !== ProjectWorkflowTask::STATUS_COMPLETED) {
+                $task->update([
+                    'status' => ProjectWorkflowTask::STATUS_COMPLETED,
+                    'assigned_user_id' => $task->assigned_user_id ?: $request->user()->id,
+                    'started_at' => $task->started_at ?: now(),
+                    'completed_by_id' => $request->user()->id,
+                    'completed_at' => now(),
+                ]);
+            }
+
+            ProjectWorkflowTask::firstOrCreate([
+                'document_revision_id' => $task->document_revision_id,
+                'stage' => ProjectWorkflowTask::STAGE_BREAKDOWN,
+            ], [
+                'document_project_id' => $task->document_project_id,
+                'assigned_role' => 'admin_costing',
+                'status' => ProjectWorkflowTask::STATUS_PENDING,
+                'available_at' => now(),
+                'metadata' => [
+                    'source' => 'drawing_distribution',
+                    'drawing_task_id' => $task->id,
+                    'registration_id' => $registration->id,
+                    'registration_no' => $registration->registration_no,
+                    'pending_distributions' => $pendingDistributions,
+                ],
+            ]);
+        });
+
+        $message = 'Distribusi drawing selesai dan task Breakdown telah dikirim ke Admin Costing.';
+        if ($pendingDistributions !== []) {
+            $message .= ' Belum didistribusikan ke: '.implode(', ', $pendingDistributions).'.';
+        }
+        return redirect()->route('document-control.inbox')->with('success', $message);
     }
 
     public function destroy(Request $request, DocumentControlRegistration $registration)

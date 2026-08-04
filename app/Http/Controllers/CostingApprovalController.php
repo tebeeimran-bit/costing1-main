@@ -172,6 +172,21 @@ class CostingApprovalController extends Controller
         return view('reports.marketing-cogm-inbox', compact('submissions'));
     }
 
+    public function storeMarketingComment(Request $request, CogmSubmission $submission)
+    {
+        $this->authorizeRole($request, ['admin', 'marketing']);
+        $validated = $request->validate([
+            'comment' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $submission->comments()->create([
+            'user_id' => $request->user()->id,
+            'comment' => trim($validated['comment']),
+        ]);
+
+        return back()->with('success', 'Komentar berhasil dikirim ke Team Costing.');
+    }
+
     private function authorizeRole(Request $request, array $allowedRoles): void
     {
         $role = (string) ($request->user()->role ?? '');

@@ -31,6 +31,10 @@ class TrackingDocumentController extends Controller
     {
         $projectService->createReceipt($request->validated(), $request);
 
+        if ($request->boolean('embedded')) {
+            return view('tracking-documents.created');
+        }
+
         return redirect()->route('project')
             ->with('success', 'Project baru berhasil dibuat.');
     }

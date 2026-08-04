@@ -2,12 +2,56 @@
 
 namespace App\Services\Costing;
 
+use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class CostingImportService
 {
+    public function backfillMissingMaterialUnits(CostingData $costingData): int
+    {
+        $missingRows = $costingData->materialBreakdowns
+            ->filter(fn ($row) => trim((string) ($row->unit ?? '')) === '');
+        if ($missingRows->isEmpty()) {
+            return 0;
+        }
+
+        $revision = $costingData->trackingRevision;
+        $partlistPath = $revision?->partlist_file_path
+            ? storage_path('app/private/' . ltrim((string) $revision->partlist_file_path, '/'))
+            : null;
+        if (!$partlistPath || !is_file($partlistPath)) {
+            return 0;
+        }
+
+        try {
+            $workbook = IOFactory::load($partlistPath);
+            $sheet = $workbook->getSheetByName('PART LIST') ?? $workbook->getActiveSheet();
+            $updated = 0;
+
+            foreach ($missingRows as $index => $breakdown) {
+                $sourceRow = 11 + ((int) ($breakdown->row_no ?: ($index + 1)));
+                $unit = strtoupper(trim((string) $sheet->getCell("I{$sourceRow}")->getCalculatedValue()));
+                if ($unit === '' || $unit === '-') {
+                    continue;
+                }
+                $breakdown->unit = $unit;
+                $breakdown->save();
+                $updated++;
+            }
+
+            $workbook->disconnectWorksheets();
+            return $updated;
+        } catch (\Throwable $e) {
+            \Log::warning('Gagal backfill Unit material dari partlist.', [
+                'costing_data_id' => $costingData->id,
+                'message' => $e->getMessage(),
+            ]);
+            return 0;
+        }
+    }
+
     public function preparePartlistImport(array $validated, $request): array
     {
         $trackingRevisionId = isset($validated['tracking_revision_id']) ? (int) $validated['tracking_revision_id'] : null;
@@ -139,13 +183,15 @@ class CostingImportService
             $rows = [];
 
             for ($row = 12; $row <= $highestRow; $row++) {
-                $partNo = trim((string) $sheet->getCell('D' . $row)->getCalculatedValue());
-                $partName = trim((string) $sheet->getCell('E' . $row)->getCalculatedValue());
-                $qtyReq = trim((string) $sheet->getCell('F' . $row)->getCalculatedValue());
-                $unit = trim((string) $sheet->getCell('G' . $row)->getCalculatedValue());
-                $idCode = trim((string) $sheet->getCell('H' . $row)->getCalculatedValue());
-                $proCode = trim((string) $sheet->getCell('I' . $row)->getCalculatedValue());
-                $supplier = trim((string) $sheet->getCell('J' . $row)->getCalculatedValue());
+                // Template Engineering: D=NO, E=SUPPLIER PART NO, F=ID CODE,
+                // G=PART NAME, H=QTY REQ COSTING, I=UNIT, J=PRO CODE.
+                $partNo = trim((string) $sheet->getCell('E' . $row)->getCalculatedValue());
+                $idCode = trim((string) $sheet->getCell('F' . $row)->getCalculatedValue());
+                $partName = trim((string) $sheet->getCell('G' . $row)->getCalculatedValue());
+                $qtyReq = trim((string) $sheet->getCell('H' . $row)->getCalculatedValue());
+                $unit = trim((string) $sheet->getCell('I' . $row)->getCalculatedValue());
+                $proCode = trim((string) $sheet->getCell('J' . $row)->getCalculatedValue());
+                $supplier = '';
 
                 if ($partNo === '' && $partName === '' && $qtyReq === '' && $unit === '' && $idCode === '' && $proCode === '' && $supplier === '') {
                     continue;

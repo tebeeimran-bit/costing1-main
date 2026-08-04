@@ -21,6 +21,7 @@ class CostingData extends Model
         'model',
         'assy_no',
         'assy_name',
+        'exchange_rate_id',
         'exchange_rate_usd',
         'exchange_rate_jpy',
         'lme_rate',
@@ -58,6 +59,11 @@ class CostingData extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function exchangeRate()
+    {
+        return $this->belongsTo(ExchangeRate::class);
     }
 
     public function materialBreakdowns()

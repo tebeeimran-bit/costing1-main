@@ -136,6 +136,20 @@
                         <span>Control Project — A00</span>
                     </a>
                     @endif
+                    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'admin_costing'], true))
+                    <a href="{{ route('breakdown.inbox', absolute: false) }}"
+                        class="sidebar-nav-item {{ request()->routeIs('breakdown.*') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
+                        <span>Inbox Breakdown</span>
+                    </a>
+                    @endif
+                    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'admin_costing', 'editor', 'coordinator_costing'], true))
+                    <a href="{{ route('costing.inbox', absolute: false) }}"
+                        class="sidebar-nav-item {{ request()->routeIs('costing.inbox') ? 'active' : '' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/><path d="M9 9v11"/><path d="M13 13h4M13 17h4"/></svg>
+                        <span>Inbox Costing</span>
+                    </a>
+                    @endif
                     @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'document_control'], true))
                     <a href="{{ route('document-control.inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('document-control.*') ? 'active' : '' }}">
@@ -729,12 +743,17 @@
             overlay.classList.add('is-hidden');
         }
 
-        function openAppConfirm(message, onConfirm) {
+        function openAppConfirm(message, onConfirm, options = {}) {
             const modal = document.getElementById('app-confirm-modal');
             const messageNode = document.getElementById('app-confirm-message');
+            const titleNode = document.getElementById('app-confirm-title');
             const okButton = document.getElementById('app-confirm-ok');
 
             messageNode.textContent = message || 'Apakah Anda yakin ingin melanjutkan?';
+            titleNode.textContent = options.title || 'Konfirmasi Aksi';
+            okButton.textContent = options.buttonLabel || 'Ya, Lanjutkan';
+            okButton.classList.toggle('app-confirm-btn-danger', options.tone !== 'primary');
+            okButton.classList.toggle('app-confirm-btn-primary', options.tone === 'primary');
             appConfirmCurrentOnConfirm = onConfirm;
             modal.classList.remove('is-hidden');
             document.body.style.overflow = 'hidden';
@@ -886,6 +905,10 @@
                 openAppConfirm(message, function () {
                     showAppLoading();
                     HTMLFormElement.prototype.submit.call(form);
+                }, {
+                    title: form.dataset.confirmTitle || 'Konfirmasi Aksi',
+                    buttonLabel: form.dataset.confirmButton || 'Ya, Lanjutkan',
+                    tone: form.dataset.confirmTone || 'danger',
                 });
             });
 

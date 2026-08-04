@@ -9,6 +9,7 @@ use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\DocumentReceiptController;
 use App\Http\Controllers\DocumentControlRegistrationController;
 use App\Http\Controllers\DocumentControlInboxController;
+use App\Http\Controllers\BreakdownInboxController;
 use App\Http\Controllers\ProjectA00Controller;
 use App\Http\Controllers\ProjectGroupController;
 use App\Http\Controllers\ReportController;
@@ -28,6 +29,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/a00/create',[ProjectA00Controller::class,'create'])->name('a00.create');
         Route::post('/a00',[ProjectA00Controller::class,'store'])->name('a00.store');
         Route::get('/a00/{a00}',[ProjectA00Controller::class,'show'])->name('a00.show');
+        Route::get('/a00/{a00}/edit',[ProjectA00Controller::class,'edit'])->name('a00.edit');
+        Route::put('/a00/{a00}',[ProjectA00Controller::class,'update'])->name('a00.update');
+        Route::get('/a00/{a00}/edit-operational',[ProjectA00Controller::class,'editOperational'])->name('a00.edit-operational');
+        Route::put('/a00/{a00}/operational',[ProjectA00Controller::class,'updateOperational'])->name('a00.update-operational');
     });
     Route::middleware('permission:document_control')->prefix('document-control')->name('document-control.')->group(function () {
         Route::get('/inbox', [DocumentControlInboxController::class, 'index'])->name('inbox');
@@ -42,6 +47,12 @@ Route::middleware('auth')->group(function () {
         Route::delete('/columns/{column}', [DocumentControlRegistrationController::class, 'destroyColumn'])->name('columns.destroy');
         Route::delete('/registrations/{registration}', [DocumentControlRegistrationController::class, 'destroy'])->name('destroy');
         Route::post('/registrations/import', [DocumentControlRegistrationController::class, 'import'])->name('import');
+        Route::post('/tasks/{task}/complete', [DocumentControlRegistrationController::class, 'completeDistribution'])->name('tasks.complete');
+    });
+    Route::middleware('permission:input_data')->prefix('breakdown')->name('breakdown.')->group(function () {
+        Route::get('/inbox', [BreakdownInboxController::class, 'index'])->name('inbox');
+        Route::post('/tasks/{task}/complete', [BreakdownInboxController::class, 'complete'])->name('tasks.complete');
+        Route::post('/tasks/{task}/start-costing', [BreakdownInboxController::class, 'startCosting'])->name('tasks.start-costing');
     });
     Route::get('/project-selection', [AuthController::class, 'projectSelection'])->name('project-selection');
     Route::get('/costing-product-performance', [AuthController::class, 'productPerformance'])->name('costing-product-performance');
@@ -50,6 +61,8 @@ Route::middleware('auth')->group(function () {
     // Parent = Business Category + Customer + Model
     // Child = Part Number / Part Name / Revision
     Route::get('/project', [ProjectGroupController::class, 'index'])->name('project');
+    Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
+    Route::delete('/project/group', [ProjectGroupController::class, 'destroyGroup'])->name('project.group.destroy');
     Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
 
     Route::post('/costing-approvals/{revision}/submit', [CostingApprovalController::class, 'submit'])->name('costing-approvals.submit');
@@ -57,6 +70,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/costing-approvals/{revision}/reject', [CostingApprovalController::class, 'reject'])->name('costing-approvals.reject');
     Route::post('/costing-approvals/{revision}/send-marketing', [CostingApprovalController::class, 'sendToMarketing'])->name('costing-approvals.send-marketing');
     Route::get('/marketing/cogm-inbox', [CostingApprovalController::class, 'marketingInbox'])->name('marketing.cogm-inbox');
+    Route::get('/marketing/cogm-inbox/{submission}/costing', [CostingController::class, 'marketingCostingView'])->name('marketing.cogm-costing.show');
+    Route::post('/marketing/cogm-inbox/{submission}/comments', [CostingApprovalController::class, 'storeMarketingComment'])->name('marketing.cogm-comments.store');
 
     Route::get('/profile', function () {
         return view('profile.show');
@@ -92,6 +107,7 @@ Route::middleware('auth')->group(function () {
         // Rate & Kurs
         Route::get('/database/rate-kurs', [ReportController::class, 'rateKurs'])->name('rate-kurs');
         Route::post('/database/rate-kurs', [ReportController::class, 'storeExchangeRate'])->name('rate-kurs.store');
+        Route::put('/database/rate-kurs/{id}', [ReportController::class, 'updateExchangeRate'])->name('rate-kurs.update');
         Route::delete('/database/rate-kurs/{id}', [ReportController::class, 'destroyExchangeRate'])->name('rate-kurs.destroy');
 
         // Unpriced
@@ -175,6 +191,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/costing/store', [CostingController::class, 'store'])->name('costing.store');
         Route::post('/costing/material-quick-update', [CostingController::class, 'quickUpdateMaterial'])->name('costing.material-quick-update');
         Route::post('/costing/material-recalculate', [CostingController::class, 'recalculateMaterial'])->name('costing.material-recalculate');
+        Route::post('/costing/selected-exchange-rate', [CostingController::class, 'rememberSelectedExchangeRate'])->name('costing.selected-exchange-rate');
+        Route::post('/costing/material-excel/export', [CostingController::class, 'exportMaterialEditor'])->name('costing.material-excel.export');
+        Route::post('/costing/material-excel/import', [CostingController::class, 'importMaterialEditor'])->name('costing.material-excel.import');
         Route::get('/costing/store', function () {
             return redirect(route('form', [], false))
                 ->with('warning', 'Halaman simpan tidak bisa dibuka langsung. Silakan simpan data dari Form Costing.');

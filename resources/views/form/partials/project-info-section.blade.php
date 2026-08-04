@@ -91,7 +91,7 @@
                     <label class="form-label">Plant</label>
                     <select name="line" class="form-select">
                         @php
-                            $selectedPlant = old('line', $costingData->line ?? ($plants->first()?->code ?? ''));
+                            $selectedPlant = old('line', $costingData->line ?? ($trackingProjectPrefill['plant_code'] ?? ($plants->first()?->code ?? '')));
                         @endphp
                         <option value="">-- Pilih Plant --</option>
                         @foreach($plants as $plant)
@@ -108,7 +108,7 @@
                             $defaultPeriod = $activeWireRate && $activeWireRate->period_month
                                 ? $activeWireRate->period_month->format('Y-m')
                                 : '';
-                            $selectedPeriod = old('period', $costingData->period ?? $defaultPeriod);
+                            $selectedPeriod = old('period', $costingData->period ?? ($trackingProjectPrefill['period'] ?? $defaultPeriod));
                         @endphp
                         <option value="">-- Pilih Periode --</option>
                         @foreach($periods as $period)
