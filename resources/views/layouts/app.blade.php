@@ -134,10 +134,19 @@
                         class="sidebar-nav-item {{ request()->routeIs('control-project.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
                         <span>Control Project — A00</span>
-                    </a>
-                    @endif
-                    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'admin_costing'], true))
-                    <a href="{{ route('breakdown.inbox', absolute: false) }}"
+                     </a>
+                     @endif
+                     @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'document_control'], true))
+                     <a href="{{ route('document-control.inbox', absolute: false) }}"
+                         class="sidebar-nav-item {{ request()->routeIs('document-control.*') ? 'active' : '' }}">
+                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                             <path d="M9 3H5a2 2 0 0 0-2 2v16h16a2 2 0 0 0 2-2v-4"/><path d="M9 3v6h6"/><path d="M9 3h6l6 6v2"/><path d="M7 14h8M7 18h8"/>
+                         </svg>
+                         <span>Document Control</span>
+                     </a>
+                     @endif
+                     @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'admin_costing'], true))
+                     <a href="{{ route('breakdown.inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('breakdown.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
                         <span>Inbox Breakdown</span>
@@ -150,16 +159,7 @@
                         <span>Inbox Costing</span>
                     </a>
                     @endif
-                    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'document_control'], true))
-                    <a href="{{ route('document-control.inbox', absolute: false) }}"
-                        class="sidebar-nav-item {{ request()->routeIs('document-control.*') ? 'active' : '' }}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M9 3H5a2 2 0 0 0-2 2v16h16a2 2 0 0 0 2-2v-4"/><path d="M9 3v6h6"/><path d="M9 3h6l6 6v2"/><path d="M7 14h8M7 18h8"/>
-                        </svg>
-                        <span>Document Control</span>
-                    </a>
-                    @endif
-                        <a href="{{ route('project', absolute: false) }}"
+                         <a href="{{ route('project', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('tracking-documents.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M3 3v18h18" />

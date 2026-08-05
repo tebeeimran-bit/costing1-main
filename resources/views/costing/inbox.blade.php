@@ -22,7 +22,7 @@
     </div>
 
     <div class="ci-tabs">
-        @foreach(['active'=>'Aktif','draft'=>'Dikerjakan','pricing'=>'Menunggu Harga','rejected'=>'Perlu Revisi','waiting'=>'Menunggu Approval','approved'=>'Siap Dikirim','sent'=>'Selesai','all'=>'Semua'] as $key=>$label)
+        @foreach(['active'=>'Aktif','draft'=>'Dikerjakan','pricing'=>'Menunggu Harga','rejected'=>'Perlu Revisi','waiting'=>'Menunggu Approval','approved'=>'Siap Dikirim','sent'=>'Selesai','history'=>'History','all'=>'Semua'] as $key=>$label)
             <a class="ci-tab {{ $status===$key?'active':'' }}" href="{{ route('costing.inbox', ['status'=>$key,'search'=>$search], false) }}">{{ $label }}</a>
         @endforeach
     </div>

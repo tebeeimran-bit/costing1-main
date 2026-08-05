@@ -19,7 +19,7 @@ class ProjectGroupController extends Controller
     {
         $search = trim((string) $request->query('search', ''));
         $status = trim((string) $request->query('status', 'active'));
-        $allowedStatuses = ['active', 'draft', 'pricing', 'rejected', 'waiting', 'approved', 'sent', 'all'];
+        $allowedStatuses = ['active', 'draft', 'pricing', 'rejected', 'waiting', 'approved', 'sent', 'history', 'all'];
         if (!in_array($status, $allowedStatuses, true)) {
             $status = 'active';
         }
@@ -64,6 +64,16 @@ class ProjectGroupController extends Controller
                 DocumentRevision::STATUS_REJECTED_BY_COORDINATOR,
                 DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
                 DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
+            ],
+            'history' => [
+                DocumentRevision::STATUS_PENDING_FORM_INPUT,
+                DocumentRevision::STATUS_SUDAH_COSTING,
+                DocumentRevision::STATUS_PENDING_PRICING,
+                DocumentRevision::STATUS_COGM_GENERATED,
+                DocumentRevision::STATUS_REJECTED_BY_COORDINATOR,
+                DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
+                DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
+                DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
             ],
         ];
         if (isset($statusMap[$status])) {
@@ -328,6 +338,7 @@ class ProjectGroupController extends Controller
                             'state' => $completed ? 'done' : ($active ? 'active' : 'pending'),
                             'status' => $completed ? 'Selesai' : ($active ? ($activeStatuses ?: 'Sedang proses') : 'Belum dimulai'),
                             'date' => $steps->pluck('date')->filter()->sortDesc()->first(),
+                            'time' => $steps->pluck('time')->filter()->sortDesc()->first(),
                             'pic' => $completed || $active ? $steps->pluck('pic')->filter(fn ($pic) => $pic && $pic !== '-')->unique()->implode(', ') : '-',
                         ];
                     })->values(),
@@ -408,6 +419,7 @@ class ProjectGroupController extends Controller
                 'key'=>$step['key'],'label'=>$step['label'],'state'=>$state,
                 'status'=>$state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai'),
                 'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->locale('id')->translatedFormat('d F Y') : null,
+                'time'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->format('H:i') : null,
                 'pic'=>$step['pic'] ?: '-',
             ];
         })->all();
