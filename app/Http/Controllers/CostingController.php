@@ -50,6 +50,18 @@ class CostingController extends Controller
         return $this->form($request, $importService);
     }
 
+    public function downloadCostingEdit(Request $request, DocumentRevision $revision)
+    {
+        $role = (string) ($request->user()->role ?? '');
+        abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing'], true), 403);
+        abort_unless($revision->costing_edit_file_path && Storage::disk('local')->exists($revision->costing_edit_file_path), 404);
+
+        return Storage::disk('local')->download(
+            $revision->costing_edit_file_path,
+            $revision->costing_edit_original_name ?: 'form-costing-hasil-edit.xlsx'
+        );
+    }
+
     public function dashboard(Request $request)
     {
         $periods = CostingData::query()
@@ -2203,6 +2215,7 @@ class CostingController extends Controller
 
         $validated = $request->validate([
             'material_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:10240'],
+            'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
         ]);
 
         try {
@@ -2253,6 +2266,26 @@ class CostingController extends Controller
 
             if ($errors) {
                 return response()->json(['success' => false, 'message' => 'File belum dapat diterapkan.', 'errors' => $errors], 422);
+            }
+
+            if (!empty($validated['tracking_revision_id'])) {
+                $revision = DocumentRevision::findOrFail((int) $validated['tracking_revision_id']);
+                $extension = strtolower((string) $validated['material_file']->getClientOriginalExtension());
+                $path = $validated['material_file']->storeAs(
+                    'costing-edits/' . $revision->id,
+                    now()->format('YmdHis') . '-' . Str::uuid() . '.' . $extension,
+                    'local'
+                );
+                abort_unless($path, 500, 'File hasil edit gagal disimpan.');
+
+                if ($revision->costing_edit_file_path && $revision->costing_edit_file_path !== $path) {
+                    Storage::disk('local')->delete($revision->costing_edit_file_path);
+                }
+                $revision->update([
+                    'costing_edit_original_name' => $validated['material_file']->getClientOriginalName(),
+                    'costing_edit_file_path' => $path,
+                    'costing_edit_uploaded_at' => now(),
+                ]);
             }
 
             return response()->json([

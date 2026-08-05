@@ -71,6 +71,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/costing-approvals/{revision}/send-marketing', [CostingApprovalController::class, 'sendToMarketing'])->name('costing-approvals.send-marketing');
     Route::get('/marketing/cogm-inbox', [CostingApprovalController::class, 'marketingInbox'])->name('marketing.cogm-inbox');
     Route::get('/marketing/cogm-inbox/{submission}/costing', [CostingController::class, 'marketingCostingView'])->name('marketing.cogm-costing.show');
+    Route::get('/marketing/costing-documents/{revision}/download', [CostingController::class, 'downloadCostingEdit'])->name('marketing.costing-edit.download');
     Route::post('/marketing/cogm-inbox/{submission}/comments', [CostingApprovalController::class, 'storeMarketingComment'])->name('marketing.cogm-comments.store');
 
     Route::get('/profile', function () {

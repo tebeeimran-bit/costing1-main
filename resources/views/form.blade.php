@@ -93,6 +93,15 @@
                     <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('materialEditorFileInput').click()">
                         Import Hasil Edit
                     </button>
+                    @if($trackingRevision?->costing_edit_file_path)
+                    <a class="btn btn-secondary btn-sm" href="{{ route('marketing.costing-edit.download', $trackingRevision, absolute:false) }}" title="{{ $trackingRevision->costing_edit_original_name }}">
+                        Lihat Hasil Edit
+                    </a>
+                    @elseif(!empty($readOnlyMode))
+                    <span class="btn btn-secondary btn-sm" aria-disabled="true" title="File hasil edit belum tersimpan pada submission ini" style="cursor:not-allowed;opacity:.6">
+                        Hasil Edit Belum Tersedia
+                    </span>
+                    @endif
                     <button type="button" class="btn btn-secondary btn-sm" id="materialUndoBtn" onclick="undoMaterialTable()" disabled aria-label="Undo" title="Undo">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <polyline points="9 14 4 9 9 4"></polyline>
@@ -2872,6 +2881,8 @@
             const token = document.querySelector('#costingForm input[name="_token"]')?.value || '';
             const formData = new FormData();
             formData.append('material_file', file);
+            const trackingRevisionId = document.getElementById('trackingRevisionId')?.value || '';
+            if (trackingRevisionId) formData.append('tracking_revision_id', trackingRevisionId);
 
             showAppLoading('Memeriksa file Excel Material...');
             try {

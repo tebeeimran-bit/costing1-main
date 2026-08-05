@@ -407,7 +407,7 @@ class ProjectGroupController extends Controller
             return [
                 'key'=>$step['key'],'label'=>$step['label'],'state'=>$state,
                 'status'=>$state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai'),
-                'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->format('d/m/Y H:i') : null,
+                'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->locale('id')->translatedFormat('d F Y') : null,
                 'pic'=>$step['pic'] ?: '-',
             ];
         })->all();

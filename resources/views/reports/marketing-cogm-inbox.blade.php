@@ -78,7 +78,28 @@
     .marketing-inbox-table tr:last-child td {
         border-bottom: 0;
     }
-    .marketing-inbox-table tbody tr[data-href]{cursor:pointer;transition:background .15s}.marketing-inbox-table tbody tr[data-href]:hover{background:#eff6ff}.project-open-hint{display:block;margin-top:.25rem;color:#2563eb;font-size:.63rem;font-weight:800}
+    .marketing-inbox-table tbody tr[data-href]{cursor:pointer;transition:background .15s}.marketing-inbox-table tbody tr[data-href]:hover{background:#eff6ff}
+
+    .inbox-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.42rem 0.72rem;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.68rem;
+        font-weight: 900;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    .inbox-action:hover {
+        border-color: #93c5fd;
+        background: #dbeafe;
+        color: #1e40af;
+    }
 
     .inbox-cogm {
         color: #047857;
@@ -125,6 +146,7 @@
                     <th>Submitted By</th>
                     <th>Submitted At</th>
                     <th>Status</th>
+                    <th style="text-align:right;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -137,7 +159,6 @@
                         <td>
                             <strong>{{ $project?->part_number ?? '-' }}</strong><br>
                             <span style="color:#64748b;">{{ $project?->part_name ?? '-' }}</span>
-                            <span class="project-open-hint">Klik untuk lihat Form Costing</span>
                         </td>
                         <td>{{ $project?->customer ?? '-' }}</td>
                         <td>{{ $project?->model ?? '-' }}</td>
@@ -146,10 +167,13 @@
                         <td>{{ $submission->submitted_by ?? '-' }}</td>
                         <td>{{ $submission->submitted_at ? $submission->submitted_at->format('d/m/Y H:i') : '-' }}</td>
                         <td><span class="inbox-pill">Submitted to Marketing</span></td>
+                        <td style="text-align:right;">
+                            <a class="inbox-action" href="{{ route('marketing.cogm-costing.show', $submission, absolute: false) }}">Lihat Form Costing</a>
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8"><div class="inbox-empty">Belum ada COGM approved yang dikirim ke Marketing.</div></td>
+                        <td colspan="9"><div class="inbox-empty">Belum ada COGM approved yang dikirim ke Marketing.</div></td>
                     </tr>
                 @endforelse
             </tbody>
