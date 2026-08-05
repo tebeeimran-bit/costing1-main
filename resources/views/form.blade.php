@@ -905,6 +905,7 @@
         });
 
         const initialCostingResumeOverrides = @json($costingData->costing_resume_overrides ?? []);
+        const submittedCogmValue = @json($readOnlyMode && $cogmSubmission ? (float) $cogmSubmission->cogm_value : null);
         let costingResumeOverrides = { ...(initialCostingResumeOverrides || {}) };
 
         // Material ownership is now consolidated under DEM. Discard saved display
@@ -2553,7 +2554,8 @@
             const processCost = getResumeMoneyValue('laborCost');
             const toolingCost = getResumeMoneyValue('overheadCost');
             const adminCost = getResumeMoneyValue('scrapCost');
-            const cogmTotal = materialCost + processCost + toolingCost + adminCost;
+            const calculatedCogmTotal = materialCost + processCost + toolingCost + adminCost;
+            const cogmTotal = submittedCogmValue ?? calculatedCogmTotal;
             const forecast = parsePositiveInteger(document.getElementById('forecast')?.value || document.getElementById('forecastDisplay')?.value || 0);
             const projectLifeYears = parseInputNumber(document.getElementById('projectPeriod')?.value || 0);
             const periodMonths = projectLifeYears > 0 ? projectLifeYears * 12 : 0;

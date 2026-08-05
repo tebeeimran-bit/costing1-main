@@ -45,6 +45,7 @@ class CostingController extends Controller
         abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing'], true), 403);
 
         $request->query->set('tracking_revision_id', $submission->document_revision_id);
+        $request->query->set('cogm_submission_id', $submission->id);
         $request->query->set('view_only', '1');
 
         return $this->form($request, $importService);
@@ -1536,10 +1537,16 @@ class CostingController extends Controller
         }
 
         if ($trackingRevisionId) {
-            $cogmSubmission = \App\Models\CogmSubmission::with('comments.user')
-                ->where('document_revision_id', $trackingRevisionId)
-                ->latest('submitted_at')
-                ->first();
+            $cogmSubmissionQuery = CogmSubmission::with('comments.user')
+                ->where('document_revision_id', $trackingRevisionId);
+
+            if ($request->filled('cogm_submission_id')) {
+                $cogmSubmissionQuery->whereKey((int) $request->get('cogm_submission_id'));
+            } else {
+                $cogmSubmissionQuery->latest('submitted_at');
+            }
+
+            $cogmSubmission = $cogmSubmissionQuery->first();
         }
 
         if (!$costingDataId && $trackingRevisionId) {
