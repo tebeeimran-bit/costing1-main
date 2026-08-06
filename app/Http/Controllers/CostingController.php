@@ -59,7 +59,7 @@ class CostingController extends Controller
 
         return Storage::disk('local')->download(
             $revision->costing_edit_file_path,
-            $revision->costing_edit_original_name ?: 'form-costing-hasil-edit.xlsx'
+            $revision->costing_edit_original_name ?: 'Import-Hasil-Edit.xlsx'
         );
     }
 
@@ -2193,8 +2193,9 @@ class CostingController extends Controller
         $writer->save($temporaryPath);
         $safeAssy = Str::slug((string) ($validated['assy_no'] ?? 'project')) ?: 'project';
 
-        return response()->download($temporaryPath, "form-costing-{$safeAssy}.xlsx", [
+        return response()->download($temporaryPath, "Export-costing-{$safeAssy}.xlsx", [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Access-Control-Expose-Headers' => 'Content-Disposition'
         ])->deleteFileAfterSend(true);
     }
 
@@ -2289,7 +2290,7 @@ class CostingController extends Controller
                     Storage::disk('local')->delete($revision->costing_edit_file_path);
                 }
                 $revision->update([
-                    'costing_edit_original_name' => $validated['material_file']->getClientOriginalName(),
+                    'costing_edit_original_name' => 'Import-Hasil-Edit-' . $validated['material_file']->getClientOriginalName(),
                     'costing_edit_file_path' => $path,
                     'costing_edit_uploaded_at' => now(),
                 ]);

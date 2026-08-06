@@ -19,6 +19,9 @@ use App\Services\TrackingDocument\TrackingDocumentFileService;
 use App\Services\TrackingDocument\TrackingDocumentProjectService;
 use App\Services\TrackingDocument\TrackingDocumentSharedDataService;
 use App\Services\TrackingDocument\TrackingDocumentUnpricedPartService;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 class TrackingDocumentController extends Controller
 {
@@ -249,6 +252,42 @@ class TrackingDocumentController extends Controller
 
         return response($html)
             ->header('Content-Type', 'text/html; charset=UTF-8');
+    }
+
+    public function exportNewPartRequest(DocumentRevision $revision)
+    {
+        $revision->load(['project.a00Form', 'project.revisions', 'project.product']);
+        $costing = \App\Models\CostingData::with('customer')->where('tracking_revision_id', $revision->id)->first();
+        $rows = UnpricedPart::where('document_revision_id', $revision->id)->whereNull('resolved_at')->orderBy('part_number')->get();
+        $customer = $costing?->customer;
+        $project = $revision->project;
+        $customerCode = strtoupper(trim((string) ($customer?->code ?: $project?->customer ?: 'CUSTOMER')));
+        $customerName = (string) ($customer?->name ?: $project?->customer ?: '');
+        $sop = $project?->a00Form?->sop_mp_date?->format('d/m/Y') ?: 'TBA';
+        $templatePath = storage_path('app/templates/new-part-request-template.xlsx');
+        if (!is_file($templatePath)) {
+            abort(500, 'Template New Part Request tidak ditemukan: ' . $templatePath);
+        }
+
+        $spreadsheet = IOFactory::load($templatePath);
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle(substr(preg_replace('/[^A-Za-z0-9 _-]/', '', $customerCode), 0, 31) ?: 'CUSTOMER');
+        $sheet->setCellValue('K2', 'Date :'); $sheet->setCellValue('L2', now()->format('d/m/Y'));
+        $sheet->setCellValue('D3', 'CUSTOMER'); $sheet->setCellValue('E3', $customerName); $sheet->setCellValue('K3', 'Req. No :');
+        $sheet->setCellValue('D4', 'END CUSTOMER'); $sheet->setCellValue('E4', $customerName);
+        $sheet->setCellValue('D5', 'PROJECT MODEL'); $sheet->setCellValue('E5', (string) ($project?->model ?: $costing?->model ?: ''));
+        $sheet->setCellValue('D6', 'APPLICATION'); $sheet->setCellValue('E6', (string) ($costing?->assy_name ?: $project?->part_name ?: ''));
+        $sheet->setCellValue('D7', 'MASS PRO DATE'); $sheet->setCellValue('E7', $sop);
+        $sheet->setCellValue('D8', 'VOLUME/MONTH'); $sheet->setCellValue('E8', (float) ($costing?->forecast ?? 0));
+        foreach ($rows as $index => $row) {
+            $line = 12 + $index;
+            $values = [$row->id_code ?? '', $row->part_number, $row->notes ?? '', '', $row->part_name, $row->manual_price ?? $row->detected_price ?? 0, '', '', '', '', '', 0, 1];
+            foreach ($values as $column => $value) {
+                $sheet->setCellValue(Coordinate::stringFromColumnIndex($column + 1) . $line, $value);
+            }
+        }
+        $filename = now()->format('Y.m.d') . ' ' . $customerCode . ' - ' . preg_replace('/[^A-Za-z0-9_-]/', '_', (string) ($costing?->assy_no ?: $project?->part_number ?: 'NEW-PART')) . '.xlsx';
+        return response()->streamDownload(function () use ($spreadsheet) { (new Xlsx($spreadsheet))->save('php://output'); }, $filename, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
     public function updateUnpricedPartPrice(UpdateUnpricedPartPriceRequest $request, DocumentRevision $revision, TrackingDocumentUnpricedPartService $unpricedPartService)

@@ -406,6 +406,7 @@
                         Hapus Terpilih
                     </button>
                     @if(isset($trackingRevision) && $trackingRevision)
+                        <a href="{{ route('tracking-documents.export-new-part-request', ['revision' => $trackingRevision->id], absolute: false) }}" class="btn btn-secondary">Export New Part Request</a>
                         <a href="{{ route('tracking-documents.export-unpriced', ['revision' => $trackingRevision->id, 'format' => 'excel'], absolute: false) }}"
                             class="btn btn-secondary">Export Unpriced Parts (Excel)</a>
                         <a href="{{ route('tracking-documents.export-unpriced', ['revision' => $trackingRevision->id, 'format' => 'pdf'], absolute: false) }}"
@@ -2798,6 +2799,9 @@
         }
 
         async function exportMaterialEditor() {
+            const ratesConfirmed = await showExportRatesConfirmModal();
+            if (!ratesConfirmed) return;
+
             const url = document.getElementById('materialExcelExportUrl')?.value || '';
             const token = document.querySelector('#costingForm input[name="_token"]')?.value || '';
             const rows = collectMaterialRowsForPayload();
@@ -2857,8 +2861,11 @@
 
                 const blob = await response.blob();
                 const disposition = response.headers.get('Content-Disposition') || '';
-                const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
-                const filename = filenameMatch ? filenameMatch[1] : 'material-costing-edit.xlsx';
+                const filenameMatch = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                let filename = 'Export-costing-edit.xlsx';
+                if (filenameMatch != null && filenameMatch[1]) { 
+                    filename = filenameMatch[1].replace(/['"]/g, '');
+                }
                 const downloadUrl = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = downloadUrl;
@@ -2873,6 +2880,34 @@
             } finally {
                 hideAppLoading();
             }
+        }
+
+        function showExportRatesConfirmModal() {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('exportRatesConfirmModal');
+                const okBtn = document.getElementById('exportRatesOkBtn');
+                const cancelBtn = document.getElementById('exportRatesCancelBtn');
+                if (!modal || !okBtn || !cancelBtn) { resolve(false); return; }
+                const closeWith = (result) => {
+                    modal.classList.add('is-hidden');
+                    modal.setAttribute('aria-hidden', 'true');
+                    okBtn.removeEventListener('click', handleOk);
+                    cancelBtn.removeEventListener('click', handleCancel);
+                    modal.removeEventListener('click', handleOverlay);
+                    document.removeEventListener('keydown', handleEsc);
+                    resolve(result);
+                };
+                const handleOk = () => closeWith(true);
+                const handleCancel = () => closeWith(false);
+                const handleOverlay = (event) => { if (event.target === modal) closeWith(false); };
+                const handleEsc = (event) => { if (event.key === 'Escape') closeWith(false); };
+                modal.classList.remove('is-hidden');
+                modal.setAttribute('aria-hidden', 'false');
+                okBtn.addEventListener('click', handleOk);
+                cancelBtn.addEventListener('click', handleCancel);
+                modal.addEventListener('click', handleOverlay);
+                document.addEventListener('keydown', handleEsc);
+            });
         }
 
         async function importMaterialEditor(input) {

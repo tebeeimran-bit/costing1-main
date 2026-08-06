@@ -20,6 +20,22 @@
         </div>
     </div>
 
+    <div id="exportRatesConfirmModal" class="confirm-modal is-hidden" aria-hidden="true">
+        <div class="confirm-modal-card" role="dialog" aria-modal="true" aria-labelledby="exportRatesConfirmTitle">
+            <div class="confirm-modal-head">
+                <span class="confirm-modal-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                </span>
+                <h3 id="exportRatesConfirmTitle" class="confirm-modal-title">Konfirmasi Rates</h3>
+            </div>
+            <div class="confirm-modal-body">Apakah rates sudah sesuai?</div>
+            <div class="confirm-modal-actions">
+                <button type="button" class="btn btn-secondary" id="exportRatesCancelBtn">Tidak</button>
+                <button type="button" class="btn btn-primary" id="exportRatesOkBtn">Ya, Lanjutkan</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Konfirmasi Unsaved Material -->
     <div id="unsavedMaterialConfirmModal" class="confirm-modal is-hidden" style="z-index: 1000;" aria-hidden="true">
         <div class="confirm-modal-card" role="dialog" aria-modal="true" aria-labelledby="unsavedMaterialConfirmTitle">

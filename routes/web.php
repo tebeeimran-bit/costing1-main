@@ -229,9 +229,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/tracking-documents/{revision}/{type}', [TrackingDocumentController::class, 'download'])
             ->where('type', 'partlist|umh|a00|a04|a05')
             ->name('tracking-documents.download');
-        Route::get('/tracking-documents/{revision}/export-unpriced/{format}', [TrackingDocumentController::class, 'exportUnpricedParts'])
-            ->where('format', 'excel|pdf')
-            ->name('tracking-documents.export-unpriced');
+         Route::get('/tracking-documents/{revision}/export-unpriced/{format}', [TrackingDocumentController::class, 'exportUnpricedParts'])
+             ->where('format', 'excel|pdf')
+             ->name('tracking-documents.export-unpriced');
+         Route::get('/tracking-documents/{revision}/export-new-part-request', [TrackingDocumentController::class, 'exportNewPartRequest'])
+             ->name('tracking-documents.export-new-part-request');
     });
 
     // ── USER MANAGEMENT (admin only) ──────────────────────────────────────────

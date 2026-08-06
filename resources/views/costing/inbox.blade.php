@@ -16,9 +16,10 @@
 
     <div class="ci-flow">
         <div><strong>1. Kerjakan Costing</strong>Lengkapi material, rates, cycle time, dan resume.</div>
-        <div><strong>2. Submit Approval</strong>Dikirim ke Coordinator Costing setelah tidak ada unpriced part.</div>
-        <div><strong>3. Approval</strong>Coordinator menyetujui atau mengembalikan untuk revisi.</div>
-        <div><strong>4. Kirim COGM</strong>COGM approved dikirim ke Marketing.</div>
+        <div><strong>2. New Part Request</strong>Isi form harga baru untuk part yang belum memiliki harga.</div>
+        <div><strong>3. Submit Approval</strong>Dikirim ke Coordinator Costing setelah tidak ada unpriced part.</div>
+        <div><strong>4. Approval</strong>Coordinator menyetujui atau mengembalikan untuk revisi.</div>
+        <div><strong>5. Kirim COGM</strong>COGM approved dikirim ke Marketing.</div>
     </div>
 
     <div class="ci-tabs">

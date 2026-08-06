@@ -425,7 +425,18 @@
             align-items: center;
             justify-content: flex-end;
             gap: 0.5rem;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            overflow-x: auto;
+            max-width: 100%;
+            padding-bottom: 2px;
+        }
+
+        .form-page .section-actions > .btn,
+        .form-page .section-actions > a,
+        .form-page .section-actions > button {
+            flex: 0 0 auto;
+            white-space: nowrap;
         }
 
         .form-page .section-actions + .section-toggle {

@@ -394,6 +394,9 @@ class ProjectGroupController extends Controller
             DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
         ], true);
         $hasCogm = (bool) $submission?->submitted_at;
+        $openUnpricedCount = $revision->unpricedParts()->whereNull('resolved_at')->count();
+        $hasNewPartRequest = $openUnpricedCount > 0 || $revision->unpricedParts()->whereNotNull('resolved_at')->exists();
+        $hasNewPartPricing = $hasNewPartRequest && $openUnpricedCount === 0;
         $hasPartlist = filled($revision->partlist_file_path);
         $hasUmh = filled($revision->umh_file_path);
         $breakdownStatus = $hasBreakdown
@@ -407,6 +410,7 @@ class ProjectGroupController extends Controller
             ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'date'=>$hasDrawing ? ($drawingTask?->completed_at ?? $drawing?->registration_date ?? $drawing?->created_at) : null,'pic'=>$drawingTask?->completedBy?->name ?? ($hasDrawing ? 'Document Control' : '-')],
             ['key'=>'breakdown','label'=>'Breakdown','done'=>$hasBreakdown,'active'=>(bool)$breakdownTask,'status'=>$breakdownStatus,'date'=>$breakdownTask?->completed_at ?? $breakdownTask?->started_at ?? $breakdownTask?->available_at ?? ($hasBreakdown ? $costing?->updated_at : null),'pic'=>$breakdownTask?->completedBy?->name ?? $breakdownTask?->assignedUser?->name ?? $revision->pic_engineering],
             ['key'=>'costing','label'=>'Costing','done'=>$hasCosting,'active'=>(bool)$costing || (bool)$costingTask,'status'=>$isRejected ? 'Perlu revisi' : ((bool)$costing ? 'Sedang proses' : 'Siap dimulai'),'date'=>$approval?->submitted_at ?? $costingTask?->started_at ?? $costingTask?->available_at ?? $costing?->updated_at,'pic'=>$costingTask?->assignedUser?->name ?? $revision->pic_engineering],
+            ['key'=>'new-part-request','label'=>'New Part Request','done'=>$hasNewPartPricing,'active'=>$openUnpricedCount > 0,'status'=>$openUnpricedCount > 0 ? $openUnpricedCount.' part menunggu harga baru' : ($hasNewPartRequest ? 'Harga baru sudah lengkap' : 'Tidak ada part baru'),'date'=>$hasNewPartRequest ? $revision->updated_at : null,'pic'=>$revision->pic_engineering],
             ['key'=>'submit','label'=>'Submit','done'=>$hasSubmit,'active'=>$revisionStatus === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,'status'=>'Menunggu approval coordinator','date'=>$approval?->approved_at ?? $approval?->submitted_at,'pic'=>$approval?->approver?->name ?? $approval?->submitter?->name ?? '-'],
             ['key'=>'cogm','label'=>'COGM','done'=>$hasCogm,'date'=>$submission?->submitted_at,'pic'=>$submission?->submitted_by ?? $submission?->pic_marketing ?? '-'],
         ];
