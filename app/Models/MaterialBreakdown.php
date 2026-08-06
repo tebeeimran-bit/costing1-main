@@ -17,6 +17,7 @@ class MaterialBreakdown extends Model
         'id_code',
         'part_name',
         'unit',
+        'supplier',
         'pro_code',
         'qty_req',
         'amount1',
@@ -32,7 +33,9 @@ class MaterialBreakdown extends Model
     ];
 
     protected $casts = [
-        'qty_req' => 'integer',
+        // Qty dari Material Cost dapat berupa pecahan (contoh 15.403,5 MM).
+        // Cast integer membuat nilainya berubah setelah halaman direfresh.
+        'qty_req' => 'float',
     ];
 
     public function costingData()

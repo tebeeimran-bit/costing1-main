@@ -14,6 +14,7 @@ use App\Http\Controllers\ProjectA00Controller;
 use App\Http\Controllers\ProjectGroupController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TrackingDocumentController;
+use App\Http\Controllers\NewPartRequestInboxController;
 use App\Http\Controllers\TubesController;
 use Illuminate\Support\Facades\Route;
 
@@ -62,6 +63,8 @@ Route::middleware('auth')->group(function () {
     // Child = Part Number / Part Name / Revision
     Route::get('/project', [ProjectGroupController::class, 'index'])->name('project');
     Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
+    Route::get('/new-part-request/inbox', [NewPartRequestInboxController::class, 'index'])->name('new-part-request.inbox');
+    Route::post('/new-part-request/{revision}/submit', [NewPartRequestInboxController::class, 'submit'])->name('new-part-request.submit');
     Route::delete('/project/group', [ProjectGroupController::class, 'destroyGroup'])->name('project.group.destroy');
     Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
 
@@ -71,6 +74,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/costing-approvals/{revision}/send-marketing', [CostingApprovalController::class, 'sendToMarketing'])->name('costing-approvals.send-marketing');
     Route::get('/marketing/cogm-inbox', [CostingApprovalController::class, 'marketingInbox'])->name('marketing.cogm-inbox');
     Route::get('/marketing/cogm-inbox/{submission}/costing', [CostingController::class, 'marketingCostingView'])->name('marketing.cogm-costing.show');
+    Route::get('/marketing/cogm-inbox/{submission}/download', [CostingController::class, 'downloadImportedCogm'])->name('marketing.cogm-import.download');
     Route::get('/marketing/costing-documents/{revision}/download', [CostingController::class, 'downloadCostingEdit'])->name('marketing.costing-edit.download');
     Route::post('/marketing/cogm-inbox/{submission}/comments', [CostingApprovalController::class, 'storeMarketingComment'])->name('marketing.cogm-comments.store');
 
@@ -101,6 +105,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/analisis-tren/canceled-failed', [ReportController::class, 'analisisTrenCanceled'])->name('analisis-tren.canceled');
         Route::get('/analisis-tren/detail-dokumen-engineering', [ReportController::class, 'analisisTrenEngineering'])->name('analisis-tren.engineering');
         Route::get('/laporan', [ReportController::class, 'laporan'])->name('laporan');
+        Route::get('/laporan/export', [ReportController::class, 'exportLaporan'])->name('laporan.export');
     });
 
     // ── DATABASE ──────────────────────────────────────────────────────────────
@@ -234,6 +239,8 @@ Route::middleware('auth')->group(function () {
              ->name('tracking-documents.export-unpriced');
          Route::get('/tracking-documents/{revision}/export-new-part-request', [TrackingDocumentController::class, 'exportNewPartRequest'])
              ->name('tracking-documents.export-new-part-request');
+         Route::post('/tracking-documents/{revision}/import-new-part-request', [TrackingDocumentController::class, 'importNewPartRequest'])
+             ->name('tracking-documents.import-new-part-request');
     });
 
     // ── USER MANAGEMENT (admin only) ──────────────────────────────────────────

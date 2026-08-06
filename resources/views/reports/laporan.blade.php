@@ -17,7 +17,10 @@
     .th-blue { background: #2563eb; color: #fff; }
     .th-teal { background: #0f766e; color: #fff; }
     .cost-bar { height: 6px; border-radius: 3px; margin-top: 0.25rem; }
+    .lap-toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;padding:1rem 1.1rem;border:1px solid #dbe5f2;border-radius:11px;background:#fff}.lap-toolbar h3{margin:0;color:#0f172a;font-size:.95rem}.lap-toolbar p{margin:.2rem 0 0;color:#64748b;font-size:.7rem}.lap-export{display:inline-flex;align-items:center;gap:.4rem;padding:.6rem .85rem;border-radius:8px;background:#2563eb;color:#fff;font-size:.7rem;font-weight:850;text-decoration:none}.lap-empty{text-align:center!important;padding:1.5rem!important;color:#64748b}.lap-detail{margin-bottom:1.5rem;overflow:auto}.lap-detail .lap-table{min-width:1100px}.lap-status{display:inline-flex;padding:.25rem .45rem;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:.62rem;font-weight:800}@media(max-width:1100px){.lap-grid{grid-template-columns:1fr}}
 </style>
+
+<div class="lap-toolbar"><div><h3>Laporan Berdasarkan Project Aktual</h3><p>{{ $projectRows->count() }} project terdaftar. Biaya menggunakan CostingData pada revisi terbaru masing-masing project.</p></div><a class="lap-export" href="{{ route('laporan.export', absolute:false) }}">Export Laporan Excel</a></div>
 
 {{-- By Customer --}}
 <div class="lap-grid">
@@ -41,6 +44,7 @@
                         <td style="text-align:right; font-weight:700;">Rp {{ number_format($c->cogm, 0, ',', '.') }}</td>
                     </tr>
                     @endforeach
+                    @if($costingsByCustomer->isEmpty())<tr><td colspan="6" class="lap-empty">Belum ada project.</td></tr>@endif
                     <tr style="background: #f1f5f9;">
                         <td><strong>TOTAL</strong></td>
                         <td style="text-align:center; font-weight:700;">{{ $costingsByCustomer->sum('projects') }}</td>
@@ -74,6 +78,7 @@
                         <td style="text-align:right; font-weight:700;">Rp {{ number_format($c->cogm, 0, ',', '.') }}</td>
                     </tr>
                     @endforeach
+                    @if($costingsByCategory->isEmpty())<tr><td colspan="6" class="lap-empty">Belum ada project.</td></tr>@endif
                     <tr style="background: #f1f5f9;">
                         <td><strong>TOTAL</strong></td>
                         <td style="text-align:center; font-weight:700;">{{ $costingsByCategory->sum('projects') }}</td>
@@ -86,6 +91,13 @@
             </table>
         </div>
     </div>
+</div>
+
+<div class="card lap-detail">
+    <div class="card-header"><h3 class="card-title">Detail Project</h3></div>
+    <table class="lap-table"><thead><tr><th>Project</th><th>Customer</th><th>Model</th><th>No. Assy</th><th>Rev.</th><th>Business Category</th><th>Status</th><th style="text-align:right">Material</th><th style="text-align:right">Labor</th><th style="text-align:right">Overhead</th><th style="text-align:right">Total COGM</th></tr></thead><tbody>
+    @forelse($projectRows as $item)<tr><td><strong>{{ $item->project }}</strong></td><td>{{ $item->customer }}</td><td>{{ $item->model }}</td><td><strong>{{ $item->assy_no }}</strong></td><td>{{ $item->revision }}</td><td>{{ $item->category }}</td><td><span class="lap-status">{{ $item->status }}</span></td><td style="text-align:right">Rp {{ number_format($item->material,0,',','.') }}</td><td style="text-align:right">Rp {{ number_format($item->labor,0,',','.') }}</td><td style="text-align:right">Rp {{ number_format($item->overhead,0,',','.') }}</td><td style="text-align:right;font-weight:800">Rp {{ number_format($item->cogm,0,',','.') }}</td></tr>@empty<tr><td colspan="11" class="lap-empty">Belum ada project yang dapat ditampilkan.</td></tr>@endforelse
+    </tbody></table>
 </div>
 
 {{-- Visual Breakdown --}}

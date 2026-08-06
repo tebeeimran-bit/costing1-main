@@ -52,6 +52,9 @@ class DocumentRevision extends Model
         'costing_edit_original_name',
         'costing_edit_file_path',
         'costing_edit_uploaded_at',
+        'cogm_import_original_name',
+        'cogm_import_file_path',
+        'cogm_import_uploaded_at',
         'notes',
         'change_remark',
     ];
@@ -65,6 +68,7 @@ class DocumentRevision extends Model
         'partlist_updated_at' => 'datetime',
         'umh_updated_at' => 'datetime',
         'costing_edit_uploaded_at' => 'datetime',
+        'cogm_import_uploaded_at' => 'datetime',
     ];
 
     public function project()
@@ -100,6 +104,11 @@ class DocumentRevision extends Model
     public function unpricedParts()
     {
         return $this->hasMany(UnpricedPart::class, 'document_revision_id');
+    }
+
+    public function costingData()
+    {
+        return $this->hasOne(CostingData::class, 'tracking_revision_id')->latestOfMany();
     }
 
     public function workflowTasks(){return $this->hasMany(ProjectWorkflowTask::class,'document_revision_id');}

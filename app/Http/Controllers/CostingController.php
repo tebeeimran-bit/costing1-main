@@ -43,6 +43,7 @@ class CostingController extends Controller
     {
         $role = (string) ($request->user()->role ?? '');
         abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing'], true), 403);
+        $this->authorizeMarketingSubmissionAccess($request, $submission);
 
         $request->query->set('tracking_revision_id', $submission->document_revision_id);
         $request->query->set('cogm_submission_id', $submission->id);
@@ -55,11 +56,53 @@ class CostingController extends Controller
     {
         $role = (string) ($request->user()->role ?? '');
         abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing'], true), 403);
+        if ($role === 'marketing') {
+            abort_unless(
+                mb_strtolower(trim((string) $revision->pic_marketing))
+                    === mb_strtolower(trim((string) $request->user()->name)),
+                403,
+                'Dokumen COGM ini ditujukan untuk PIC Marketing lain.'
+            );
+        }
         abort_unless($revision->costing_edit_file_path && Storage::disk('local')->exists($revision->costing_edit_file_path), 404);
 
         return Storage::disk('local')->download(
             $revision->costing_edit_file_path,
             $revision->costing_edit_original_name ?: 'Import-Hasil-Edit.xlsx'
+        );
+    }
+
+    public function downloadImportedCogm(Request $request, CogmSubmission $submission)
+    {
+        $role = (string) ($request->user()->role ?? '');
+        abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing'], true), 403);
+        $this->authorizeMarketingSubmissionAccess($request, $submission);
+
+        $revision = $submission->revision;
+        abort_unless(
+            $revision?->cogm_import_file_path
+                && Storage::disk('local')->exists($revision->cogm_import_file_path),
+            404,
+            'File Import COGM tidak tersedia.'
+        );
+
+        return Storage::disk('local')->download(
+            $revision->cogm_import_file_path,
+            $revision->cogm_import_original_name ?: 'Import-COGM.xlsx'
+        );
+    }
+
+    private function authorizeMarketingSubmissionAccess(Request $request, CogmSubmission $submission): void
+    {
+        if ((string) ($request->user()->role ?? '') !== 'marketing') {
+            return;
+        }
+
+        abort_unless(
+            mb_strtolower(trim((string) $submission->pic_marketing))
+                === mb_strtolower(trim((string) $request->user()->name)),
+            403,
+            'COGM ini ditujukan untuk PIC Marketing lain.'
         );
     }
 
@@ -1273,6 +1316,7 @@ class CostingController extends Controller
     public function form(Request $request, CostingImportService $importService)
     {
         $readOnlyMode = $request->boolean('view_only');
+        $editSubmittedMode = false;
         $cogmSubmission = null;
         $products = Product::all();
         $businessCategories = BusinessCategory::orderBy('code')->orderBy('name')->get();
@@ -1328,6 +1372,15 @@ class CostingController extends Controller
             $trackingRevision = DocumentRevision::with(['project','plant'])->find($trackingRevisionId);
 
             if ($trackingRevision) {
+                $editSubmittedMode = $request->boolean('edit_submitted')
+                    && $trackingRevision->status === DocumentRevision::STATUS_SUBMITTED_TO_MARKETING
+                    && in_array((string) ($request->user()->role ?? ''), ['admin', 'admin_costing', 'editor'], true);
+
+                if ($trackingRevision->status === DocumentRevision::STATUS_SUBMITTED_TO_MARKETING
+                    && !$editSubmittedMode
+                    && !$request->boolean('view_only')) {
+                    $readOnlyMode = true;
+                }
                 if (filled($trackingRevision->period)) {
                     $periods = $periods->push($trackingRevision->period)->filter()->unique()->sortDesc()->values();
                 }
@@ -1431,6 +1484,21 @@ class CostingController extends Controller
                         $item->matched_currency = 'IDR';
                         $item->matched_wire_idcode = $firstWire->idcode;
                         $item->matched_source = 'wire';
+                    }
+
+                    if ($item->new_part_price_imported_at) {
+                        $item->matched_materials = collect();
+                        $item->matched_wires = collect();
+                        $item->matched_source = 'new_part_request';
+                        $item->matched_price = $item->detected_price;
+                        $item->matched_purchase_unit = $item->purchase_unit;
+                        $item->matched_currency = $item->currency;
+                        $item->matched_moq = $item->moq;
+                        $item->matched_cn = $item->cn_type;
+                        $item->matched_maker = $item->maker;
+                        $item->matched_add_cost_import_tax = $item->add_cost_percent;
+                        $item->matched_price_update = null;
+                        $item->matched_price_before = null;
                     }
 
                     return $item;
@@ -1572,7 +1640,7 @@ class CostingController extends Controller
             : (int) ($costingData->exchange_rate_id ?? 0);
         $selectedExchangeRateId = (int) old('exchange_rate_id', $rememberedExchangeRateId);
         $partlistAutoImportMessage = null;
-        if (!$costingData && $trackingRevision && filled($trackingRevision->partlist_file_path)) {
+        if ($materialBreakdowns->isEmpty() && $trackingRevision && filled($trackingRevision->partlist_file_path)) {
             $importResult = $importService->preparePartlistImport(
                 ['tracking_revision_id' => (int) $trackingRevision->id],
                 $request
@@ -1600,7 +1668,7 @@ class CostingController extends Controller
                     $breakdown->setRelation('material', null);
                     return $breakdown;
                 });
-                $partlistAutoImportMessage = count($importResult['rows']).' baris Material dimuat otomatis dari '.$trackingRevision->partlist_original_name.'. Klik Update untuk menyimpan.';
+                $partlistAutoImportMessage = count($importResult['rows']).' baris Material dimuat otomatis dari '.$trackingRevision->partlist_original_name.'.';
             } else {
                 $partlistAutoImportMessage = $importResult['error'] ?? $importResult['warning'] ?? 'Partlist tidak dapat dimuat otomatis.';
             }
@@ -1655,6 +1723,7 @@ class CostingController extends Controller
             'picsEngineering',
             'picsMarketing',
             'readOnlyMode',
+            'editSubmittedMode',
             'cogmSubmission'
         ));
     }
@@ -1719,17 +1788,22 @@ class CostingController extends Controller
         DB::beginTransaction();
         try {
             $trackingRevisionId = $validated['tracking_revision_id'] ?? null;
+            $editingSubmittedCogm = false;
 
             if ($trackingRevisionId) {
                 $lockedStatus = DocumentRevision::query()
                     ->whereKey($trackingRevisionId)
                     ->value('status');
 
+                $editingSubmittedCogm = $lockedStatus === DocumentRevision::STATUS_SUBMITTED_TO_MARKETING
+                    && $request->boolean('edit_submitted')
+                    && in_array((string) ($request->user()->role ?? ''), ['admin', 'admin_costing', 'editor'], true);
+
                 if (in_array($lockedStatus, [
                     DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
                     DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
                     DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
-                ], true)) {
+                ], true) && !$editingSubmittedCogm) {
                     DB::rollBack();
 
                     return back()
@@ -1763,7 +1837,7 @@ class CostingController extends Controller
             $partAggregation = $materialSyncResult['part_aggregation'] ?? [];
             $shouldProcessMaterials = (bool) ($materialSyncResult['should_process_materials'] ?? false);
 
-            if ($trackingRevisionId && !$importFromPartlist) {
+            if ($trackingRevisionId && !$importFromPartlist && !$editingSubmittedCogm) {
                 if ($updateSection === 'unpriced_parts') {
                     $partAggregation = $statusService->syncUnpricedPartsFromBreakdowns((int) $trackingRevisionId, $costingData);
                 }
@@ -1798,6 +1872,35 @@ class CostingController extends Controller
                 ]);
             }
 
+            if ($editingSubmittedCogm) {
+                $costingData->refresh();
+                $submission = CogmSubmission::where('document_revision_id', $trackingRevisionId)
+                    ->latest('submitted_at')
+                    ->first();
+
+                if ($submission) {
+                    $updatedCogmValue = (float) $costingData->material_cost
+                        + (float) $costingData->labor_cost
+                        + (float) $costingData->overhead_cost
+                        + (float) $costingData->scrap_cost;
+                    $submission->update([
+                        'cogm_value' => $updatedCogmValue,
+                        'update_count' => ((int) $submission->update_count) + 1,
+                        'last_updated_by' => $request->user()->name,
+                        'last_updated_at' => now(),
+                    ]);
+
+                    $approval = \App\Models\CostingApproval::where('document_revision_id', $trackingRevisionId)
+                        ->latest('id')
+                        ->first();
+                    $approval?->update(['cogm_value' => $updatedCogmValue]);
+                }
+
+                DocumentRevision::whereKey($trackingRevisionId)->update([
+                    'status' => DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
+                ]);
+            }
+
             DB::commit();
 
             /*
@@ -1809,6 +1912,10 @@ class CostingController extends Controller
                 ? route('tracking-documents.index', [], false)
                 : $responseService->buildRedirectUrl((int) $costingData->id, $trackingRevisionId ? (int) $trackingRevisionId : null);
 
+            if ($editingSubmittedCogm && $updateSection !== '') {
+                $redirectUrl .= (str_contains($redirectUrl, '?') ? '&' : '?').'edit_submitted=1';
+            }
+
             $successMessage = $responseService->buildSuccessMessage(
                 $updateSection,
                 $importFromPartlist,
@@ -1818,7 +1925,11 @@ class CostingController extends Controller
             );
 
             if ($updateSection === '') {
-                $successMessage = 'Data costing berhasil disimpan.';
+                $successMessage = $editingSubmittedCogm
+                    ? 'Perubahan COGM berhasil disimpan dan Inbox Marketing telah diperbarui.'
+                    : 'Data costing berhasil disimpan.';
+            } elseif ($editingSubmittedCogm) {
+                $successMessage = 'Perubahan berhasil disimpan dan COGM di Inbox Marketing telah diperbarui.';
             }
 
             if ($importFromPartlist) {
@@ -1898,7 +2009,12 @@ class CostingController extends Controller
             $columns = \Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns');
             $columnMap = array_fill_keys($columns, true);
             $now = now();
-            $updatedRows = 0;
+            $savedRows = 0;
+            $placeholderMaterial = null;
+
+            // Kunci data costing selama snapshot import disimpan agar request lain
+            // tidak menimpa sebagian baris di tengah proses.
+            CostingData::whereKey($costingData->id)->lockForUpdate()->firstOrFail();
 
             foreach ($rows as $row) {
                 if (!is_array($row)) {
@@ -1914,15 +2030,20 @@ class CostingController extends Controller
                     continue;
                 }
 
-                $currency = strtoupper(trim((string) ($row['currency'] ?? 'IDR')));
-                if (!in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
-                    $currency = 'IDR';
+                $currency = strtoupper(trim((string) ($row['currency'] ?? '')));
+                if ($currency !== '' && !in_array($currency, ['IDR', 'USD', 'JPY'], true)) {
+                    $currency = '';
                 }
 
-                $cnType = strtoupper(trim((string) ($row['cn_type'] ?? 'N')));
-                if (!in_array($cnType, ['C', 'N', 'E'], true)) {
-                    $cnType = 'N';
+                $cnType = strtoupper(trim((string) ($row['cn_type'] ?? '')));
+                if ($cnType !== '' && !in_array($cnType, ['C', 'N', 'E'], true)) {
+                    $cnType = '';
                 }
+
+                $amount1Raw = trim((string) ($row['amount1'] ?? ''));
+                $unitPriceBasisRaw = trim((string) ($row['unit_price_basis'] ?? ''));
+                $qtyMoqRaw = trim((string) ($row['qty_moq'] ?? ''));
+                $importTaxRaw = trim((string) ($row['import_tax'] ?? ''));
 
                 $payload = [
                     'row_no' => $rowNo,
@@ -1931,18 +2052,19 @@ class CostingController extends Controller
                     'part_name' => trim((string) ($row['part_name'] ?? '')),
                     'qty_req' => $this->parseQuantityValue($row['qty_req'] ?? 0),
                     'pro_code' => trim((string) ($row['pro_code'] ?? '')),
-                    'amount1' => round($this->toFloatValue($row['amount1'] ?? 0), 6),
-                    'unit_price_basis' => round($this->toFloatValue($row['unit_price_basis'] ?? 0), 6),
-                    'unit_price_basis_text' => trim((string) ($row['unit_price_basis'] ?? '')) ?: null,
-                    'currency' => $currency,
-                    'qty_moq' => round($this->toFloatValue($row['qty_moq'] ?? 0), 6),
-                    'cn_type' => $cnType,
-                    'import_tax_percent' => round($this->toFloatValue($row['import_tax'] ?? 0), 6),
+                    'amount1' => $amount1Raw === '' ? null : round($this->toFloatValue($amount1Raw), 6),
+                    'unit_price_basis' => $unitPriceBasisRaw === '' ? null : round($this->toFloatValue($unitPriceBasisRaw), 6),
+                    'unit_price_basis_text' => $unitPriceBasisRaw === '' ? null : $unitPriceBasisRaw,
+                    'currency' => $currency === '' ? null : $currency,
+                    'qty_moq' => $qtyMoqRaw === '' ? null : round($this->toFloatValue($qtyMoqRaw), 6),
+                    'cn_type' => $cnType === '' ? null : $cnType,
+                    'import_tax_percent' => $importTaxRaw === '' ? null : round($this->toFloatValue($importTaxRaw), 6),
                     'updated_at' => $now,
                 ];
 
                 if (isset($columnMap['unit'])) {
-                    $payload['unit'] = $this->normalizeUnitValue($row['unit'] ?? '');
+                    // Pertahankan isi file import apa adanya, termasuk unit kosong.
+                    $payload['unit'] = trim((string) ($row['unit'] ?? ''));
                 }
 
                 if (isset($columnMap['supplier'])) {
@@ -1955,11 +2077,43 @@ class CostingController extends Controller
                  */
                 $payload = array_intersect_key($payload, $columnMap);
 
-                $affected = MaterialBreakdown::where('costing_data_id', $costingData->id)
+                $breakdown = MaterialBreakdown::where('costing_data_id', $costingData->id)
                     ->where('row_no', $rowNo)
-                    ->update($payload);
+                    ->first();
 
-                $updatedRows += (int) $affected;
+                if (!$breakdown) {
+                    $breakdown = MaterialBreakdown::where('costing_data_id', $costingData->id)
+                        ->orderBy('id')
+                        ->offset($rowNo - 1)
+                        ->first();
+                }
+
+                if ($breakdown) {
+                    $breakdown->fill($payload);
+                    $breakdown->save();
+                } else {
+                    if (!$placeholderMaterial) {
+                        $placeholderMaterial = Material::firstOrCreate(
+                            ['material_code' => '__PLACEHOLDER__'],
+                            [
+                                'material_description' => null,
+                                'base_uom' => 'PCS',
+                                'currency' => 'IDR',
+                                'price' => 0,
+                            ]
+                        );
+                    }
+
+                    $payload['costing_data_id'] = $costingData->id;
+                    $payload['material_id'] = $placeholderMaterial->id;
+                    MaterialBreakdown::create($payload);
+                }
+
+                $savedRows++;
+            }
+
+            if ($savedRows !== count($rows)) {
+                throw new \RuntimeException("Penyimpanan Material tidak lengkap ({$savedRows}/" . count($rows) . ' baris).');
             }
 
             DB::commit();
@@ -1970,8 +2124,9 @@ class CostingController extends Controller
                 'save_only' => true,
                 'needs_recalculate' => true,
                 'sent_rows' => count($rows),
-                'updated_rows' => $updatedRows,
-                'version' => 'material-save-only-v1',
+                'saved_rows' => $savedRows,
+                'updated_rows' => $savedRows,
+                'version' => 'material-snapshot-save-v2',
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -2003,6 +2158,7 @@ class CostingController extends Controller
             'assy_no' => ['nullable', 'string', 'max:255'],
             'assy_name' => ['nullable', 'string', 'max:255'],
             'customer' => ['nullable', 'string', 'max:255'],
+            'customer_code' => ['nullable', 'string', 'max:50'],
             'model' => ['nullable', 'string', 'max:255'],
             'project_date' => ['nullable', 'date'],
             'sop_mp_date' => ['nullable', 'date'],
@@ -2191,9 +2347,15 @@ class CostingController extends Controller
         $temporaryPath = $temporaryBasePath . '.xlsx';
         @unlink($temporaryBasePath);
         $writer->save($temporaryPath);
-        $safeAssy = Str::slug((string) ($validated['assy_no'] ?? 'project')) ?: 'project';
+        $safeFilenamePart = static function (?string $value, string $fallback): string {
+            $cleaned = trim((string) preg_replace('/[\\\\\/:*?"<>|]+/', '', (string) $value));
+            return $cleaned !== '' ? $cleaned : $fallback;
+        };
+        $safeAssy = $safeFilenamePart($validated['assy_no'] ?? null, 'NO-ASSY');
+        $safeCustomerCode = $safeFilenamePart($validated['customer_code'] ?? null, 'CUSTOMER');
+        $filename = "cogm. {$safeAssy} - {$safeCustomerCode}.xlsx";
 
-        return response()->download($temporaryPath, "Export-costing-{$safeAssy}.xlsx", [
+        return response()->download($temporaryPath, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Access-Control-Expose-Headers' => 'Content-Disposition'
         ])->deleteFileAfterSend(true);
@@ -2224,6 +2386,12 @@ class CostingController extends Controller
         $validated = $request->validate([
             'material_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:10240'],
             'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
+            'costing_data_id' => ['nullable', 'integer', 'exists:costing_data,id'],
+            'forecast' => ['nullable', 'numeric', 'min:0'],
+            'project_period' => ['nullable', 'numeric', 'min:0'],
+            'exchange_rate_usd' => ['nullable', 'numeric', 'min:0'],
+            'exchange_rate_jpy' => ['nullable', 'numeric', 'min:0'],
+            'lme_rate' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         try {
@@ -2234,6 +2402,16 @@ class CostingController extends Controller
             $sheet = $workbook->getSheetByName('Material Cost');
             if (!$sheet) {
                 return response()->json(['success' => false, 'message' => 'Sheet Material Cost tidak ditemukan. Gunakan file hasil Export Excel dari sistem.'], 422);
+            }
+            // File hasil export membawa parameter kalkulasi pada F12/F13. Gunakan
+            // nilainya sebagai sumber utama ketika form aktif masih bernilai nol.
+            $excelForecast = $this->toFloatValue($this->materialEditorCellValue($sheet->getCell('F12')));
+            $excelProjectPeriod = $this->toFloatValue($this->materialEditorCellValue($sheet->getCell('F13')));
+            if ((float) ($validated['forecast'] ?? 0) <= 0 && $excelForecast > 0) {
+                $validated['forecast'] = $excelForecast;
+            }
+            if ((float) ($validated['project_period'] ?? 0) <= 0 && $excelProjectPeriod > 0) {
+                $validated['project_period'] = $excelProjectPeriod;
             }
             $rows = [];
             $errors = [];
@@ -2254,16 +2432,19 @@ class CostingController extends Controller
                     $row[$field] = trim((string) $this->materialEditorCellValue($sheet->getCell("{$column}{$excelRow}")));
                 }
 
-                $row['currency'] = strtoupper($row['currency'] ?: 'IDR');
-                $row['cn_type'] = strtoupper($row['cn_type'] ?: 'N');
-                if (!in_array($row['currency'], ['IDR', 'USD', 'JPY'], true)) {
+                $row['currency'] = strtoupper($row['currency']);
+                $row['cn_type'] = strtoupper($row['cn_type']);
+                if ($row['currency'] !== '' && !in_array($row['currency'], ['IDR', 'USD', 'JPY'], true)) {
                     $errors[] = "Baris {$excelRow}: Currency harus IDR, USD, atau JPY.";
                 }
-                if (!in_array($row['cn_type'], ['N', 'C', 'E'], true)) {
+                if ($row['cn_type'] !== '' && !in_array($row['cn_type'], ['N', 'C', 'E'], true)) {
                     $errors[] = "Baris {$excelRow}: C/N harus N, C, atau E.";
                 }
                 foreach (['qty_req', 'amount1', 'qty_moq', 'import_tax'] as $numericField) {
-                    if ($row[$numericField] !== '' && !preg_match('/^-?[\d.,\s]+$/', $row[$numericField])) {
+                    if ($row[$numericField] === '') {
+                        continue;
+                    }
+                    if (!preg_match('/^-?[\d.,\s]+$/', $row[$numericField])) {
                         $errors[] = "Baris {$excelRow}: {$numericField} harus berupa angka.";
                     } else {
                         $row[$numericField] = (string) $this->toFloatValue($row[$numericField]);
@@ -2290,16 +2471,24 @@ class CostingController extends Controller
                     Storage::disk('local')->delete($revision->costing_edit_file_path);
                 }
                 $revision->update([
-                    'costing_edit_original_name' => 'Import-Hasil-Edit-' . $validated['material_file']->getClientOriginalName(),
+                    'costing_edit_original_name' => $validated['material_file']->getClientOriginalName(),
                     'costing_edit_file_path' => $path,
                     'costing_edit_uploaded_at' => now(),
                 ]);
+
+                $persistedCostingData = $this->persistMaterialEditorRows(
+                    (int) $revision->id,
+                    $rows,
+                    isset($validated['costing_data_id']) ? (int) $validated['costing_data_id'] : null,
+                    $validated
+                );
             }
 
             return response()->json([
                 'success' => true,
                 'message' => count($rows) . ' baris valid dan siap diterapkan.',
                 'rows' => $rows,
+                'costing_data_id' => isset($persistedCostingData) ? $persistedCostingData->id : ($validated['costing_data_id'] ?? null),
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => 'File Excel tidak dapat dibaca: ' . $e->getMessage()], 422);
@@ -2315,6 +2504,159 @@ class CostingController extends Controller
         }
 
         return $cell->getValue();
+    }
+
+    private function persistMaterialEditorRows(int $trackingRevisionId, array $rows, ?int $costingDataId = null, array $context = []): CostingData
+    {
+        $costingData = $costingDataId
+            ? CostingData::whereKey($costingDataId)->first()
+            : CostingData::where('tracking_revision_id', $trackingRevisionId)->latest('id')->first();
+
+        if (!$costingData) {
+            $revision = DocumentRevision::with(['project', 'plant'])->find($trackingRevisionId);
+            $project = $revision?->project;
+            if (!$revision || !$project || !$project->product_id) {
+                throw new \RuntimeException('Proyek aktif belum lengkap sehingga data costing belum dapat dibuat.');
+            }
+
+            $customerName = trim((string) ($project->customer ?? ''));
+            $customer = Customer::query()
+                ->whereRaw('LOWER(name) = ?', [Str::lower($customerName)])
+                ->orWhereRaw('LOWER(code) = ?', [Str::lower($customerName)])
+                ->first();
+            if (!$customer) {
+                throw new \RuntimeException("Customer {$customerName} belum terdaftar pada master Customer.");
+            }
+
+            $latestRate = ExchangeRate::orderByDesc('period_date')->orderByDesc('id')->first();
+            $costingData = CostingData::firstOrCreate(
+                ['tracking_revision_id' => $trackingRevisionId],
+                [
+                    'product_id' => (int) $project->product_id,
+                    'customer_id' => (int) $customer->id,
+                    'period' => (string) ($revision->period ?: now()->format('Y-m')),
+                    'line' => (string) ($revision->plant?->code ?? ''),
+                    'model' => (string) ($project->model ?? ''),
+                    'assy_no' => (string) ($project->part_number ?? ''),
+                    'assy_name' => (string) ($project->part_name ?? ''),
+                    'exchange_rate_id' => $latestRate?->id,
+                    'exchange_rate_usd' => (float) ($latestRate?->usd_to_idr ?? 15500),
+                    'exchange_rate_jpy' => (float) ($latestRate?->jpy_to_idr ?? 103),
+                    'lme_rate' => (float) ($latestRate?->lme_copper ?? 0),
+                    'rate_periode' => $latestRate?->period_date?->format('Y-m-d'),
+                    'forecast' => max(0, (int) round((float) ($context['forecast'] ?? 0))),
+                    'project_period' => max(0, (int) round((float) ($context['project_period'] ?? 0))),
+                    'material_cost' => 0,
+                    'labor_cost' => 0,
+                    'overhead_cost' => 0,
+                    'scrap_cost' => 0,
+                    'revenue' => 0,
+                    'qty_good' => 0,
+                ]
+            );
+        }
+        if (!$costingData) {
+            throw new \RuntimeException('Data costing aktif tidak ditemukan. Muat ulang halaman lalu coba kembali.');
+        }
+
+        $costingData->fill(array_filter([
+            'forecast' => isset($context['forecast']) ? max(0, (int) round((float) $context['forecast'])) : null,
+            'project_period' => isset($context['project_period']) ? max(0, (int) round((float) $context['project_period'])) : null,
+            'exchange_rate_usd' => isset($context['exchange_rate_usd']) ? max(0, (float) $context['exchange_rate_usd']) : null,
+            'exchange_rate_jpy' => isset($context['exchange_rate_jpy']) ? max(0, (float) $context['exchange_rate_jpy']) : null,
+            'lme_rate' => isset($context['lme_rate']) ? max(0, (float) $context['lme_rate']) : null,
+        ], static fn ($value) => $value !== null));
+        $costingData->save();
+
+        $breakdowns = MaterialBreakdown::where('costing_data_id', $costingData->id)
+            ->orderBy('id')
+            ->get()
+            ->values();
+        $columns = array_fill_keys(\Illuminate\Support\Facades\Schema::getColumnListing('material_breakdowns'), true);
+
+        DB::transaction(function () use ($rows, $breakdowns, $columns, $costingData) {
+            $placeholderMaterial = null;
+            foreach ($rows as $incoming) {
+                $rowNo = (int) ($incoming['__row_no'] ?? 0);
+                if ($rowNo <= 0) {
+                    continue;
+                }
+
+                $breakdown = $breakdowns->firstWhere('row_no', $rowNo) ?? $breakdowns->get($rowNo - 1);
+
+                $nullableNumber = fn (string $field): ?float => trim((string) ($incoming[$field] ?? '')) === ''
+                    ? null
+                    : round($this->toFloatValue($incoming[$field]), 6);
+                $currency = strtoupper(trim((string) ($incoming['currency'] ?? '')));
+                $cnType = strtoupper(trim((string) ($incoming['cn_type'] ?? '')));
+                $basisText = trim((string) ($incoming['unit_price_basis'] ?? ''));
+
+                $payload = [
+                    'costing_data_id' => $costingData->id,
+                    'row_no' => $rowNo,
+                    'part_no' => trim((string) ($incoming['part_no'] ?? '')) ?: null,
+                    'id_code' => trim((string) ($incoming['id_code'] ?? '')) ?: null,
+                    'part_name' => trim((string) ($incoming['part_name'] ?? '')) ?: null,
+                    'qty_req' => $this->parseQuantityValue($incoming['qty_req'] ?? 0),
+                    'unit' => $this->normalizeUnitValue($incoming['unit'] ?? ''),
+                    'pro_code' => trim((string) ($incoming['pro_code'] ?? '')),
+                    'amount1' => $nullableNumber('amount1'),
+                    'unit_price_basis' => $nullableNumber('unit_price_basis'),
+                    'unit_price_basis_text' => $basisText === '' ? null : $basisText,
+                    'currency' => $currency === '' ? null : $currency,
+                    'qty_moq' => $nullableNumber('qty_moq'),
+                    'cn_type' => $cnType === '' ? null : $cnType,
+                    'supplier' => trim((string) ($incoming['supplier'] ?? '')) ?: null,
+                    'import_tax_percent' => $nullableNumber('import_tax'),
+                    'updated_at' => now(),
+                ];
+
+                $calculated = $this->calculateCogmMaterialAmount2([
+                    'qty_req' => $payload['qty_req'],
+                    'qty_moq' => $payload['qty_moq'] ?? 0,
+                    'amount1' => $payload['amount1'] ?? 0,
+                    'import_tax' => $payload['import_tax_percent'] ?? 0,
+                    'cn_type' => $payload['cn_type'] ?? '',
+                    'unit' => $payload['unit'] ?? '',
+                    'unit_price_basis' => $payload['unit_price_basis_text'] ?? '',
+                ], $costingData);
+                $payload['amount2'] = $calculated['amount2'];
+                $payload['currency2'] = $payload['currency'] ?: 'IDR';
+                $payload['unit_price2'] = $calculated['amount2'];
+                if (isset($columns['multiply_factor'])) {
+                    $payload['multiply_factor'] = $calculated['multiply_factor'];
+                }
+
+                $payload = array_intersect_key($payload, $columns);
+                if ($breakdown) {
+                    $breakdown->newQuery()->whereKey($breakdown->id)->update($payload);
+                    continue;
+                }
+
+                if (!$placeholderMaterial) {
+                    $placeholderMaterial = Material::firstOrCreate(
+                        ['material_code' => '__PLACEHOLDER__'],
+                        [
+                            'material_description' => null,
+                            'base_uom' => 'PCS',
+                            'currency' => 'IDR',
+                            'price' => 0,
+                        ]
+                    );
+                }
+                $payload['material_id'] = $placeholderMaterial->id;
+                MaterialBreakdown::create($payload);
+            }
+        });
+
+        $costingData->material_cost = $this->calculateMaterialCostFromBreakdowns(
+            $costingData->id,
+            (float) $costingData->exchange_rate_usd,
+            (float) $costingData->exchange_rate_jpy
+        );
+        $costingData->save();
+
+        return $costingData;
     }
 
     public function recalculateMaterial(Request $request)
@@ -2391,6 +2733,25 @@ class CostingController extends Controller
             $costingData->update([
                 'material_cost' => $materialCost,
             ]);
+
+            $revision = $costingData->tracking_revision_id
+                ? DocumentRevision::find($costingData->tracking_revision_id)
+                : null;
+
+            if ($revision) {
+                $importFile = $request->file('import_cogm_file');
+                $path = $importFile->store('costing/cogm-imports/'.$revision->id, 'local');
+
+                if ($revision->cogm_import_file_path && $revision->cogm_import_file_path !== $path) {
+                    Storage::disk('local')->delete($revision->cogm_import_file_path);
+                }
+
+                $revision->update([
+                    'cogm_import_original_name' => $importFile->getClientOriginalName(),
+                    'cogm_import_file_path' => $path,
+                    'cogm_import_uploaded_at' => now(),
+                ]);
+            }
 
             DB::commit();
 
@@ -4416,20 +4777,25 @@ class CostingController extends Controller
         return is_numeric($normalized) ? (float) $normalized : 0;
     }
 
-    private function parseQuantityValue($value): int
+    private function parseQuantityValue($value): int|float
     {
-        if (is_int($value) || is_float($value)) {
-            return max(0, (int) round($value));
+        if (is_int($value)) {
+            return max(0, $value);
+        }
+        if (is_float($value)) {
+            return max(0, round($value, 6));
         }
 
-        // Qty Req ditampilkan sebagai bilangan bulat berformat Indonesia.
-        // Karena itu titik/koma pada "3.500" atau "15,000" adalah pemisah ribuan.
-        $digits = preg_replace('/[^0-9\-]/', '', trim((string) $value));
-        if ($digits === '' || $digits === '-') {
-            return 0;
+        $text = trim((string) $value);
+        // Input UI lama memakai satu titik/koma dengan tepat tiga digit sebagai
+        // pemisah ribuan (3.500 / 15,000). Nilai desimal dari Excel tetap diproses
+        // oleh parser numerik umum (misalnya 15403.5 atau 15.403,5).
+        if (preg_match('/^\d{1,3}([.,]\d{3})+$/', $text) === 1) {
+            return max(0, (int) preg_replace('/[.,]/', '', $text));
         }
 
-        return max(0, (int) $digits);
+        $parsed = max(0, round($this->toFloatValue($value), 6));
+        return floor($parsed) === $parsed ? (int) $parsed : $parsed;
     }
 
     private function parseNumericInput($value): float
@@ -4460,6 +4826,7 @@ class CostingController extends Controller
         $importTax = max(0.0, (float) ($row['import_tax'] ?? 0));
         $cnType = strtoupper(trim((string) ($row['cn_type'] ?? 'N')));
         $unit = strtoupper(trim((string) ($row['unit'] ?? '')));
+        $priceBasis = strtoupper(trim((string) ($row['unit_price_basis'] ?? '')));
 
         $forecast = max(0.0, (float) ($costingData->forecast ?? 0));
         $projectPeriod = max(0.0, (float) ($costingData->project_period ?? 0));
@@ -4467,7 +4834,7 @@ class CostingController extends Controller
         /*
          * Samakan dengan rumus JavaScript di form:
          * - Multiply Factor memakai divisor 1000 khusus UNIT = MM
-         * - Amount 2 memakai divisor 1000 untuk METER/M/MTR/MM
+         * - Amount 2 memakai Unit Price (Basis), sama seperti JavaScript.
          */
         $multiplyUnitDivisor = ($unit === 'MM') ? 1000.0 : 1.0;
 
@@ -4481,7 +4848,7 @@ class CostingController extends Controller
         }
 
         $base = $amount1 + ($amount1 * ($importTax / 100));
-        $amountUnitDivisor = in_array($unit, ['METER', 'M', 'MTR', 'MM'], true) ? 1000.0 : 1.0;
+        $amountUnitDivisor = in_array($priceBasis, ['METER', 'M', 'MTR'], true) ? 1000.0 : 1.0;
         $amount2 = $amountUnitDivisor != 0.0 ? (($multiplyFactor * $base) / $amountUnitDivisor) : 0.0;
 
         return [

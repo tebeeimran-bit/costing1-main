@@ -19,7 +19,7 @@ class ProjectGroupController extends Controller
     {
         $search = trim((string) $request->query('search', ''));
         $status = trim((string) $request->query('status', 'active'));
-        $allowedStatuses = ['active', 'draft', 'pricing', 'rejected', 'waiting', 'approved', 'sent', 'history', 'all'];
+        $allowedStatuses = ['active', 'history', 'all'];
         if (!in_array($status, $allowedStatuses, true)) {
             $status = 'active';
         }
@@ -65,16 +65,7 @@ class ProjectGroupController extends Controller
                 DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
                 DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
             ],
-            'history' => [
-                DocumentRevision::STATUS_PENDING_FORM_INPUT,
-                DocumentRevision::STATUS_SUDAH_COSTING,
-                DocumentRevision::STATUS_PENDING_PRICING,
-                DocumentRevision::STATUS_COGM_GENERATED,
-                DocumentRevision::STATUS_REJECTED_BY_COORDINATOR,
-                DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
-                DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
-                DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
-            ],
+            'history' => [DocumentRevision::STATUS_SUBMITTED_TO_MARKETING],
         ];
         if (isset($statusMap[$status])) {
             $query->whereHas('trackingRevision', fn ($revision) => $revision->whereIn('status', $statusMap[$status]));
@@ -85,7 +76,7 @@ class ProjectGroupController extends Controller
         $items->getCollection()->transform(function (CostingData $costing) use ($userRole) {
             $revision = $costing->trackingRevision;
             $approval = $revision?->latestApproval;
-            $openUnpriced = $revision?->unpricedParts()->where('status', 'open')->count() ?? 0;
+            $openUnpriced = $revision?->unpricedParts()->whereNull('resolved_at')->count() ?? 0;
             $revisionStatus = (string) ($revision?->status ?? '');
 
             $costing->workflow_label = match ($revisionStatus) {
@@ -149,6 +140,8 @@ class ProjectGroupController extends Controller
 
         $revisions = DocumentRevision::with([
             'project.product',
+            'project.a00Form.creator',
+            'project.a00Item.form',
             'latestApproval.submitter',
             'latestApproval.approver',
             'latestApproval.rejecter',
@@ -215,6 +208,7 @@ class ProjectGroupController extends Controller
             );
             $drawing = $drawingByPartNumber->get($this->normalizePartNumber($partNumber));
             $progress = $this->buildProgress($revision, $costing, $drawing, $latestApproval, $latestSubmission);
+            $a00Form = $project->a00Item?->form ?? $project->a00Form;
 
             return (object) [
                 'revision' => $revision,
@@ -223,6 +217,8 @@ class ProjectGroupController extends Controller
                 'latest_approval' => $latestApproval,
                 'latest_submission' => $latestSubmission,
                 'cogm_value' => $cogmValue,
+                'a00_form_id' => $a00Form?->id,
+                'a00_document_number' => $this->cleanText($a00Form?->document_number ?? ''),
 
                 'business_category' => $businessCategory,
                 'customer' => $customer,
@@ -299,6 +295,16 @@ class ProjectGroupController extends Controller
             })->values();
         }
 
+        $sharedA00Counts = $children
+            ->filter(fn ($item) => !empty($item->a00_form_id))
+            ->groupBy('a00_form_id')
+            ->map(fn (Collection $items) => $items->pluck('project.id')->filter()->unique()->count());
+        $children->each(function ($item) use ($sharedA00Counts) {
+            $item->shared_a00_count = $item->a00_form_id
+                ? (int) ($sharedA00Counts[$item->a00_form_id] ?? 0)
+                : 0;
+        });
+
         $groups = $children
             ->groupBy(fn ($item) => $this->groupKey($item->business_category, $item->customer, $item->model))
             ->map(function (Collection $items) {
@@ -317,6 +323,15 @@ class ProjectGroupController extends Controller
                     'updated_at' => $items->sortByDesc('updated_at')->first()->updated_at,
                     'total_part_number' => $items->pluck('part_number')->filter()->unique()->count(),
                     'total_items' => $items->count(),
+                    'shared_a00_labels' => $items
+                        ->filter(fn ($item) => ($item->shared_a00_count ?? 0) > 1)
+                        ->map(fn ($item) => (object) [
+                            'key' => $item->a00_form_id,
+                            'number' => $item->a00_document_number ?: 'A00 #' . $item->a00_form_id,
+                            'project_count' => $item->shared_a00_count,
+                        ])
+                        ->unique('key')
+                        ->values(),
                     'status_summary' => $items
                         ->groupBy('status_label')
                         ->map(fn (Collection $statusItems) => (object) [
@@ -325,7 +340,7 @@ class ProjectGroupController extends Controller
                             'count' => $statusItems->count(),
                         ])
                         ->values(),
-                    'progress' => collect(['a00','drawing','breakdown','costing','submit','cogm'])->map(function ($key) use ($items) {
+                    'progress' => collect(['a00','drawing','breakdown','costing','new-part-request','submit','cogm'])->map(function ($key) use ($items) {
                         $steps = $items->map(fn ($item) => collect($item->progress)->firstWhere('key', $key));
                         $completed = $steps->every(fn ($step) => ($step['state'] ?? null) === 'done');
                         $active = !$completed && $steps->contains(fn ($step) => ($step['state'] ?? null) === 'active');
@@ -397,6 +412,11 @@ class ProjectGroupController extends Controller
         $openUnpricedCount = $revision->unpricedParts()->whereNull('resolved_at')->count();
         $hasNewPartRequest = $openUnpricedCount > 0 || $revision->unpricedParts()->whereNotNull('resolved_at')->exists();
         $hasNewPartPricing = $hasNewPartRequest && $openUnpricedCount === 0;
+        $newPartActor = $revision->unpricedParts()
+            ->whereNotNull('resolved_at')
+            ->with('resolvedBy')
+            ->latest('resolved_at')
+            ->first()?->resolvedBy?->name;
         $hasPartlist = filled($revision->partlist_file_path);
         $hasUmh = filled($revision->umh_file_path);
         $breakdownStatus = $hasBreakdown
@@ -406,11 +426,11 @@ class ProjectGroupController extends Controller
                 : ($hasUmh ? 'Menunggu Partlist' : 'Menunggu dokumen Engineering'));
 
         $definitions = [
-            ['key'=>'a00','label'=>'A00','done'=>$hasA00,'date'=>$revision->a00_received_date ?? $revision->created_at,'pic'=>$revision->pic_marketing],
-            ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'date'=>$hasDrawing ? ($drawingTask?->completed_at ?? $drawing?->registration_date ?? $drawing?->created_at) : null,'pic'=>$drawingTask?->completedBy?->name ?? ($hasDrawing ? 'Document Control' : '-')],
-            ['key'=>'breakdown','label'=>'Breakdown','done'=>$hasBreakdown,'active'=>(bool)$breakdownTask,'status'=>$breakdownStatus,'date'=>$breakdownTask?->completed_at ?? $breakdownTask?->started_at ?? $breakdownTask?->available_at ?? ($hasBreakdown ? $costing?->updated_at : null),'pic'=>$breakdownTask?->completedBy?->name ?? $breakdownTask?->assignedUser?->name ?? $revision->pic_engineering],
-            ['key'=>'costing','label'=>'Costing','done'=>$hasCosting,'active'=>(bool)$costing || (bool)$costingTask,'status'=>$isRejected ? 'Perlu revisi' : ((bool)$costing ? 'Sedang proses' : 'Siap dimulai'),'date'=>$approval?->submitted_at ?? $costingTask?->started_at ?? $costingTask?->available_at ?? $costing?->updated_at,'pic'=>$costingTask?->assignedUser?->name ?? $revision->pic_engineering],
-            ['key'=>'new-part-request','label'=>'New Part Request','done'=>$hasNewPartPricing,'active'=>$openUnpricedCount > 0,'status'=>$openUnpricedCount > 0 ? $openUnpricedCount.' part menunggu harga baru' : ($hasNewPartRequest ? 'Harga baru sudah lengkap' : 'Tidak ada part baru'),'date'=>$hasNewPartRequest ? $revision->updated_at : null,'pic'=>$revision->pic_engineering],
+            ['key'=>'a00','label'=>'A00','done'=>$hasA00,'date'=>$revision->a00_received_date ?? $revision->created_at,'pic'=>$revision->project?->a00Form?->creator?->name],
+            ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'date'=>$hasDrawing ? ($drawingTask?->completed_at ?? $drawing?->registration_date ?? $drawing?->created_at) : null,'pic'=>$drawingTask?->completedBy?->name ?? $drawingTask?->assignedUser?->name],
+            ['key'=>'breakdown','label'=>'Breakdown','done'=>$hasBreakdown,'active'=>(bool)$breakdownTask,'status'=>$breakdownStatus,'date'=>$breakdownTask?->completed_at ?? $breakdownTask?->started_at ?? $breakdownTask?->available_at ?? ($hasBreakdown ? $costing?->updated_at : null),'pic'=>$breakdownTask?->completedBy?->name ?? $breakdownTask?->assignedUser?->name],
+            ['key'=>'costing','label'=>'Costing','done'=>$hasCosting,'active'=>(bool)$costing || (bool)$costingTask,'status'=>$isRejected ? 'Perlu revisi' : ((bool)$costing ? 'Sedang proses' : 'Siap dimulai'),'date'=>$approval?->submitted_at ?? $costingTask?->started_at ?? $costingTask?->available_at ?? $costing?->updated_at,'pic'=>$approval?->submitter?->name ?? $costingTask?->completedBy?->name ?? $costingTask?->assignedUser?->name],
+            ['key'=>'new-part-request','label'=>'New Part Request','done'=>$hasNewPartPricing,'active'=>$openUnpricedCount > 0,'status'=>$openUnpricedCount > 0 ? $openUnpricedCount.' part menunggu harga baru' : ($hasNewPartRequest ? 'Harga baru sudah lengkap' : 'Tidak ada part baru'),'date'=>$hasNewPartRequest ? $revision->updated_at : null,'pic'=>$newPartActor],
             ['key'=>'submit','label'=>'Submit','done'=>$hasSubmit,'active'=>$revisionStatus === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,'status'=>'Menunggu approval coordinator','date'=>$approval?->approved_at ?? $approval?->submitted_at,'pic'=>$approval?->approver?->name ?? $approval?->submitter?->name ?? '-'],
             ['key'=>'cogm','label'=>'COGM','done'=>$hasCogm,'date'=>$submission?->submitted_at,'pic'=>$submission?->submitted_by ?? $submission?->pic_marketing ?? '-'],
         ];

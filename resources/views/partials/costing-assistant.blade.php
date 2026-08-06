@@ -1,6 +1,6 @@
 @auth
 @if(in_array(auth()->user()->role, ['admin', 'admin_costing'], true))
-<div class="costing-assistant" id="costingAssistant" data-route="{{ request()->route()?->getName() }}" data-path="/{{ request()->path() }}">
+<div class="costing-assistant" id="costingAssistant" data-route="{{ request()->route()?->getName() }}" data-path="/{{ request()->path() }}" data-revision-id="{{ request('tracking_revision_id') }}">
     <button type="button" class="costing-assistant-toggle" id="costingAssistantToggle" aria-label="Buka Costing Assistant" title="Costing Assistant">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
     </button>
@@ -9,14 +9,14 @@
         <header class="costing-assistant-header">
             <div>
                 <h2>Costing Assistant</h2>
-                <p>Rule-based, lokal, tanpa AI cloud.</p>
+                <p>Panduan project dan validasi file dari data lokal.</p>
             </div>
             <button type="button" class="costing-assistant-close" id="costingAssistantClose" aria-label="Tutup">×</button>
         </header>
 
         <div class="costing-assistant-tabs" role="tablist">
-            <button type="button" class="active" data-assistant-tab="chat">Guide</button>
-            <button type="button" data-assistant-tab="file">File Check</button>
+            <button type="button" class="active" data-assistant-tab="chat">Panduan</button>
+            <button type="button" data-assistant-tab="file">Cek File</button>
         </div>
 
         <section class="costing-assistant-body active" data-assistant-pane="chat">
@@ -26,7 +26,7 @@
             <div class="costing-assistant-messages" id="costingAssistantMessages" aria-live="polite"></div>
             <div class="costing-assistant-prompts" id="costingAssistantPrompts"></div>
             <form class="costing-assistant-chat-form" id="costingAssistantChatForm" data-skip-loading-overlay="true">
-                <input type="text" id="costingAssistantInput" maxlength="500" placeholder="Tanya: kenapa belum bisa submit?" autocomplete="off">
+                <input type="text" id="costingAssistantInput" maxlength="500" placeholder="Tanyakan status atau kendala project..." autocomplete="off">
                 <button type="submit" aria-label="Kirim">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                 </button>
@@ -75,7 +75,11 @@
     let booted = false;
 
     function payload(extra) {
-        return Object.assign({ route: root.dataset.route || '', path: root.dataset.path || window.location.pathname }, extra || {});
+        return Object.assign({
+            route: root.dataset.route || '',
+            path: root.dataset.path || window.location.pathname,
+            tracking_revision_id: root.dataset.revisionId || null
+        }, extra || {});
     }
 
     function openPanel() {
@@ -117,15 +121,21 @@
 
     function greeting(data) {
         const s = data.snapshot || {};
-        return 'Konteks aktif: ' + (s.module || 'general') + '. Saya akan menjawab dari rule, FAQ, dan data lokal aplikasi.';
+        if (s.current_project) {
+            return 'Saya sedang membaca project ' + s.current_project.assy_no + ' (' + s.current_project.customer + ' - ' + s.current_project.model + '). Pilih pertanyaan cepat atau tulis kendala Anda.';
+        }
+        return 'Saya membaca ' + (s.project_count || 0) + ' project aktual. Pilih pertanyaan cepat di bawah atau tulis hal yang ingin diperiksa.';
     }
 
     function renderSnapshot(s) {
         if (!s) return;
-        snapshot.innerHTML = '<span>Module: <strong>' + escapeHtml(s.module) + '</strong></span>'
-            + '<span>Unpriced: <strong>' + s.unresolved_unpriced_count + '</strong></span>'
-            + '<span>Waiting approval: <strong>' + s.waiting_approval_count + '</strong></span>'
-            + '<span>Rate ' + escapeHtml(s.current_period) + ': <strong>' + (s.current_month_rate_exists ? 'OK' : 'Belum') + '</strong></span>';
+        const project = s.current_project;
+        snapshot.innerHTML = (project
+            ? '<span>Project: <strong>' + escapeHtml(project.assy_no) + '</strong></span><span>Status: <strong>' + escapeHtml(project.status) + '</strong></span>'
+            : '<span>Project: <strong>' + (s.project_count || 0) + '</strong></span><span>Modul: <strong>' + escapeHtml(s.module) + '</strong></span>')
+            + '<span>Harga kosong: <strong>' + (project ? project.open_unpriced_count : s.unresolved_unpriced_count) + '</strong></span>'
+            + '<span>Menunggu approval: <strong>' + s.waiting_approval_count + '</strong></span>'
+            + '<span>Kurs ' + escapeHtml(s.current_period) + ': <strong>' + (s.current_month_rate_exists ? 'Tersedia' : 'Belum ada') + '</strong></span>';
     }
 
     function renderPrompts(items) {

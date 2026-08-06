@@ -41,6 +41,7 @@ class MaterialExcelEditorTest extends TestCase
             'assy_no' => 'W40294',
             'assy_name' => 'WIRING HARNESS',
             'customer' => 'Astra',
+            'customer_code' => 'SMSG',
             'model' => 'K4MA',
             'forecast' => 500,
             'project_period' => 2,
@@ -57,6 +58,7 @@ class MaterialExcelEditorTest extends TestCase
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             (string) $response->headers->get('Content-Type')
         );
+        $this->assertStringContainsString('cogm. W40294 - SMSG.xlsx', (string) $response->headers->get('Content-Disposition'));
         $path = $response->baseResponse->getFile()->getPathname();
         $this->assertFileExists($path);
         $this->assertStringStartsWith('PK', (string) file_get_contents($path, false, null, 0, 2));
@@ -106,6 +108,43 @@ class MaterialExcelEditorTest extends TestCase
                 ->assertJsonPath('rows.0.__row_no', 1)
                 ->assertJsonPath('rows.0.qty_req', '552')
                 ->assertJsonPath('rows.0.currency', 'IDR');
+        } finally {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    public function test_empty_edited_excel_cells_remain_empty(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Material Cost');
+        $sheet->setCellValue('C18', 1);
+        $sheet->setCellValue('D18', '7408-9000 L');
+        $sheet->setCellValue('F18', '1618-10013');
+        $sheet->setCellValue('G18', 'ADHESIVE TAPE');
+        $sheet->setCellValue('I18', 100);
+        $sheet->setCellValue('J18', 'MM');
+        $sheet->setCellValue('K18', 'ASSEMBLING');
+        $path = tempnam(sys_get_temp_dir(), 'material-editor-empty-') . '.xlsx';
+        (new Xlsx($spreadsheet))->save($path);
+
+        try {
+            $response = $this->actingAs($admin)->post(route('costing.material-excel.import'), [
+                'material_file' => new UploadedFile($path, 'material-edit-empty.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+            ]);
+
+            $response->assertOk()
+                ->assertJsonPath('rows.0.qty_req', '100')
+                ->assertJsonPath('rows.0.amount1', '')
+                ->assertJsonPath('rows.0.unit_price_basis', '')
+                ->assertJsonPath('rows.0.currency', '')
+                ->assertJsonPath('rows.0.qty_moq', '')
+                ->assertJsonPath('rows.0.cn_type', '')
+                ->assertJsonPath('rows.0.supplier', '')
+                ->assertJsonPath('rows.0.import_tax', '');
         } finally {
             if (is_file($path)) {
                 unlink($path);

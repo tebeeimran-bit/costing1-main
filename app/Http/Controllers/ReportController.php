@@ -8,6 +8,7 @@ use App\Models\Customer;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
 use App\Models\DocumentRevision;
+use App\Models\DocumentProject;
 use App\Models\ExchangeRate;
 use App\Models\MaterialBreakdown;
 use App\Models\Product;
@@ -16,6 +17,8 @@ use App\Models\WireRate;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class ReportController extends Controller
 {
@@ -24,35 +27,30 @@ class ReportController extends Controller
      */
     public function resumeCogm(Request $request)
     {
-        $formatStatus = function ($item): string {
-            if (($item->trackingRevision?->a05 ?? null) === 'ada') {
-                return 'A05';
-            }
+        $costings = CogmSubmission::with([
+            'revision.project.product',
+            'revision.costingData.customer',
+            'revision.costingData.product',
+            'revision.costingData.materialBreakdowns',
+        ])->orderByDesc('submitted_at')->get()
+            ->unique('document_revision_id')
+            ->map(function (CogmSubmission $submission) {
+                $revision = $submission->revision;
+                $project = $revision?->project;
+                $item = $revision?->costingData;
+                if (!$revision || !$project || !$item) {
+                    return null;
+                }
 
-            if (($item->trackingRevision?->a04 ?? null) === 'ada') {
-                return 'A04';
-            }
-
-            return 'A00';
-        };
-
-        $costings = CostingData::with(['customer', 'product', 'trackingRevision'])
-            ->orderBy('customer_id')
-            ->orderBy('model')
-            ->get()
-            ->map(function ($item) use ($formatStatus) {
-                $cogm = (float) $item->material_cost
-                    + (float) $item->labor_cost
-                    + (float) $item->overhead_cost
-                    + (float) $item->scrap_cost;
+                // Nilai utama wajib mengikuti submission Marketing. Field ini juga
+                // diperbarui ketika History Costing diedit dan disimpan kembali.
+                $cogm = (float) ($submission->cogm_value ?? 0);
 
                 $forecast = (float) ($item->forecast ?? 0);
                 $period = (float) ($item->project_period ?? 0);
                 $potential = $forecast * $period * $cogm;
 
-                $materialRows = MaterialBreakdown::query()
-                    ->where('costing_data_id', $item->id)
-                    ->get(['part_no', 'amount1', 'cn_type']);
+                $materialRows = $item->materialBreakdowns;
 
                 $missingPartCount = $materialRows
                     ->filter(function ($row) {
@@ -103,30 +101,31 @@ class ReportController extends Controller
                  */
                 $toolingDepreciationIncomplete = (float) ($item->overhead_cost ?? 0) <= 0;
 
-                $trackingRevisionId = $item->tracking_revision_id ?? $item->trackingRevision?->id;
+                $trackingRevisionId = $revision->id;
 
                 return (object) [
-                    'id' => $item->id,
+                    'id' => $submission->id,
                     'tracking_revision_id' => $trackingRevisionId,
-                    'form_url' => route('form', array_filter([
-                        'id' => $item->id,
-                        'tracking_revision_id' => $trackingRevisionId,
-                    ], fn ($value) => $value !== null && $value !== ''), false),
-                    'customer' => $item->customer->code ?? $item->customer->name ?? '-',
-                    'model' => $item->model ?? '-',
-                    'assy_name' => $item->assy_name ?? '-',
-                    'assy_no' => $item->assy_no ?? '-',
-                    'period' => $item->period ?? '-',
+                    'form_url' => route('marketing.cogm-costing.show', $submission, false),
+                    'customer' => $item->customer?->code ?? $item->customer?->name ?? $project->customer ?? '-',
+                    'model' => $project->model ?: ($item->model ?: '-'),
+                    'assy_name' => $project->part_name ?: ($item->assy_name ?: '-'),
+                    'assy_no' => $project->part_number ?: ($item->assy_no ?: '-'),
+                    'period' => $submission->submitted_at?->format('Y-m') ?? '-',
                     'material' => (float) $item->material_cost,
                     'labor' => (float) $item->labor_cost,
                     'overhead' => (float) $item->overhead_cost,
-                    'scrap' => (float) $item->scrap_cost,
+                    'scrap' => 0,
                     'cogm' => $cogm,
                     'forecast' => $forecast,
                     'project_period' => $period,
                     'potential' => $potential,
-                    'status' => $formatStatus($item),
-                    'line' => $item->product->line ?? $item->line ?? '-',
+                    'status' => $submission->last_updated_at ? 'Updated' : 'Submitted',
+                    'line' => $project->product?->line ?? $item->product?->line ?? $item->line ?? '-',
+                    'submitted_at' => $submission->submitted_at,
+                    'last_updated_at' => $submission->last_updated_at,
+                    'last_updated_by' => $submission->last_updated_by,
+                    'update_count' => (int) $submission->update_count,
                     'missing_part_count' => $missingPartCount,
                     'estimate_part_count' => $estimatePartCount,
                     'cycle_time_incomplete' => $cycleTimeIncomplete,
@@ -137,6 +136,8 @@ class ReportController extends Controller
                         && !$toolingDepreciationIncomplete,
                 ];
             })
+            ->filter()
+            ->sortByDesc(fn ($item) => $item->last_updated_at ?? $item->submitted_at)
             ->values();
 
         $byCustomer = $costings->groupBy('customer')
@@ -835,37 +836,107 @@ class ReportController extends Controller
      */
     public function laporan()
     {
-        $costingsByCustomer = CostingData::with('customer')
-            ->get()
-            ->groupBy(fn($item) => $item->customer->name ?? 'Unknown')
-            ->map(function ($items, $name) {
-                $totalCogm = $items->sum(fn($i) => (float) $i->material_cost + (float) $i->labor_cost + (float) $i->overhead_cost + (float) $i->scrap_cost);
-                return (object)[
-                    'customer' => $name,
-                    'projects' => $items->count(),
-                    'material' => $items->sum(fn($i) => (float) $i->material_cost),
-                    'labor' => $items->sum(fn($i) => (float) $i->labor_cost),
-                    'overhead' => $items->sum(fn($i) => (float) $i->overhead_cost),
-                    'cogm' => $totalCogm,
-                ];
-            })->sortByDesc('cogm')->values();
+        $projectRows = $this->projectCostingReportRows();
+        $costingsByCustomer = $this->aggregateProjectCosts($projectRows, 'customer', 'customer');
+        $costingsByCategory = $this->aggregateProjectCosts($projectRows, 'category', 'category');
 
-        $costingsByCategory = CostingData::with('product')
-            ->get()
-            ->groupBy(fn($item) => $item->product->line ?? $item->line ?? 'Unknown')
-            ->map(function ($items, $name) {
-                $totalCogm = $items->sum(fn($i) => (float) $i->material_cost + (float) $i->labor_cost + (float) $i->overhead_cost + (float) $i->scrap_cost);
-                return (object)[
-                    'category' => $name,
-                    'projects' => $items->count(),
-                    'material' => $items->sum(fn($i) => (float) $i->material_cost),
-                    'labor' => $items->sum(fn($i) => (float) $i->labor_cost),
-                    'overhead' => $items->sum(fn($i) => (float) $i->overhead_cost),
-                    'cogm' => $totalCogm,
-                ];
-            })->sortByDesc('cogm')->values();
+        return view('reports.laporan', compact('projectRows', 'costingsByCustomer', 'costingsByCategory'));
+    }
 
-        return view('reports.laporan', compact('costingsByCustomer', 'costingsByCategory'));
+    public function exportLaporan()
+    {
+        $projectRows = $this->projectCostingReportRows();
+        $byCustomer = $this->aggregateProjectCosts($projectRows, 'customer', 'customer');
+        $byCategory = $this->aggregateProjectCosts($projectRows, 'category', 'category');
+        $spreadsheet = new Spreadsheet();
+
+        $detail = $spreadsheet->getActiveSheet();
+        $detail->setTitle('Detail Project');
+        $detail->fromArray(['PROJECT', 'CUSTOMER', 'MODEL', 'NO. ASSY', 'REV.', 'BUSINESS CATEGORY', 'STATUS', 'MATERIAL', 'LABOR', 'OVERHEAD', 'TOTAL COGM'], null, 'A1');
+        $row = 2;
+        foreach ($projectRows as $item) {
+            $detail->fromArray([
+                $item->project, $item->customer, $item->model, $item->assy_no, $item->revision,
+                $item->category, $item->status, $item->material, $item->labor,
+                $item->overhead, $item->cogm,
+            ], null, 'A'.$row++);
+        }
+
+        $this->fillReportSummarySheet($spreadsheet->createSheet(), 'Rekap Customer', 'CUSTOMER', $byCustomer, 'customer');
+        $this->fillReportSummarySheet($spreadsheet->createSheet(), 'Rekap Kategori', 'BUSINESS CATEGORY', $byCategory, 'category');
+
+        foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
+            $sheet->freezePane('A2');
+            $sheet->getStyle('A1:L1')->getFont()->setBold(true);
+            $sheet->getStyle('A1:L1')->getFill()->setFillType('solid')->getStartColor()->setARGB('FFDCE9F9');
+            foreach (range('A', $sheet->getHighestColumn()) as $column) {
+                $sheet->getColumnDimension($column)->setAutoSize(true);
+            }
+            if ($sheet->getHighestRow() >= 2) {
+                $sheet->getStyle('H2:L'.$sheet->getHighestRow())->getNumberFormat()->setFormatCode('#,##0.00');
+            }
+        }
+
+        $filename = 'Laporan-Project-COGM-'.now()->format('Ymd-His').'.xlsx';
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            (new Xlsx($spreadsheet))->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+        }, $filename, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
+    }
+
+    private function projectCostingReportRows(): Collection
+    {
+        return DocumentProject::with([
+            'product',
+            'revisions' => fn ($query) => $query->orderByDesc('version_number')->orderByDesc('id'),
+            'revisions.costingData',
+        ])->orderBy('customer')->orderBy('model')->orderBy('part_number')->get()
+            ->map(function (DocumentProject $project) {
+                $revision = $project->revisions->first();
+                $costing = $revision?->costingData;
+                $material = (float) ($costing?->material_cost ?? 0);
+                $labor = (float) ($costing?->labor_cost ?? 0);
+                $overhead = (float) ($costing?->overhead_cost ?? 0);
+
+                return (object) [
+                    'project' => $project->part_name ?: '-',
+                    'customer' => $project->customer ?: 'Belum ditentukan',
+                    'model' => $project->model ?: '-',
+                    'assy_no' => $project->part_number ?: '-',
+                    'revision' => $revision?->version_label ?: '-',
+                    'category' => $project->product?->line ?: ($project->product?->name ?: 'Belum ditentukan'),
+                    'status' => $revision?->status_label ?: 'Belum ada revisi',
+                    'material' => $material,
+                    'labor' => $labor,
+                    'overhead' => $overhead,
+                    'cogm' => $material + $labor + $overhead,
+                ];
+            })->values();
+    }
+
+    private function aggregateProjectCosts(Collection $rows, string $groupField, string $labelField): Collection
+    {
+        return $rows->groupBy($groupField)->map(function (Collection $items, string $label) use ($labelField) {
+            return (object) [
+                $labelField => $label,
+                'projects' => $items->count(),
+                'material' => $items->sum('material'),
+                'labor' => $items->sum('labor'),
+                'overhead' => $items->sum('overhead'),
+                'cogm' => $items->sum('cogm'),
+            ];
+        })->sortByDesc('cogm')->values();
+    }
+
+    private function fillReportSummarySheet($sheet, string $title, string $firstHeader, Collection $rows, string $labelField): void
+    {
+        $sheet->setTitle($title);
+        $sheet->fromArray([$firstHeader, 'PROJECTS', 'MATERIAL', 'LABOR', 'OVERHEAD', 'TOTAL COGM'], null, 'A1');
+        $row = 2;
+        foreach ($rows as $item) {
+            $sheet->fromArray([$item->{$labelField}, $item->projects, $item->material, $item->labor, $item->overhead, $item->cogm], null, 'A'.$row++);
+        }
     }
 
     /**

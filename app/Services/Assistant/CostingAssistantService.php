@@ -6,6 +6,7 @@ use App\Models\CostingAssistantFileTemplate;
 use App\Models\CostingAssistantRule;
 use App\Models\CostingAssistantTopic;
 use App\Models\DocumentRevision;
+use App\Models\DocumentProject;
 use App\Models\ExchangeRate;
 use App\Models\UnpricedPart;
 use Illuminate\Http\UploadedFile;
@@ -17,28 +18,23 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class CostingAssistantService
 {
-    public function bootstrap(?string $routeName, string $path, ?string $role): array
+    public function bootstrap(?string $routeName, string $path, ?string $role, ?int $trackingRevisionId = null): array
     {
-        $snapshot = $this->snapshot($routeName, $path, $role);
+        $snapshot = $this->snapshot($routeName, $path, $role, $trackingRevisionId);
         $rules = $this->applicableRules($snapshot, '');
 
         return [
             'snapshot' => $snapshot,
             'rules' => $rules,
             'templates' => $this->templates(),
-            'quick_prompts' => [
-                'Kenapa costing belum bisa submit?',
-                'Apa yang harus dicek di halaman ini?',
-                'Bagaimana validasi file Excel?',
-                'Apa status approval yang perlu perhatian?',
-            ],
+            'quick_prompts' => $this->quickPrompts($snapshot),
         ];
     }
 
-    public function respond(string $message, ?string $routeName, string $path, ?string $role): array
+    public function respond(string $message, ?string $routeName, string $path, ?string $role, ?int $trackingRevisionId = null): array
     {
         $message = trim($message);
-        $snapshot = $this->snapshot($routeName, $path, $role);
+        $snapshot = $this->snapshot($routeName, $path, $role, $trackingRevisionId);
         $rules = $this->applicableRules($snapshot, $message);
         $topics = $this->matchingTopics($message, $snapshot, $role);
 
@@ -107,7 +103,7 @@ class CostingAssistantService
             ->all();
     }
 
-    public function snapshot(?string $routeName, string $path, ?string $role): array
+    public function snapshot(?string $routeName, string $path, ?string $role, ?int $trackingRevisionId = null): array
     {
         $currentMonth = Carbon::now()->startOfMonth();
         $currentMonthRateExists = ExchangeRate::query()
@@ -115,18 +111,40 @@ class CostingAssistantService
             ->whereMonth('period_date', $currentMonth->month)
             ->exists();
 
+        $latestRevisionIds = DocumentRevision::query()
+            ->selectRaw('MAX(id)')
+            ->whereNotNull('document_project_id')
+            ->groupBy('document_project_id');
+        $activeRevisionQuery = DocumentRevision::query()->whereIn('id', $latestRevisionIds);
+        $activeRevisionIds = (clone $activeRevisionQuery)->pluck('id');
+        $currentRevision = $trackingRevisionId
+            ? DocumentRevision::with(['project', 'costingData'])->find($trackingRevisionId)
+            : null;
+        $currentOpenUnpriced = $currentRevision
+            ? UnpricedPart::where('document_revision_id', $currentRevision->id)->whereNull('resolved_at')->count()
+            : null;
+
         return [
             'route' => $routeName ?: '-',
             'path' => $path,
             'role' => $role ?: 'guest',
             'module' => $this->moduleFromRoute($routeName, $path),
-            'unresolved_unpriced_count' => UnpricedPart::query()->whereNull('resolved_at')->count(),
-            'pending_pricing_count' => DocumentRevision::query()->where('status', DocumentRevision::STATUS_PENDING_PRICING)->count(),
-            'waiting_approval_count' => DocumentRevision::query()->where('status', DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL)->count(),
-            'approved_count' => DocumentRevision::query()->where('status', DocumentRevision::STATUS_APPROVED_BY_COORDINATOR)->count(),
-            'submitted_marketing_count' => DocumentRevision::query()->where('status', DocumentRevision::STATUS_SUBMITTED_TO_MARKETING)->count(),
+            'project_count' => DocumentProject::count(),
+            'unresolved_unpriced_count' => UnpricedPart::query()->whereIn('document_revision_id', $activeRevisionIds)->whereNull('resolved_at')->count(),
+            'pending_pricing_count' => (clone $activeRevisionQuery)->where('status', DocumentRevision::STATUS_PENDING_PRICING)->count(),
+            'waiting_approval_count' => (clone $activeRevisionQuery)->where('status', DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL)->count(),
+            'approved_count' => (clone $activeRevisionQuery)->where('status', DocumentRevision::STATUS_APPROVED_BY_COORDINATOR)->count(),
+            'submitted_marketing_count' => (clone $activeRevisionQuery)->where('status', DocumentRevision::STATUS_SUBMITTED_TO_MARKETING)->count(),
             'current_month_rate_exists' => $currentMonthRateExists,
             'current_period' => $currentMonth->format('Y-m'),
+            'current_project' => $currentRevision ? [
+                'revision_id' => $currentRevision->id,
+                'assy_no' => $currentRevision->project?->part_number ?: '-',
+                'customer' => $currentRevision->project?->customer ?: '-',
+                'model' => $currentRevision->project?->model ?: '-',
+                'status' => $currentRevision->status_label,
+                'open_unpriced_count' => $currentOpenUnpriced,
+            ] : null,
         ];
     }
 
@@ -215,11 +233,65 @@ class CostingAssistantService
 
     private function fallbackReply(string $message, array $snapshot): string
     {
+        if ($this->containsAny($message, ['status', 'project ini', 'progress'])) {
+            $project = $snapshot['current_project'] ?? null;
+            if ($project) {
+                return 'Project '.$project['assy_no'].' ('.$project['customer'].' - '.$project['model'].') saat ini berstatus "'.$project['status'].'". '
+                    .'Part tanpa harga yang masih terbuka: '.$project['open_unpriced_count'].'.';
+            }
+
+            return 'Saat ini ada '.$snapshot['project_count'].' project aktual, '
+                .$snapshot['waiting_approval_count'].' menunggu approval, dan '
+                .$snapshot['submitted_marketing_count'].' sudah dikirim ke Marketing.';
+        }
+
+        if ($this->containsAny($message, ['submit', 'belum bisa', 'tidak bisa'])) {
+            $project = $snapshot['current_project'] ?? null;
+            if ($project && $project['open_unpriced_count'] > 0) {
+                return 'Costing belum bisa disubmit karena masih ada '.$project['open_unpriced_count'].' part tanpa harga. Buka Rekapan Part Tanpa Harga, lengkapi harganya, lalu simpan kembali.';
+            }
+
+            return 'Sebelum submit, pastikan Material dan Cycle Time tersimpan, tidak ada part tanpa harga, lalu cek kembali total COGM. Setelah itu gunakan Submit Approval di Inbox Costing.';
+        }
+
+        if ($this->containsAny($message, ['approval', 'approve'])) {
+            return 'Ada '.$snapshot['waiting_approval_count'].' project yang menunggu approval Coordinator dan '.$snapshot['approved_count'].' project yang sudah approved serta siap dikirim ke Marketing.';
+        }
+
+        if ($this->containsAny($message, ['harga', 'unpriced', 'estimate'])) {
+            return 'Terdapat '.$snapshot['unresolved_unpriced_count'].' part tanpa harga pada revisi project terbaru. Gunakan Inbox New Part Request untuk mengisi harga, lalu Submit agar nilainya masuk ke Material.';
+        }
+
+        if ($this->containsAny($message, ['rate', 'kurs'])) {
+            return $snapshot['current_month_rate_exists']
+                ? 'Rate kurs periode '.$snapshot['current_period'].' sudah tersedia.'
+                : 'Rate kurs periode '.$snapshot['current_period'].' belum tersedia. Tambahkan melalui Database > Rate & Kurs sebelum menghitung COGM.';
+        }
+
         if ($this->containsAny($message, ['upload', 'file', 'excel', 'xlsx', 'pdf'])) {
             return 'Gunakan tab File Check untuk validasi file secara lokal. Excel akan dicek header, jumlah baris, kolom wajib, dan data kosong; PDF dicek format dan ukuran dasarnya.';
         }
 
-        return 'Saya belum menemukan rule khusus untuk pertanyaan itu. Coba gunakan kata kunci seperti submit, approval, unpriced, rate kurs, import Excel, atau upload PDF. Admin juga bisa menambah topik/rule baru di menu Costing Assistant Training.';
+        return 'Saya belum menemukan jawaban yang tepat. Anda dapat bertanya tentang status project, alasan belum bisa submit, part tanpa harga, approval, rate kurs, atau pengecekan file Excel/PDF.';
+    }
+
+    private function quickPrompts(array $snapshot): array
+    {
+        if (!empty($snapshot['current_project'])) {
+            return [
+                'Apa status project ini?',
+                'Kenapa costing belum bisa submit?',
+                'Apa yang harus saya periksa?',
+                'Apakah masih ada part tanpa harga?',
+            ];
+        }
+
+        return [
+            'Berapa project yang perlu ditindaklanjuti?',
+            'Apa status approval saat ini?',
+            'Apakah rate kurs sudah tersedia?',
+            'Bagaimana cara mengecek file Excel?',
+        ];
     }
 
     private function actionsFromRules(array $rules): array

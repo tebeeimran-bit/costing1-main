@@ -126,7 +126,7 @@
 
     .resume-table-wrap {
         padding: 0 1rem 1rem;
-        overflow: visible;
+        overflow-x: auto;
     }
 
     .resume-table {
@@ -223,6 +223,7 @@
     }
 
     .project-table {
+        min-width: 1420px;
         font-size: 0.65rem;
     }
 
@@ -274,9 +275,12 @@
 
     .project-table th:nth-child(14),
     .project-table td:nth-child(14) {
-        width: 10.6%;
+        width: 230px;
         overflow: visible;
         text-overflow: clip;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: anywhere;
     }
 
     .project-link {
@@ -342,13 +346,17 @@
     .status-dot.a05 {
         background: #16a34a;
     }
+    .status-dot.submitted{background:#22c55e}.status-dot.updated{background:#f59e0b}
+    .submission-update-note{box-sizing:border-box;display:grid;width:100%;gap:.15rem;margin-bottom:.35rem;padding:.42rem .5rem;border:1px solid #fde68a;border-radius:7px;background:#fffbeb;color:#92400e;font-size:.61rem;font-weight:850;line-height:1.35;white-space:normal;overflow-wrap:anywhere}.submission-update-note small{display:block;color:#a16207;font-size:.56rem;font-weight:700;white-space:normal}
 
     .note-stack {
         display: grid;
         gap: 0.24rem;
         justify-items: start;
         min-width: 0;
+        width: 100%;
     }
+    .price-status-notes{width:100%;white-space:normal;line-height:1.4;overflow-wrap:anywhere}
 
     .note-badge {
         display: inline-flex;
@@ -1178,6 +1186,9 @@
                                 <td class="text-right" style="font-weight: 900;">Rp {{ number_format($c->potential, 0, ',', '.') }}</td>
                                 <td>
                                     <div class="note-stack">
+                                        @if($c->last_updated_at)
+                                            <span class="submission-update-note">COGM diperbarui {{ $c->update_count }}x<small>{{ $c->last_updated_by ?: 'User' }} · {{ $c->last_updated_at->format('d/m/Y H:i') }}</small></span>
+                                        @endif
                                         @if($c->is_full_price)
                                             <span class="note-badge full">
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
@@ -1189,19 +1200,19 @@
                                             @php
                                             $priceNotes = collect();
 
-                                            if (($project->missing_part_count ?? 0) > 0) {
-                                                $priceNotes->push(number_format($project->missing_part_count, 0, ',', '.') . ' part belum ada harga');
+                                            if (($c->missing_part_count ?? 0) > 0) {
+                                                $priceNotes->push(number_format($c->missing_part_count, 0, ',', '.') . ' part belum ada harga');
                                             }
 
-                                            if (($project->estimate_part_count ?? 0) > 0) {
-                                                $priceNotes->push(number_format($project->estimate_part_count, 0, ',', '.') . ' part masih estimate');
+                                            if (($c->estimate_part_count ?? 0) > 0) {
+                                                $priceNotes->push(number_format($c->estimate_part_count, 0, ',', '.') . ' part masih estimate');
                                             }
 
-                                            if ($project->cycle_time_incomplete ?? false) {
+                                            if ($c->cycle_time_incomplete ?? false) {
                                                 $priceNotes->push('Cycle time belum lengkap');
                                             }
 
-                                            if ($project->tooling_depreciation_incomplete ?? false) {
+                                            if ($c->tooling_depreciation_incomplete ?? false) {
                                                 $priceNotes->push('Depresiasi tooling cost belum lengkap');
                                             }
                                         @endphp

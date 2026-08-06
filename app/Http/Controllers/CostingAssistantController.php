@@ -41,12 +41,14 @@ class CostingAssistantController extends Controller
         $payload = $request->validate([
             'route' => ['nullable', 'string', 'max:120'],
             'path' => ['nullable', 'string', 'max:255'],
+            'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
         ]);
 
         return response()->json($this->assistant->bootstrap(
             $payload['route'] ?? $request->route()?->getName(),
             $payload['path'] ?? $request->path(),
-            $request->user()?->role
+            $request->user()?->role,
+            isset($payload['tracking_revision_id']) ? (int) $payload['tracking_revision_id'] : null
         ));
     }
 
@@ -58,13 +60,15 @@ class CostingAssistantController extends Controller
             'message' => ['required', 'string', 'max:500'],
             'route' => ['nullable', 'string', 'max:120'],
             'path' => ['nullable', 'string', 'max:255'],
+            'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
         ]);
 
         return response()->json($this->assistant->respond(
             $payload['message'],
             $payload['route'] ?? $request->route()?->getName(),
             $payload['path'] ?? $request->path(),
-            $request->user()?->role
+            $request->user()?->role,
+            isset($payload['tracking_revision_id']) ? (int) $payload['tracking_revision_id'] : null
         ));
     }
 

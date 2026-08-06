@@ -8,6 +8,7 @@ use App\Models\DocumentRevision;
 use App\Models\UnpricedPart;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use App\Http\Requests\BulkDeleteUnpricedPartsRequest;
 use App\Http\Requests\DeleteUnpricedPartRequest;
 use App\Http\Requests\RestoreUnpricedPartRequest;
@@ -258,6 +259,10 @@ class TrackingDocumentController extends Controller
     {
         $revision->load(['project.a00Form', 'project.revisions', 'project.product']);
         $costing = \App\Models\CostingData::with('customer')->where('tracking_revision_id', $revision->id)->first();
+        $editedMaterialRows = $this->newPartRowsFromCostingEdit($revision);
+        if ($editedMaterialRows !== null) {
+            $this->syncUnpricedPartsFromCostingEdit($revision, $costing, $editedMaterialRows);
+        }
         $rows = UnpricedPart::where('document_revision_id', $revision->id)->whereNull('resolved_at')->orderBy('part_number')->get();
         $customer = $costing?->customer;
         $project = $revision->project;
@@ -279,20 +284,338 @@ class TrackingDocumentController extends Controller
         $sheet->setCellValue('D6', 'APPLICATION'); $sheet->setCellValue('E6', (string) ($costing?->assy_name ?: $project?->part_name ?: ''));
         $sheet->setCellValue('D7', 'MASS PRO DATE'); $sheet->setCellValue('E7', $sop);
         $sheet->setCellValue('D8', 'VOLUME/MONTH'); $sheet->setCellValue('E8', (float) ($costing?->forecast ?? 0));
-        foreach ($rows as $index => $row) {
-            $line = 12 + $index;
-            $values = [$row->id_code ?? '', $row->part_number, $row->notes ?? '', '', $row->part_name, $row->manual_price ?? $row->detected_price ?? 0, '', '', '', '', '', 0, 1];
-            foreach ($values as $column => $value) {
-                $sheet->setCellValue(Coordinate::stringFromColumnIndex($column + 1) . $line, $value);
+        if ($editedMaterialRows !== null) {
+            foreach ($editedMaterialRows as $index => $row) {
+                $line = 12 + $index;
+                $sheet->setCellValue("A{$line}", $row['id_code']);
+                $sheet->setCellValue("D{$line}", $row['item_code']);
+                $sheet->setCellValue("E{$line}", $row['description']);
+            }
+        } else {
+            foreach ($rows as $index => $row) {
+                $line = 12 + $index;
+                $values = [$row->id_code ?? '', $row->part_number, $row->notes ?? '', '', $row->part_name, $row->manual_price ?? $row->detected_price ?? 0, '', '', '', '', '', 0, 1];
+                foreach ($values as $column => $value) {
+                    $sheet->setCellValue(Coordinate::stringFromColumnIndex($column + 1) . $line, $value);
+                }
             }
         }
         $filename = now()->format('Y.m.d') . ' ' . $customerCode . ' - ' . preg_replace('/[^A-Za-z0-9_-]/', '_', (string) ($costing?->assy_no ?: $project?->part_number ?: 'NEW-PART')) . '.xlsx';
         return response()->streamDownload(function () use ($spreadsheet) { (new Xlsx($spreadsheet))->save('php://output'); }, $filename, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
+    public function importNewPartRequest(Request $request, DocumentRevision $revision)
+    {
+        $validated = $request->validate([
+            'new_part_request_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:10240'],
+        ]);
+
+        try {
+            $reader = IOFactory::createReaderForFile($validated['new_part_request_file']->getRealPath());
+            $reader->setReadDataOnly(true);
+            $workbook = $reader->load($validated['new_part_request_file']->getRealPath());
+            $sheet = $workbook->getActiveSheet();
+            $updated = 0;
+            $notFound = [];
+            $emptyStreak = 0;
+
+            DB::transaction(function () use ($sheet, $revision, &$updated, &$notFound, &$emptyStreak) {
+                $highestRow = max(12, (int) $sheet->getHighestDataRow());
+                for ($row = 12; $row <= $highestRow; $row++) {
+                    $idCode = trim((string) $sheet->getCell("A{$row}")->getFormattedValue());
+                    $partNumber = trim((string) $sheet->getCell("D{$row}")->getFormattedValue());
+                    if ($partNumber === '' && $idCode === '') {
+                        $emptyStreak++;
+                        if ($emptyStreak >= 20) break;
+                        continue;
+                    }
+                    $emptyStreak = 0;
+
+                    $item = UnpricedPart::where('document_revision_id', $revision->id)
+                        ->whereNull('resolved_at')
+                        ->where(function ($query) use ($partNumber, $idCode) {
+                            if ($partNumber !== '') {
+                                $query->whereRaw('LOWER(part_number) = ?', [mb_strtolower($partNumber)]);
+                            }
+                            if ($idCode !== '') {
+                                $method = $partNumber !== '' ? 'orWhereRaw' : 'whereRaw';
+                                $query->{$method}('LOWER(id_code) = ?', [mb_strtolower($idCode)]);
+                            }
+                        })
+                        ->first();
+
+                    if (!$item) {
+                        $notFound[] = $partNumber !== '' ? $partNumber : $idCode;
+                        continue;
+                    }
+
+                    $item->update([
+                        'id_code' => $idCode !== '' ? $idCode : $item->id_code,
+                        'detected_price' => $this->newPartRequestNumber($sheet->getCell("F{$row}")->getFormattedValue()),
+                        'purchase_unit' => trim((string) $sheet->getCell("G{$row}")->getFormattedValue()) ?: null,
+                        'currency' => strtoupper(trim((string) $sheet->getCell("H{$row}")->getFormattedValue())) ?: null,
+                        'moq' => $this->newPartRequestNumber($sheet->getCell("I{$row}")->getFormattedValue()),
+                        'cn_type' => strtoupper(trim((string) $sheet->getCell("J{$row}")->getFormattedValue())) ?: null,
+                        'maker' => trim((string) $sheet->getCell("K{$row}")->getFormattedValue()) ?: null,
+                        'add_cost_percent' => $this->newPartRequestNumber($sheet->getCell("L{$row}")->getFormattedValue()),
+                        'new_part_price_imported_at' => now(),
+                        'new_part_price_imported_by_id' => $request->user()->id,
+                        'notes' => 'Harga diimport dari Form New Part Request.',
+                    ]);
+                    $updated++;
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$updated} part berhasil diperbarui dari New Part Request.",
+                'updated' => $updated,
+                'not_found' => $notFound,
+            ]);
+        } catch (\Throwable $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File New Part Request tidak dapat dibaca: ' . $exception->getMessage(),
+            ], 422);
+        }
+    }
+
+    private function newPartRequestNumber(mixed $value): ?float
+    {
+        $raw = trim((string) $value);
+        if ($raw === '' || $raw === '-') return null;
+        $raw = preg_replace('/\s+/', '', $raw);
+        if (str_contains($raw, ',') && str_contains($raw, '.')) {
+            $raw = str_replace('.', '', $raw);
+            $raw = str_replace(',', '.', $raw);
+        } elseif (str_contains($raw, ',')) {
+            $raw = str_replace(',', '.', $raw);
+        }
+        return is_numeric($raw) ? (float) $raw : null;
+    }
+
+    private function syncUnpricedPartsFromCostingEdit(DocumentRevision $revision, ?\App\Models\CostingData $costing, array $rows): void
+    {
+        DB::transaction(function () use ($revision, $costing, $rows) {
+            $currentPartNumbers = [];
+            foreach ($rows as $row) {
+                $partNumber = trim((string) ($row['item_code'] ?? ''));
+                if ($partNumber === '') {
+                    continue;
+                }
+                $currentPartNumbers[] = $partNumber;
+                $unpricedPart = UnpricedPart::firstOrCreate(
+                    [
+                        'document_revision_id' => $revision->id,
+                        'part_number' => $partNumber,
+                        'resolved_at' => null,
+                    ],
+                    [
+                        'costing_data_id' => $costing?->id,
+                        'id_code' => trim((string) ($row['id_code'] ?? '')) ?: null,
+                        'part_name' => trim((string) ($row['description'] ?? '')) ?: null,
+                        'detected_price' => null,
+                        'manual_price' => null,
+                        'resolution_source' => null,
+                        'notes' => 'Dideteksi dari Amount 1 kosong pada file Import Hasil Edit.',
+                    ]
+                );
+
+                // Export ulang template tidak boleh menghapus harga F-L yang sudah
+                // diimport dan sedang menunggu Submit.
+                if (!$unpricedPart->wasRecentlyCreated) {
+                    $unpricedPart->update([
+                        'costing_data_id' => $costing?->id ?? $unpricedPart->costing_data_id,
+                        'id_code' => trim((string) ($row['id_code'] ?? '')) ?: $unpricedPart->id_code,
+                        'part_name' => trim((string) ($row['description'] ?? '')) ?: $unpricedPart->part_name,
+                    ]);
+                }
+            }
+
+            $staleQuery = UnpricedPart::where('document_revision_id', $revision->id)->whereNull('resolved_at');
+            if ($currentPartNumbers !== []) {
+                $staleQuery->whereNotIn('part_number', array_values(array_unique($currentPartNumbers)));
+            }
+            $staleQuery->update([
+                'resolved_at' => now(),
+                'resolution_source' => 'not_in_latest_costing_edit',
+            ]);
+        });
+    }
+
+    /**
+     * Read new-part rows directly from the latest imported costing-edit workbook.
+     * A valid workbook returns an array (including an empty one); null means the
+     * stored workbook is unavailable/invalid and the caller should use its fallback.
+     */
+    private function newPartRowsFromCostingEdit(DocumentRevision $revision): ?array
+    {
+        $path = trim((string) $revision->costing_edit_file_path);
+        if ($path === '' || !Storage::disk('local')->exists($path)) {
+            return null;
+        }
+
+        if (!class_exists(\ZipArchive::class) || !class_exists(\XMLReader::class)) {
+            return null;
+        }
+
+        $archive = new \ZipArchive();
+        $archiveOpened = false;
+        try {
+            $filePath = Storage::disk('local')->path($path);
+            if ($archive->open($filePath) !== true) {
+                return null;
+            }
+            $archiveOpened = true;
+
+            $workbookXml = $archive->getFromName('xl/workbook.xml');
+            $relationsXml = $archive->getFromName('xl/_rels/workbook.xml.rels');
+            if ($workbookXml === false || $relationsXml === false) {
+                return null;
+            }
+
+            $workbook = @simplexml_load_string($workbookXml);
+            $relations = @simplexml_load_string($relationsXml);
+            if (!$workbook || !$relations) {
+                return null;
+            }
+
+            $relationshipTargets = [];
+            foreach ($relations->Relationship as $relationship) {
+                $relationshipTargets[(string) $relationship['Id']] = (string) $relationship['Target'];
+            }
+
+            $sheetEntry = null;
+            $relationshipNamespace = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+            foreach ($workbook->sheets->sheet ?? [] as $sheet) {
+                if (strcasecmp(trim((string) $sheet['name']), 'Material Cost') !== 0) {
+                    continue;
+                }
+                $attributes = $sheet->attributes($relationshipNamespace);
+                $target = $relationshipTargets[(string) ($attributes['id'] ?? '')] ?? '';
+                if ($target !== '') {
+                    $sheetEntry = str_starts_with($target, '/')
+                        ? ltrim($target, '/')
+                        : 'xl/' . ltrim($target, '/');
+                }
+                break;
+            }
+            if (!$sheetEntry || $archive->locateName($sheetEntry) === false) {
+                return null;
+            }
+
+            $rawRows = [];
+            $neededSharedStrings = [];
+            $sheetReader = new \XMLReader();
+            if (!$sheetReader->open('zip://' . str_replace('\\', '/', $filePath) . '#' . $sheetEntry, null, LIBXML_NONET | LIBXML_COMPACT)) {
+                return null;
+            }
+
+            while ($sheetReader->read()) {
+                if ($sheetReader->nodeType !== \XMLReader::ELEMENT || $sheetReader->localName !== 'c') {
+                    continue;
+                }
+                $reference = strtoupper((string) $sheetReader->getAttribute('r'));
+                if (!preg_match('/^([DFGL])(\d+)$/', $reference, $matches) || (int) $matches[2] < 18) {
+                    continue;
+                }
+
+                $cell = @simplexml_load_string($sheetReader->readOuterXml());
+                if (!$cell) {
+                    continue;
+                }
+                $type = (string) ($cell['t'] ?? '');
+                if ($type === 'inlineStr') {
+                    $value = '';
+                    foreach ($cell->xpath('.//*[local-name()="t"]') ?: [] as $textNode) {
+                        $value .= (string) $textNode;
+                    }
+                } else {
+                    $value = (string) ($cell->v ?? '');
+                }
+
+                $rowNumber = (int) $matches[2];
+                $column = $matches[1];
+                if ($type === 's' && ctype_digit($value)) {
+                    $sharedIndex = (int) $value;
+                    $rawRows[$rowNumber][$column] = ['shared' => $sharedIndex];
+                    $neededSharedStrings[$sharedIndex] = true;
+                } else {
+                    $rawRows[$rowNumber][$column] = ['value' => $value];
+                }
+            }
+            $sheetReader->close();
+
+            $sharedStrings = [];
+            if ($neededSharedStrings && $archive->locateName('xl/sharedStrings.xml') !== false) {
+                $sharedReader = new \XMLReader();
+                if ($sharedReader->open('zip://' . str_replace('\\', '/', $filePath) . '#xl/sharedStrings.xml', null, LIBXML_NONET | LIBXML_COMPACT)) {
+                    $sharedIndex = 0;
+                    while ($sharedReader->read()) {
+                        if ($sharedReader->nodeType !== \XMLReader::ELEMENT || $sharedReader->localName !== 'si') {
+                            continue;
+                        }
+                        if (isset($neededSharedStrings[$sharedIndex])) {
+                            $sharedNode = @simplexml_load_string($sharedReader->readOuterXml());
+                            $text = '';
+                            foreach ($sharedNode?->xpath('.//*[local-name()="t"]') ?: [] as $textNode) {
+                                $text .= (string) $textNode;
+                            }
+                            $sharedStrings[$sharedIndex] = $text;
+                        }
+                        $sharedIndex++;
+                    }
+                    $sharedReader->close();
+                }
+            }
+
+            ksort($rawRows);
+            $rows = [];
+            foreach ($rawRows as $cells) {
+                $value = static function (array $cell = []) use ($sharedStrings): string {
+                    return trim(isset($cell['shared'])
+                        ? (string) ($sharedStrings[$cell['shared']] ?? '')
+                        : (string) ($cell['value'] ?? ''));
+                };
+                $itemCode = $value($cells['D'] ?? []);
+                $amount = $value($cells['L'] ?? []);
+                if ($itemCode === '' || $amount !== '') {
+                    continue;
+                }
+
+                $rows[] = [
+                    'item_code' => $itemCode,
+                    'id_code' => $value($cells['F'] ?? []),
+                    'description' => $value($cells['G'] ?? []),
+                ];
+            }
+
+            return $rows;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return null;
+        } finally {
+            if ($archiveOpened) {
+                $archive->close();
+            }
+        }
+    }
+
     public function updateUnpricedPartPrice(UpdateUnpricedPartPriceRequest $request, DocumentRevision $revision, TrackingDocumentUnpricedPartService $unpricedPartService)
     {
-        return response()->json($unpricedPartService->updatePrice($revision, $request->validated()));
+        try {
+            return response()->json($unpricedPartService->updatePrice(
+                $revision,
+                $request->validated() + ['_actor_user_id' => $request->user()->id]
+            ));
+        } catch (\Throwable $exception) {
+            report($exception);
+            return response()->json([
+                'ok' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
     }
 
     public function deleteUnpricedPart(DeleteUnpricedPartRequest $request, DocumentRevision $revision, TrackingDocumentUnpricedPartService $unpricedPartService)

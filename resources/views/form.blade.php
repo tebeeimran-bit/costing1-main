@@ -17,9 +17,13 @@
 
 <style>
 .readonly-toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:12px;padding:12px 14px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff}.readonly-toolbar strong{display:block;color:#1e3a8a;font-size:.82rem}.readonly-toolbar span{color:#52647c;font-size:.68rem}.readonly-back{padding:7px 11px;border:1px solid #93b4df;border-radius:7px;background:#fff;color:#1d4ed8;text-decoration:none;font-size:.68rem;font-weight:800}.costing-comment-card{margin-bottom:12px;padding:14px;border:1px solid #d8e2ef;border-radius:10px;background:#fff}.costing-comment-card h3{margin:0 0 9px;font-size:.8rem;color:#0f172a}.costing-comment-form{display:flex;gap:8px}.costing-comment-form textarea{flex:1;min-height:62px;padding:9px;border:1px solid #cbd8ea;border-radius:7px;resize:vertical;font:inherit;font-size:.72rem}.costing-comment-form button{align-self:flex-end;padding:9px 13px;border:0;border-radius:7px;background:#2864e8;color:#fff;font-size:.68rem;font-weight:800}.comment-history{display:grid;gap:7px;margin-top:10px}.comment-item{padding:9px 10px;border-radius:7px;background:#f8fafc;color:#475569;font-size:.69rem}.comment-item strong{color:#1e3a8a}.comment-item small{float:right;color:#94a3b8}.readonly-costing input,.readonly-costing select,.readonly-costing textarea{pointer-events:none;background:#f4f7fb!important;color:#475569!important}.readonly-costing button{display:none!important}@media(max-width:700px){.readonly-toolbar,.costing-comment-form{align-items:stretch;flex-direction:column}.costing-comment-form button{align-self:stretch}}
+.material-file-info{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:6px 12px;border-bottom:1px solid #e2e8f0;background:#f8fafc}.material-file-name{display:inline-flex;min-width:0;max-width:300px;align-items:center;gap:5px;padding:3px 8px;border:1px solid #e2e8f0;border-radius:5px;background:#fff;color:#64748b;font-size:.64rem;font-weight:500;white-space:nowrap}.material-file-name strong{min-width:0;overflow:hidden;color:#334155;text-overflow:ellipsis}.material-file-name-link{font-family:inherit;line-height:inherit;text-decoration:none;cursor:pointer}.material-file-name-link:hover{border-color:#93c5fd}.material-file-name-link:hover strong{color:#2563eb}@media(max-width:700px){.material-file-info{justify-content:flex-start;overflow-x:auto}.material-file-name{flex:0 0 auto;max-width:240px}}
 </style>
 @if(!empty($readOnlyMode))
 <div class="readonly-toolbar"><div><strong>Mode Lihat Saja — Form Costing</strong><span>Data telah dikirim ke Marketing dan tidak dapat diubah dari halaman ini.</span></div><a class="readonly-back" href="{{ route('marketing.cogm-inbox', absolute:false) }}">Kembali ke Inbox</a></div>
+@endif
+@if(!empty($editSubmittedMode))
+<div class="readonly-toolbar" style="border-color:#fbbf24;background:#fffbeb"><div><strong style="color:#92400e">Edit COGM yang Sudah Dikirim</strong><span>Setiap perubahan yang disimpan akan langsung memperbarui COGM di Inbox Marketing dan tercatat sebagai update.</span></div><a class="readonly-back" href="{{ route('costing.inbox', ['status'=>'history'], false) }}">Kembali ke History</a></div>
 @endif
 @if($cogmSubmission && (!empty($readOnlyMode) || $cogmSubmission->comments->isNotEmpty()))
 <div class="costing-comment-card">
@@ -43,6 +47,7 @@
     <form action="{{ route('costing.store', absolute: false) }}" method="POST" id="costingForm" enctype="multipart/form-data" autocomplete="off">
         @csrf
         <input type="hidden" name="update_section" id="updateSectionInput" value="">
+        @if(!empty($editSubmittedMode))<input type="hidden" name="edit_submitted" value="1">@endif
         @if(isset($costingData) && $costingData)
             <input type="hidden" name="costing_data_id" value="{{ $costingData->id }}">
         @endif
@@ -62,6 +67,7 @@
         <input type="hidden" id="materialExcelImportUrl" value="{{ route('costing.material-excel.import', absolute: false) }}">
         <input type="hidden" id="exportSopMpDate" value="{{ $trackingRevision?->project?->a00Form?->sop_mp_date?->format('Y-m-d') ?? '' }}">
         <input type="hidden" id="exportProjectDate" value="{{ $trackingRevision?->received_date?->format('Y-m-d') ?? now()->format('Y-m-d') }}">
+        <input type="hidden" id="serverMaterialCost" value="{{ $costingData?->material_cost ?? 0 }}">
 
         @include('form.partials.project-info-section')
 
@@ -78,30 +84,12 @@
                 </svg>
                 Material
                 <div class="section-actions">
-                    <button type="submit" class="btn btn-primary btn-sm section-update-btn" name="update_section" value="material" data-section="material" formnovalidate>
-                        Update
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="triggerPartlistImport()">
-                        Import Partlist
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="triggerMaterialImport()">
-                        Import COGM
-                    </button>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="exportMaterialEditor()">
                         Export Excel
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('materialEditorFileInput').click()">
                         Import Hasil Edit
                     </button>
-                    @if($trackingRevision?->costing_edit_file_path)
-                    <a class="btn btn-secondary btn-sm" href="{{ route('marketing.costing-edit.download', $trackingRevision, absolute:false) }}" title="{{ $trackingRevision->costing_edit_original_name }}">
-                        Lihat Hasil Edit
-                    </a>
-                    @elseif(!empty($readOnlyMode))
-                    <span class="btn btn-secondary btn-sm" aria-disabled="true" title="File hasil edit belum tersimpan pada submission ini" style="cursor:not-allowed;opacity:.6">
-                        Hasil Edit Belum Tersedia
-                    </span>
-                    @endif
                     <button type="button" class="btn btn-secondary btn-sm" id="materialUndoBtn" onclick="undoMaterialTable()" disabled aria-label="Undo" title="Undo">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <polyline points="9 14 4 9 9 4"></polyline>
@@ -125,6 +113,26 @@
                         Tambah Baris
                     </button>
                 </div>
+            </div>
+
+            @php
+                $importEditFileName = Str::startsWith($trackingRevision?->costing_edit_original_name ?? '', 'Import-Hasil-Edit-')
+                    ? Str::after($trackingRevision->costing_edit_original_name, 'Import-Hasil-Edit-')
+                    : $trackingRevision?->costing_edit_original_name;
+            @endphp
+            <div class="material-file-info" aria-label="Informasi file Excel Material">
+                <span class="material-file-name" title="Nama file Excel yang terakhir diexport">
+                    Export: <strong id="materialExportFileName">Belum diexport</strong>
+                </span>
+                @if($trackingRevision?->costing_edit_file_path)
+                <span role="button" tabindex="0" class="material-file-name material-file-name-link" data-download-url="{{ route('marketing.costing-edit.download', $trackingRevision, absolute:false) }}" title="Download {{ $importEditFileName }}" onclick="openMaterialDownloadConfirm(this)" onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); openMaterialDownloadConfirm(this); }">
+                    Import: <strong>{{ $importEditFileName }}</strong>
+                </span>
+                @else
+                <span class="material-file-name" title="File hasil edit belum tersimpan pada submission ini">
+                    Import: <strong>Belum tersedia</strong>
+                </span>
+                @endif
             </div>
 
             <div class="material-table-container">
@@ -193,6 +201,7 @@
                                 <td>
                                 @php $rowCurrency = $row['currency'] ?? 'IDR'; @endphp
                                 <select class="form-select currency" name="materials[{{ $index }}][currency]" onchange="calculateRow(this)">
+                                    <option value="" {{ $rowCurrency === '' ? 'selected' : '' }}></option>
                                     <option value="IDR" {{ $rowCurrency == 'IDR' ? 'selected' : '' }}>IDR</option>
                                     <option value="USD" {{ $rowCurrency == 'USD' ? 'selected' : '' }}>USD</option>
                                     <option value="JPY" {{ $rowCurrency == 'JPY' ? 'selected' : '' }}>JPY</option>
@@ -203,6 +212,7 @@
                                 <td>
                                 @php $rowCn = $row['cn_type'] ?? 'N'; @endphp
                                 <select class="form-select cn-type" name="materials[{{ $index }}][cn_type]" onchange="calculateRow(this)">
+                                    <option value="" {{ $rowCn === '' ? 'selected' : '' }}></option>
                                     <option value="N" {{ $rowCn == 'N' ? 'selected' : '' }}>N</option>
                                     <option value="C" {{ $rowCn == 'C' ? 'selected' : '' }}>C</option>
                                     <option value="E" {{ $rowCn == 'E' ? 'selected' : '' }}>E</option>
@@ -245,8 +255,17 @@
                                         $partNameDisplay = $breakdown->material->material_description ?? '';
                                     }
                                     $unitDisplay = strtoupper(trim((string) ($breakdown->unit ?? $breakdown->material?->base_uom ?? '')));
+                                    $rowCurrencyValue = strtoupper(trim((string) ($breakdown->currency ?? 'IDR')));
+                                    $rowExchangeRate = match ($rowCurrencyValue) {
+                                        'USD' => (float) ($costingData?->exchange_rate_usd ?? 0),
+                                        'JPY' => (float) ($costingData?->exchange_rate_jpy ?? 0),
+                                        default => 1.0,
+                                    };
+                                    $rowServerTotal = (float) ($breakdown->qty_req ?? 0)
+                                        * (float) ($breakdown->amount2 ?? 0)
+                                        * $rowExchangeRate;
                                 @endphp
-                                <tr data-row="{{ $index }}">
+                                <tr data-row="{{ $index }}" data-server-total="{{ $rowServerTotal }}">
                                     <td>
                                         <span class="material-row-no-cell">
                                             <input type="checkbox" class="material-row-select" title="Pilih baris">
@@ -265,7 +284,7 @@
                                     value="{{ $unitDisplay }}" placeholder="Unit"></td>
                                     <td><input type="text" class="form-input pro-code" name="materials[{{ $index }}][pro_code]"
                                             value="{{ $breakdown->pro_code ?? '' }}" placeholder="Pro Code"></td>
-                                            <td><input type="text" class="form-input amount1 number-format" name="materials[{{ $index }}][amount1]" autocomplete="off" value="{{ rtrim(rtrim(number_format((float) ($breakdown->amount1), 4, ',', '.'), '0'), ',') }}" data-original-amount1="{{ $breakdown->amount1 }}"
+                                            <td><input type="text" class="form-input amount1 number-format" name="materials[{{ $index }}][amount1]" autocomplete="off" value="{{ $breakdown->amount1 === null ? '' : rtrim(rtrim(number_format((float) $breakdown->amount1, 4, ',', '.'), '0'), ',') }}" data-original-amount1="{{ $breakdown->amount1 }}"
                                             step="0.0001" onchange="calculateRow(this)"></td>
                                         <td><input type="text" class="form-input unit-price-basis" name="materials[{{ $index }}][unit_price_basis]"
                                             value="{{ $breakdown->unit_price_basis_text ?? $breakdown->unit_price_basis }}" placeholder="Unit Price"
@@ -273,24 +292,26 @@
                                     </td>
                                     <td>
                                         <select class="form-select currency" name="materials[{{ $index }}][currency]" onchange="calculateRow(this)">
+                                            <option value="" {{ $breakdown->currency === null || $breakdown->currency === '' ? 'selected' : '' }}></option>
                                             <option value="IDR" {{ $breakdown->currency == 'IDR' ? 'selected' : '' }}>IDR</option>
                                             <option value="USD" {{ $breakdown->currency == 'USD' ? 'selected' : '' }}>USD</option>
                                             <option value="JPY" {{ $breakdown->currency == 'JPY' ? 'selected' : '' }}>JPY</option>
                                         </select>
                                     </td>
-                                        <td><input type="text" class="form-input w-28 qty-moq number-format" name="materials[{{ $index }}][qty_moq]" value="{{ rtrim(rtrim(number_format((float) ($breakdown->qty_moq), 6, ',', '.'), '0'), ',') }}" data-original-moq="{{ $breakdown->qty_moq }}"
+                                        <td><input type="text" class="form-input w-28 qty-moq number-format" name="materials[{{ $index }}][qty_moq]" value="{{ $breakdown->qty_moq === null ? '' : rtrim(rtrim(number_format((float) $breakdown->qty_moq, 6, ',', '.'), '0'), ',') }}" data-original-moq="{{ $breakdown->qty_moq }}"
                                             step="0.0001" onchange="calculateRow(this)"></td>
                                     <td>
                                         <select class="form-select cn-type" name="materials[{{ $index }}][cn_type]" onchange="calculateRow(this)">
+                                            <option value="" {{ $breakdown->cn_type === null || $breakdown->cn_type === '' ? 'selected' : '' }}></option>
                                             <option value="N" {{ $breakdown->cn_type == 'N' ? 'selected' : '' }}>N</option>
                                             <option value="C" {{ $breakdown->cn_type == 'C' ? 'selected' : '' }}>C</option>
                                             <option value="E" {{ $breakdown->cn_type == 'E' ? 'selected' : '' }}>E</option>
                                         </select>
                                     </td>
                                     <td><input type="text" class="form-input supplier" name="materials[{{ $index }}][supplier]"
-                                            value="{{ $breakdown->material->maker ?? '' }}" placeholder="Supplier"></td>
+                                            value="{{ $breakdown->supplier ?? '' }}" placeholder="Supplier"></td>
                                     <td><input type="text" class="form-input import-tax number-format" name="materials[{{ $index }}][import_tax]"
-                                            value="{{ rtrim(rtrim(number_format((float) ($breakdown->import_tax_percent ?? 0), 2, ',', '.'), '0'), ',') ?: '0' }}" onchange="calculateRow(this)">
+                                            value="{{ $breakdown->import_tax_percent === null ? '' : (rtrim(rtrim(number_format((float) $breakdown->import_tax_percent, 2, ',', '.'), '0'), ',') ?: '0') }}" onchange="calculateRow(this)">
                                     </td>
                                     <td class="calculated multiply-factor">1</td>
                                     <td class="calculated amount2" data-original-amount2="{{ $breakdown->amount2 ?? 0 }}">{{ rtrim(rtrim(number_format($breakdown->amount2 ?? 0, 5, ',', '.'), '0'), ',') }}</td>
@@ -390,7 +411,7 @@
 
         </div>
 
-        <div class="card form-section">
+        <div class="card form-section" id="unpricedPartsSection">
             <div class="form-section-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 3h18v18H3z" />
@@ -399,18 +420,12 @@
                 </svg>
                 Rekapan Part Tanpa Harga
                 <div class="section-actions">
-                    <button type="submit" class="btn btn-primary btn-sm section-update-btn" name="update_section" value="unpriced_parts" data-section="unpriced_parts" formnovalidate>
-                        Update
-                    </button>
                     <button type="button" class="btn btn-secondary btn-sm" id="unpricedDeleteSelectedBtn" onclick="deleteSelectedUnpricedRows()">
                         Hapus Terpilih
                     </button>
                     @if(isset($trackingRevision) && $trackingRevision)
-                        <a href="{{ route('tracking-documents.export-new-part-request', ['revision' => $trackingRevision->id], absolute: false) }}" class="btn btn-secondary">Export New Part Request</a>
-                        <a href="{{ route('tracking-documents.export-unpriced', ['revision' => $trackingRevision->id, 'format' => 'excel'], absolute: false) }}"
-                            class="btn btn-secondary">Export Unpriced Parts (Excel)</a>
-                        <a href="{{ route('tracking-documents.export-unpriced', ['revision' => $trackingRevision->id, 'format' => 'pdf'], absolute: false) }}"
-                            target="_blank" class="btn btn-secondary">Export Unpriced Parts (PDF)</a>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('newPartRequestFileInput').click()">Import New Part Request</button>
+                        <button type="button" class="btn btn-secondary" onclick="exportNewPartRequestAndRefresh(@js(route('tracking-documents.export-new-part-request', ['revision' => $trackingRevision->id], absolute: false)))">Export New Part Request</button>
                     @endif
                 </div>
             </div>
@@ -429,7 +444,6 @@
                             <th rowspan="2">Part No</th>
                             <th rowspan="2">ID Code</th>
                             <th rowspan="2">Part Name</th>
-                            <th rowspan="2">Qty</th>
                             <th colspan="9">Price</th>
                             <th rowspan="2">Input Harga (Manual)</th>
                             <th rowspan="2">Aksi</th>
@@ -473,7 +487,9 @@
                                         @endif
                                     </td>
                                     <td>
-                                        @if($matchedMaterials->isNotEmpty())
+                                        @if(!empty($item->id_code))
+                                            {{ $item->id_code }}
+                                        @elseif($matchedMaterials->isNotEmpty())
                                             @foreach($matchedMaterials as $matched)
                                                 <div>{{ $matched->material_code ?: '-' }}</div>
                                             @endforeach
@@ -493,7 +509,6 @@
                                         }
                                     @endphp
                                     <td>{{ $displayPartName ?: '-' }}</td>
-                                    <td>{{ $item->qty }}</td>
                                     <td>
                                         @if($matchedMaterials->isNotEmpty())
                                             @foreach($matchedMaterials as $matched)
@@ -619,7 +634,15 @@
                                             value="{{ $item->manual_price ?? '' }}" placeholder="Isi harga jika sudah ada">
                                     </td>
                                     <td>
-                                        <button type="button" class="btn btn-primary btn-sm unpriced-add-price-btn" data-part-number="{{ $item->part_number }}">
+                                        <button type="button" class="btn btn-primary btn-sm unpriced-add-price-btn"
+                                            data-part-number="{{ $item->part_number }}"
+                                            data-price="{{ $item->matched_price ?? $item->detected_price ?? 0 }}"
+                                            data-unit="{{ $item->matched_purchase_unit ?? '' }}"
+                                            data-currency="{{ $item->matched_currency ?? '' }}"
+                                            data-moq="{{ $item->matched_moq ?? '' }}"
+                                            data-cn="{{ $item->matched_cn ?? '' }}"
+                                            data-supplier="{{ $item->matched_maker ?? '' }}"
+                                            data-import-tax="{{ $item->matched_add_cost_import_tax ?? '' }}">
                                             Tambah
                                         </button>
                                         <button type="button" class="btn btn-secondary btn-sm unpriced-delete-btn" data-part-number="{{ $item->part_number }}">
@@ -630,7 +653,7 @@
                             @endforeach
                         @else
                             <tr>
-                                <td colspan="16" style="text-align: center; color: var(--slate-500);">
+                                <td colspan="15" style="text-align: center; color: var(--slate-500);">
                                     Belum ada part tanpa harga untuk versi dokumen ini.
                                 </td>
                             </tr>
@@ -809,6 +832,11 @@
     </form>
 
     <input type="file" id="materialEditorFileInput" accept=".xls,.xlsx" hidden onchange="importMaterialEditor(this)">
+    @if(isset($trackingRevision) && $trackingRevision)
+    <input type="file" id="newPartRequestFileInput" accept=".xls,.xlsx" hidden
+        data-import-url="{{ route('tracking-documents.import-new-part-request', ['revision' => $trackingRevision->id], absolute: false) }}"
+        onchange="importNewPartRequest(this)">
+    @endif
 
     <form action="{{ route('costing.import-partlist', absolute: false) }}" method="POST" id="partlistImportForm" enctype="multipart/form-data" style="position:absolute; width:0; height:0; overflow:hidden;">
         @csrf
@@ -1492,99 +1520,6 @@
             }
         }
 
-        function showUnsavedMaterialConfirmModal(eventToCancel, allowTargetAction) {
-            isConfirmingUnsavedMaterial = true;
-            const modal = document.getElementById('unsavedMaterialConfirmModal');
-            const ignoreBtn = document.getElementById('unsavedMaterialIgnoreBtn');
-            const saveBtn = document.getElementById('unsavedMaterialSaveBtn');
-            if (!modal) return;
-
-            const closeWith = (shouldSave) => {
-                modal.classList.add('is-hidden');
-                modal.setAttribute('aria-hidden', 'true');
-                ignoreBtn.removeEventListener('click', handleIgnore);
-                saveBtn.removeEventListener('click', handleSave);
-                isConfirmingUnsavedMaterial = false;
-
-                const proceedAction = () => {
-                    isMaterialDirty = false;
-                    // Automatically execute the action that was prevented if allowed
-                    if (allowTargetAction && eventToCancel && eventToCancel.target) {
-                        const target = eventToCancel.target;
-                        if (target.click) {
-                            setTimeout(() => { target.click(); }, 50);
-                        } else if (target.focus) {
-                            setTimeout(() => { target.focus(); }, 50);
-                        }
-                    }
-                };
-
-                if (shouldSave) {
-                    /*
-                     * EMERGENCY FIX:
-                     * Jangan auto-save dari modal Perubahan Belum Disimpan.
-                     * Proses auto-save ini yang membuat loading "Menyimpan perubahan..." muter lama.
-                     *
-                     * Setelah fix ini:
-                     * - Klik "Ya, Update Sekarang" tidak akan panggil backend.
-                     * - Modal langsung ditutup dan user langsung pindah section.
-                     * - Jika user mau simpan Material, wajib klik tombol Update di section Material secara manual.
-                     */
-                    hideAppLoading();
-                    isMaterialDirty = false;
-                    proceedAction();
-
-                    if (typeof openAppNotify === 'function') {
-                        openAppNotify('Auto-save Material dari modal dimatikan. Jika ingin menyimpan Material, klik tombol Update di section Material.', 'warning');
-                    }
-
-                    return;
-                } else {
-                    proceedAction();
-                }
-            };
-
-            const handleIgnore = () => closeWith(false);
-            const handleSave = () => closeWith(true);
-
-            modal.classList.remove('is-hidden');
-            modal.setAttribute('aria-hidden', 'false');
-            ignoreBtn.addEventListener('click', handleIgnore);
-            saveBtn.addEventListener('click', handleSave);
-        }
-
-        // Global Interceptor to prevent leaving material section
-        document.addEventListener('mousedown', function(event) {
-            if (isConfirmingUnsavedMaterial || materialValidationNoticeOpen) return;
-
-            const materialSection = document.getElementById('materialFormSection');
-
-            // If interaction is inside the Material section itself, allow it.
-            if (materialSection && materialSection.contains(event.target)) {
-                return;
-            }
-
-            // Exceptions.
-            if (event.target.closest('.confirm-modal') || event.target.closest('.material-validation-modal-backdrop')) {
-                return;
-            }
-
-            const unpricedBanner = event.target.closest('.unpriced-top-banner');
-            if (unpricedBanner) return;
-
-            // Only handle interactive actions that move user away from Material.
-            const targetAction = event.target.closest('input, select, textarea, button, a, .section-toggle');
-            if (!targetAction) {
-                return;
-            }
-
-            if (isMaterialDirty) {
-                event.preventDefault();
-                event.stopPropagation();
-                showUnsavedMaterialConfirmModal(event, true);
-            }
-        }, true);
-
         document.addEventListener('input', function(e) {
             if (e.target && e.target.classList.contains('number-format')) {
                 let startPos = e.target.selectionStart;
@@ -1849,6 +1784,7 @@
 
             const priceBase = parseInputNumber(row.querySelector('.amount1')?.value || 0);
             const uom = (row.querySelector('.unit')?.value || '').trim().toUpperCase();
+            const priceBasis = (row.querySelector('.unit-price-basis')?.value || '').trim().toUpperCase();
             const importTax = parseInputNumber(row.querySelector('.import-tax')?.value || 0) || 0;
 
             const extra = priceBase * (importTax / 100);
@@ -1856,7 +1792,7 @@
             const numerator = multiplyFactor * base;
 
             let unitDivisor = 1;
-            if (uom === 'METER' || uom === 'M' || uom === 'MTR' || uom === 'MM') {
+            if (priceBasis === 'METER' || priceBasis === 'M' || priceBasis === 'MTR') {
                 unitDivisor = 1000;
             }
 
@@ -1947,10 +1883,8 @@
             const tbody = document.getElementById('unpricedRecapBody');
             if (!tbody) return;
 
-            // Only show server-persisted unpriced data.
-            // The recap is populated when the user clicks "Update" in the
-            // Rekapan Part Tanpa Harga section, which triggers server-side
-            // processing and returns the data via $openUnpricedParts.
+            // Only show server-persisted unpriced data. Export New Part Request
+            // synchronizes this recap from the latest imported costing-edit file.
             if (hasServerUnpricedData) {
                 const visibleRows = tbody.querySelectorAll('tr[data-unpriced-part]').length;
                 const banner = document.getElementById('unpricedTopBanner');
@@ -1971,7 +1905,7 @@
             }
 
             // No server data — show empty message
-            tbody.innerHTML = '<tr><td colspan="16" style="text-align: center; color: var(--slate-500);">Klik tombol "Update" di section ini untuk mendeteksi part tanpa harga.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; color: var(--slate-500);">Klik "Export New Part Request" untuk memperbarui rekapan dari file Import Hasil Edit.</td></tr>';
             const banner = document.getElementById('unpricedTopBanner');
             if (banner) banner.style.display = 'none';
         }
@@ -2037,18 +1971,19 @@
                     }
 
                     const selectedOption = row.querySelector('.matched-price-select:checked');
-                    if (!(selectedOption instanceof HTMLInputElement)) {
-                        window.alert('Pilih salah satu harga terlebih dahulu.');
+                    const source = selectedOption instanceof HTMLInputElement ? selectedOption : this;
+                    const selectedPrice = parseFloat(source.dataset.price || '0') || 0;
+                    const selectedCurrency = source.dataset.currency || '';
+                    const selectedUnit = source.dataset.unit || '';
+                    const selectedMoq = source.dataset.moq === '' ? null : (parseFloat(source.dataset.moq || '0') || 0);
+                    const selectedCn = source.dataset.cn || '';
+                    const selectedSupplier = source.dataset.supplier || '';
+                    const selectedImportTax = source.dataset.importTax === '' ? null : (parseFloat(source.dataset.importTax || '0') || 0);
+
+                    if (selectedPrice <= 0) {
+                        window.alert('Harga belum tersedia. Import New Part Request terlebih dahulu.');
                         return;
                     }
-
-                    const selectedPrice = parseFloat(selectedOption.dataset.price || '0') || 0;
-                    const selectedCurrency = selectedOption.dataset.currency || '';
-                    const selectedUnit = selectedOption.dataset.unit || '';
-                    const selectedMoq = parseFloat(selectedOption.dataset.moq || '0') || 0;
-                    const selectedCn = selectedOption.dataset.cn || 'N';
-                    const selectedSupplier = selectedOption.dataset.supplier || '';
-                    const selectedImportTax = parseFloat(selectedOption.dataset.importTax || '0') || 0;
 
                     applySelectedMatchedPrice(partNumber, selectedPrice, selectedCurrency, selectedUnit, selectedMoq, selectedCn, selectedSupplier, selectedImportTax);
                 });
@@ -2059,7 +1994,7 @@
             return String(value || '').trim().toLowerCase();
         }
 
-        function applySelectedMatchedPrice(partNumber, selectedPrice, selectedCurrency, selectedUnit, selectedMoq, selectedCn, selectedSupplier, selectedImportTax) {
+        async function applySelectedMatchedPrice(partNumber, selectedPrice, selectedCurrency, selectedUnit, selectedMoq, selectedCn, selectedSupplier, selectedImportTax) {
             const escapedPart = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
                 ? CSS.escape(partNumber)
                 : partNumber.replace(/([\\[\\]\\.\\:\\#\"'])/g, '\\\\$1');
@@ -2103,7 +2038,7 @@
                     unitInput.value = selectedUnit;
                 }
                 if (moqInput) {
-                    moqInput.value = floatToInput(selectedMoq);
+                    moqInput.value = selectedMoq === null ? '' : floatToInput(selectedMoq);
                 }
                 if (cnSelect instanceof HTMLSelectElement && selectedCn) {
                     const hasOption = Array.from(cnSelect.options).some((opt) => opt.value === selectedCn);
@@ -2115,7 +2050,7 @@
                     supplierInput.value = selectedSupplier || '';
                 }
                 if (importTaxInput) {
-                    importTaxInput.value = floatToInput(selectedImportTax);
+                    importTaxInput.value = selectedImportTax === null ? '' : floatToInput(selectedImportTax);
                 }
 
                 calculateRow(amountInput);
@@ -2123,11 +2058,18 @@
             });
 
             calculateTableTotal();
-            syncManualPriceToServer(partNumber, selectedPrice);
-
-            if (updatedRows > 0) {
-                submitMaterialSection();
-            }
+            showAppLoading('Menambahkan harga ke Material dan file hasil edit...');
+            const saved = await syncManualPriceToServer(partNumber, selectedPrice, {
+                purchase_unit: selectedUnit,
+                currency: selectedCurrency,
+                moq: selectedMoq,
+                cn_type: selectedCn,
+                maker: selectedSupplier,
+                add_cost_percent: selectedImportTax,
+                update_costing_edit: true,
+            });
+            if (saved) window.location.reload();
+            else hideAppLoading();
         }
 
         function bindUnpricedManualPriceInputs() {
@@ -2245,7 +2187,7 @@
             if (rows.length === 0) {
                 const tbody = document.getElementById('unpricedRecapBody');
                 if (tbody) {
-                    tbody.innerHTML = '<tr><td colspan="16" style="text-align: center; color: var(--slate-500);">Belum ada part tanpa harga untuk versi dokumen ini.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; color: var(--slate-500);">Belum ada part tanpa harga untuk versi dokumen ini.</td></tr>';
                 }
             }
         }
@@ -2314,12 +2256,12 @@
             );
         }
 
-        function syncManualPriceToServer(partNumber, value) {
+        function syncManualPriceToServer(partNumber, value, details = {}) {
             const trackingRevisionId = document.getElementById('trackingRevisionId')?.value || '';
             const url = document.getElementById('updateUnpricedPriceUrl')?.value || '';
 
             if (!trackingRevisionId || !url) {
-                return;
+                return Promise.resolve(false);
             }
 
             fetch(url, {
@@ -2331,13 +2273,14 @@
                 },
                 body: JSON.stringify({
                     part_number: partNumber,
-                    manual_price: value === '' ? null : Number(value)
+                    manual_price: value === '' ? null : Number(value),
+                    ...details,
                 })
             })
                 .then((response) => response.json())
                 .then((data) => {
                     if (!data || data.ok !== true) {
-                        return;
+                        throw new Error(data?.message || 'Harga gagal disimpan.');
                     }
 
                     const banner = document.getElementById('unpricedTopBanner');
@@ -2351,9 +2294,13 @@
                     if (bannerText) {
                         bannerText.textContent = `Terdapat ${openCount} part yang belum memiliki harga pada versi dokumen ini.`;
                     }
+                    return true;
                 })
-                .catch(() => {
-                    // Silent fail: user can still save form as fallback.
+                .catch((error) => {
+                    if (details.update_costing_edit) {
+                        openAppNotify(error.message || 'Harga gagal disimpan.', 'error');
+                    }
+                    return false;
                 });
         }
 
@@ -2499,7 +2446,10 @@
                 const unit = (row.querySelector('.unit')?.value || row.querySelector('.unit')?.textContent || '').trim().toLowerCase();
                 const unitKey = unit || '-';
                 const totalElement = row.querySelector('.total-price');
-                const amount = totalElement ? parseDataValueNumber(totalElement.getAttribute('data-value') || totalElement.textContent || 0) : 0;
+                const hasServerTotal = row.dataset.serverTotal !== undefined && row.dataset.serverTotal !== '';
+                const amount = hasServerTotal
+                    ? (Number(row.dataset.serverTotal) || 0)
+                    : (totalElement ? parseDataValueNumber(totalElement.getAttribute('data-value') || totalElement.textContent || 0) : 0);
 
                 // Ignore unused input rows; otherwise a blank row is incorrectly
                 // classified as an additional Accessories row.
@@ -2798,9 +2748,60 @@
             }));
         }
 
+        function safeExportFileName(value, fallback) {
+            const cleaned = String(value || '').replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-').trim();
+            return cleaned || fallback;
+        }
+
+        async function chooseExportDestination(suggestedName) {
+            if (typeof window.showSaveFilePicker !== 'function') {
+                return { supported: false, handle: null, cancelled: false };
+            }
+
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: safeExportFileName(suggestedName, 'export.xlsx'),
+                    types: [{
+                        description: 'Excel Workbook',
+                        accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+                    }],
+                });
+                return { supported: true, handle, cancelled: false };
+            } catch (error) {
+                if (error?.name === 'AbortError') {
+                    return { supported: true, handle: null, cancelled: true };
+                }
+                return { supported: false, handle: null, cancelled: false };
+            }
+        }
+
+        async function saveExportBlob(blob, filename, destination) {
+            if (destination?.handle) {
+                const writable = await destination.handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            }
+
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(downloadUrl);
+        }
+
         async function exportMaterialEditor() {
             const ratesConfirmed = await showExportRatesConfirmModal();
             if (!ratesConfirmed) return;
+
+            const assyNo = document.querySelector('#costingForm [name="assy_no"]')?.value || '';
+            const customerCode = document.querySelector('#costingForm [name="customer_id"]')?.selectedOptions?.[0]?.dataset?.code || '';
+            const suggestedName = safeExportFileName(`cogm. ${assyNo} - ${customerCode}.xlsx`, 'Export-costing-edit.xlsx');
+            const destination = await chooseExportDestination(suggestedName);
+            if (destination.cancelled) return;
 
             const url = document.getElementById('materialExcelExportUrl')?.value || '';
             const token = document.querySelector('#costingForm input[name="_token"]')?.value || '';
@@ -2830,6 +2831,7 @@
                             const text = document.querySelector('#costingForm [name="customer_id"]')?.selectedOptions?.[0]?.textContent?.trim() || '';
                             return text.includes(' - ') ? text.split(' - ').slice(1).join(' - ').trim() : text;
                         })(),
+                        customer_code: document.querySelector('#costingForm [name="customer_id"]')?.selectedOptions?.[0]?.dataset?.code || '',
                         model: document.querySelector('#costingForm [name="model"]')?.value || '',
                         project_date: document.getElementById('exportProjectDate')?.value || '',
                         sop_mp_date: document.getElementById('exportSopMpDate')?.value || '',
@@ -2866,14 +2868,12 @@
                 if (filenameMatch != null && filenameMatch[1]) { 
                     filename = filenameMatch[1].replace(/['"]/g, '');
                 }
-                const downloadUrl = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(downloadUrl);
+                await saveExportBlob(blob, filename, destination);
+                const exportedFileName = document.getElementById('materialExportFileName');
+                if (exportedFileName) {
+                    exportedFileName.textContent = filename;
+                    exportedFileName.parentElement.title = filename;
+                }
                 openAppNotify(rows.length + ' baris Material berhasil diexport.', 'success');
             } catch (error) {
                 openAppNotify(error.message || 'Export Excel gagal.', 'error');
@@ -2910,6 +2910,112 @@
             });
         }
 
+        function openMaterialDownloadConfirm(trigger) {
+            const modal = document.getElementById('materialDownloadConfirmModal');
+            const downloadBtn = document.getElementById('materialDownloadOkBtn');
+            const cancelBtn = document.getElementById('materialDownloadCancelBtn');
+            const fileName = document.getElementById('materialDownloadFileName');
+            if (!modal || !downloadBtn || !cancelBtn) return;
+
+            const href = trigger.dataset.downloadUrl || '';
+            const displayedName = trigger.querySelector('strong')?.textContent?.trim() || 'file hasil edit';
+            if (fileName) fileName.textContent = displayedName;
+
+            const close = () => {
+                modal.classList.add('is-hidden');
+                modal.setAttribute('aria-hidden', 'true');
+                downloadBtn.removeEventListener('click', download);
+                cancelBtn.removeEventListener('click', cancel);
+                modal.removeEventListener('click', closeFromOverlay);
+                document.removeEventListener('keydown', closeFromEscape);
+            };
+            const download = () => {
+                close();
+                const downloadFrame = document.createElement('iframe');
+                downloadFrame.hidden = true;
+                downloadFrame.src = href;
+                downloadFrame.title = 'Download file hasil edit';
+                document.body.appendChild(downloadFrame);
+                window.setTimeout(() => downloadFrame.remove(), 60000);
+            };
+            const cancel = () => close();
+            const closeFromOverlay = (overlayEvent) => {
+                if (overlayEvent.target === modal) close();
+            };
+            const closeFromEscape = (keyEvent) => {
+                if (keyEvent.key === 'Escape') close();
+            };
+
+            modal.classList.remove('is-hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            downloadBtn.addEventListener('click', download);
+            cancelBtn.addEventListener('click', cancel);
+            modal.addEventListener('click', closeFromOverlay);
+            document.addEventListener('keydown', closeFromEscape);
+            cancelBtn.focus();
+        }
+
+        async function exportNewPartRequestAndRefresh(url) {
+            if (!url) return;
+
+            const assyNo = document.querySelector('#costingForm [name="assy_no"]')?.value || '';
+            const destination = await chooseExportDestination(
+                safeExportFileName(`New Part Request - ${assyNo}.xlsx`, 'New-Part-Request.xlsx')
+            );
+            if (destination.cancelled) return;
+
+            showAppLoading('Memperbarui rekapan dan membuat New Part Request...');
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+                });
+                if (!response.ok) {
+                    throw new Error('Export New Part Request gagal.');
+                }
+
+                const blob = await response.blob();
+                const disposition = response.headers.get('Content-Disposition') || '';
+                const filenameMatch = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                const filename = filenameMatch?.[1]?.replace(/['"]/g, '') || 'New-Part-Request.xlsx';
+                await saveExportBlob(blob, filename, destination);
+
+                window.location.reload();
+            } catch (error) {
+                hideAppLoading();
+                openAppNotify(error.message || 'Export New Part Request gagal.', 'error');
+            }
+        }
+
+        async function importNewPartRequest(input) {
+            const file = input?.files?.[0];
+            if (!file) return;
+
+            const url = input.dataset.importUrl || '';
+            const token = document.querySelector('#costingForm input[name="_token"]')?.value || '';
+            const formData = new FormData();
+            formData.append('new_part_request_file', file);
+
+            showAppLoading('Mengimport harga New Part Request...');
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
+                    body: formData,
+                });
+                const data = await response.json();
+                if (!response.ok || data.success === false) {
+                    throw new Error(data.message || 'Import New Part Request gagal.');
+                }
+                window.location.reload();
+            } catch (error) {
+                hideAppLoading();
+                openAppNotify(error.message || 'Import New Part Request gagal.', 'error');
+            } finally {
+                input.value = '';
+            }
+        }
+
         async function importMaterialEditor(input) {
             const file = input?.files?.[0];
             if (!file) return;
@@ -2920,6 +3026,13 @@
             formData.append('material_file', file);
             const trackingRevisionId = document.getElementById('trackingRevisionId')?.value || '';
             if (trackingRevisionId) formData.append('tracking_revision_id', trackingRevisionId);
+            const costingDataId = document.querySelector('#costingForm [name="costing_data_id"]')?.value || '';
+            if (costingDataId) formData.append('costing_data_id', costingDataId);
+            formData.append('forecast', document.getElementById('forecast')?.value || '0');
+            formData.append('project_period', document.getElementById('projectPeriod')?.value || '0');
+            formData.append('exchange_rate_usd', String(parseRateInputValue(document.getElementById('rateUSD')?.value || 0)));
+            formData.append('exchange_rate_jpy', String(parseRateInputValue(document.getElementById('rateJPY')?.value || 0)));
+            formData.append('lme_rate', String(parseRateInputValue(document.getElementById('lmeRate')?.value || 0)));
 
             showAppLoading('Memeriksa file Excel Material...');
             try {
@@ -2949,10 +3062,22 @@
                     });
                 });
 
+                if (data.costing_data_id) {
+                    let costingIdInput = document.querySelector('#costingForm [name="costing_data_id"]');
+                    if (!costingIdInput) {
+                        costingIdInput = document.createElement('input');
+                        costingIdInput.type = 'hidden';
+                        costingIdInput.name = 'costing_data_id';
+                        document.getElementById('costingForm')?.appendChild(costingIdInput);
+                    }
+                    costingIdInput.value = String(data.costing_data_id);
+                }
+
                 hideAppLoading();
                 openAppConfirm(
                     `${data.rows.length} baris valid. ${changedRows.length} baris terdeteksi berubah. Terapkan ke tabel Material?`,
-                    function () { applyMaterialEditorRows(data.rows); }
+                    function () { applyMaterialEditorRows(data.rows); },
+                    { title: 'Konfirmasi Import Hasil Edit', buttonLabel: 'Terapkan & Simpan', tone: 'primary' }
                 );
             } catch (error) {
                 hideAppLoading();
@@ -2962,7 +3087,7 @@
             }
         }
 
-        function applyMaterialEditorRows(rows) {
+        async function applyMaterialEditorRows(rows) {
             const tableRows = Array.from(document.querySelectorAll('#materialTableBody tr'));
             const beforeSnapshot = getMaterialStateSnapshot();
 
@@ -2985,7 +3110,60 @@
             pushMaterialHistoryAction({ type: 'snapshot', before: beforeSnapshot, after: afterSnapshot });
             calculateTableTotal();
             refreshUnpricedRecap();
-            openAppNotify(rows.length + ' baris diterapkan. Periksa hasilnya lalu tekan Update untuk menyimpan.', 'success');
+            await persistImportedMaterialRows();
+        }
+
+        async function persistImportedMaterialRows() {
+            const mainForm = document.getElementById('costingForm');
+            const url = document.getElementById('quickMaterialUpdateUrl')?.value || '';
+            const costingDataId = mainForm?.querySelector('[name="costing_data_id"]')?.value || '';
+            const token = mainForm?.querySelector('input[name="_token"]')?.value
+                || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                || '';
+            // Import Hasil Edit adalah satu snapshot utuh. Kirim seluruh baris supaya
+            // server tidak bergantung pada flag dirty di browser dan hasil refresh
+            // selalu identik dengan file yang baru diterapkan.
+            const rowsToSave = collectMaterialRowsForPayload();
+
+            if (!mainForm || !url || !costingDataId) {
+                openAppNotify('Hasil edit sudah diterapkan, tetapi data costing belum tersedia untuk penyimpanan otomatis.', 'error');
+                return;
+            }
+
+            showAppLoading('Menyimpan hasil import persis seperti Excel...');
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({
+                        costing_data_id: costingDataId,
+                        materials_json: JSON.stringify(rowsToSave),
+                    }),
+                });
+                const data = await response.json();
+                if (!response.ok || data.success === false) {
+                    throw new Error(data.message || 'Hasil import gagal disimpan.');
+                }
+
+                if (Number(data.saved_rows ?? data.updated_rows ?? 0) !== rowsToSave.length) {
+                    throw new Error(`Penyimpanan belum lengkap: ${data.saved_rows ?? data.updated_rows ?? 0} dari ${rowsToSave.length} baris tersimpan.`);
+                }
+
+                isMaterialDirty = false;
+                refreshMaterialInitialSnapshot();
+                markMaterialControlsUndoBase();
+                openAppNotify(rowsToSave.length + ' baris berhasil diterapkan dan tersimpan permanen.', 'success');
+                window.setTimeout(() => window.location.reload(), 500);
+            } catch (error) {
+                openAppNotify(error.message || 'Hasil import gagal disimpan.', 'error');
+            } finally {
+                hideAppLoading();
+            }
         }
 
         function normalizeMaterialRowsForCompare(rows) {
@@ -4870,6 +5048,15 @@
             // This is needed because rendered HTML may still show default "1".
             recalculateAllRows();
             calculateTotals();
+
+            const serverMaterialCost = Number(document.getElementById('serverMaterialCost')?.value || 0);
+            if (serverMaterialCost > 0) {
+                const tableTotal = document.getElementById('tableTotalMaterial');
+                if (tableTotal) tableTotal.textContent = formatRupiah(serverMaterialCost);
+                const materialCostInput = document.getElementById('materialCost');
+                if (materialCostInput) setResumeMoneyValue(materialCostInput, serverMaterialCost);
+                calculateTotals(false);
+            }
 
             refreshUnpricedRecap();
             bindUnpricedManualPriceInputs();

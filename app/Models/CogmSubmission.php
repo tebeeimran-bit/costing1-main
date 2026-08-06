@@ -16,11 +16,15 @@ class CogmSubmission extends Model
         'cogm_value',
         'submitted_by',
         'notes',
+        'update_count',
+        'last_updated_by',
+        'last_updated_at',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
         'cogm_value' => 'decimal:2',
+        'last_updated_at' => 'datetime',
     ];
 
     public function revision()

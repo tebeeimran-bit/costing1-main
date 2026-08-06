@@ -11,10 +11,19 @@ class BreakdownInboxController extends Controller
     public function index(Request $request)
     {
         $search = trim((string) $request->query('q'));
+        $filter = (string) $request->query('status', 'active');
+        if (! in_array($filter, ['active', 'history', 'all'], true)) {
+            $filter = 'active';
+        }
+
         $tasks = ProjectWorkflowTask::with(['project.product', 'revision', 'assignedUser'])
             ->where('stage', ProjectWorkflowTask::STAGE_BREAKDOWN)
             ->where('assigned_role', 'admin_costing')
-            ->whereIn('status', [ProjectWorkflowTask::STATUS_PENDING, ProjectWorkflowTask::STATUS_IN_PROGRESS])
+            ->when($filter === 'active', fn ($query) => $query->whereIn('status', [
+                ProjectWorkflowTask::STATUS_PENDING,
+                ProjectWorkflowTask::STATUS_IN_PROGRESS,
+            ]))
+            ->when($filter === 'history', fn ($query) => $query->where('status', ProjectWorkflowTask::STATUS_COMPLETED))
             ->when($search !== '', fn ($query) => $query->whereHas('project', fn ($project) => $project
                 ->where('customer', 'like', "%{$search}%")
                 ->orWhere('model', 'like', "%{$search}%")
@@ -23,7 +32,7 @@ class BreakdownInboxController extends Controller
             ->oldest('available_at')->oldest('id')
             ->paginate(20)->withQueryString();
 
-        return view('breakdown.inbox', compact('tasks', 'search'));
+        return view('breakdown.inbox', compact('tasks', 'search', 'filter'));
     }
 
     public function complete(Request $request, ProjectWorkflowTask $task)

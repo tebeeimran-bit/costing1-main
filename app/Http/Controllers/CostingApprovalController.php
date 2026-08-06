@@ -166,6 +166,12 @@ class CostingApprovalController extends Controller
         $this->authorizeRole($request, ['admin', 'admin_costing', 'marketing', 'coordinator_costing']);
 
         $submissions = CogmSubmission::with(['revision.project.product'])
+            ->when(
+                (string) $request->user()->role === 'marketing',
+                fn ($query) => $query->whereRaw('LOWER(TRIM(pic_marketing)) = ?', [
+                    mb_strtolower(trim((string) $request->user()->name)),
+                ])
+            )
             ->orderByDesc('submitted_at')
             ->paginate(15);
 
@@ -175,6 +181,7 @@ class CostingApprovalController extends Controller
     public function storeMarketingComment(Request $request, CogmSubmission $submission)
     {
         $this->authorizeRole($request, ['admin', 'marketing']);
+        $this->authorizeMarketingSubmission($request, $submission);
         $validated = $request->validate([
             'comment' => ['required', 'string', 'max:2000'],
         ]);
@@ -193,6 +200,20 @@ class CostingApprovalController extends Controller
         if (!in_array($role, $allowedRoles, true)) {
             abort(403, 'Role Anda tidak memiliki akses untuk aksi approval ini.');
         }
+    }
+
+    private function authorizeMarketingSubmission(Request $request, CogmSubmission $submission): void
+    {
+        if ((string) $request->user()->role !== 'marketing') {
+            return;
+        }
+
+        abort_unless(
+            mb_strtolower(trim((string) $submission->pic_marketing))
+                === mb_strtolower(trim((string) $request->user()->name)),
+            403,
+            'COGM ini ditujukan untuk PIC Marketing lain.'
+        );
     }
 
     private function costingForRevision(DocumentRevision $revision): ?CostingData

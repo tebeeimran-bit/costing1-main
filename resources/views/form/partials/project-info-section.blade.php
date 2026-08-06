@@ -41,7 +41,7 @@
                         @endphp
                         <option value="">-- Pilih Customer --</option>
                         @foreach($customers as $customer)
-                            <option value="{{ $customer->id }}" {{ (string) $selectedCustomerId === (string) $customer->id ? 'selected' : '' }}>
+                            <option value="{{ $customer->id }}" data-code="{{ $customer->code }}" {{ (string) $selectedCustomerId === (string) $customer->id ? 'selected' : '' }}>
                                 {{ $customer->code }} - {{ $customer->name }}
                             </option>
                         @endforeach

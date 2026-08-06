@@ -101,6 +101,11 @@
         color: #1e40af;
     }
 
+    .inbox-actions { display:flex;justify-content:flex-end;gap:.4rem;align-items:center; }
+    .inbox-action.download { border-color:#bbf7d0;background:#f0fdf4;color:#15803d; }
+    .inbox-action.download:hover { border-color:#86efac;background:#dcfce7;color:#166534; }
+    .inbox-file-missing { color:#94a3b8;font-size:.64rem;font-weight:800;white-space:nowrap; }
+
     .inbox-cogm {
         color: #047857;
         font-weight: 950;
@@ -118,6 +123,7 @@
         font-weight: 900;
         white-space: nowrap;
     }
+    .inbox-update{display:grid;gap:.16rem;margin-top:.35rem;padding:.35rem .5rem;border:1px solid #fde68a;border-radius:7px;background:#fffbeb;color:#92400e;font-size:.61rem;font-weight:800}.inbox-update small{color:#a16207;font-size:.56rem;font-weight:700}
 
     .inbox-empty {
         padding: 2rem;
@@ -141,6 +147,7 @@
                     <th>Project</th>
                     <th>Customer</th>
                     <th>Model</th>
+                    <th>PIC Engineering</th>
                     <th>PIC Marketing</th>
                     <th style="text-align:right;">COGM</th>
                     <th>Submitted By</th>
@@ -162,18 +169,28 @@
                         </td>
                         <td>{{ $project?->customer ?? '-' }}</td>
                         <td>{{ $project?->model ?? '-' }}</td>
+                        <td>{{ $revision?->pic_engineering ?? '-' }}</td>
                         <td>{{ $submission->pic_marketing ?? '-' }}</td>
                         <td style="text-align:right;"><span class="inbox-cogm">Rp {{ number_format((float) $submission->cogm_value, 0, ',', '.') }}</span></td>
                         <td>{{ $submission->submitted_by ?? '-' }}</td>
                         <td>{{ $submission->submitted_at ? $submission->submitted_at->format('d/m/Y H:i') : '-' }}</td>
-                        <td><span class="inbox-pill">Submitted to Marketing</span></td>
+                        <td><span class="inbox-pill">Submitted to Marketing</span>@if($submission->last_updated_at)<div class="inbox-update">COGM diperbarui ({{ $submission->update_count }}x)<small>{{ $submission->last_updated_by }} · {{ $submission->last_updated_at->format('d/m/Y H:i') }}</small></div>@endif</td>
                         <td style="text-align:right;">
-                            <a class="inbox-action" href="{{ route('marketing.cogm-costing.show', $submission, absolute: false) }}">Lihat Form Costing</a>
+                            <div class="inbox-actions">
+                                @if($revision?->costing_edit_file_path)
+                                    <a class="inbox-action download" data-no-row-open href="{{ route('marketing.costing-edit.download', $revision, absolute: false) }}" title="{{ $revision->costing_edit_original_name }}">Download File Import</a>
+                                @elseif($revision?->cogm_import_file_path)
+                                    <a class="inbox-action download" data-no-row-open href="{{ route('marketing.cogm-import.download', $submission, absolute: false) }}" title="{{ $revision->cogm_import_original_name }}">Download File Import</a>
+                                @else
+                                    <span class="inbox-file-missing">File tidak tersedia</span>
+                                @endif
+                                <a class="inbox-action" data-no-row-open href="{{ route('marketing.cogm-costing.show', $submission, absolute: false) }}">Lihat Form Costing</a>
+                            </div>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9"><div class="inbox-empty">Belum ada COGM approved yang dikirim ke Marketing.</div></td>
+                        <td colspan="10"><div class="inbox-empty">Belum ada COGM approved yang dikirim ke Marketing.</div></td>
                     </tr>
                 @endforelse
             </tbody>
@@ -187,7 +204,7 @@
 <script>
 document.querySelectorAll('.marketing-inbox-table tbody tr[data-href]').forEach(function(row){
     const open=function(){ window.location.href=row.dataset.href; };
-    row.addEventListener('click',open);
+    row.addEventListener('click',function(event){if(!event.target.closest('[data-no-row-open]'))open();});
     row.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
 });
 </script>

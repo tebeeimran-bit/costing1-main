@@ -26,8 +26,9 @@ class ProjectA00WorkflowTest extends TestCase
         $this->actingAs($user)->get(route('costing.inbox'))
             ->assertOk()
             ->assertSee('Daftar Progress Costing')
-            ->assertSee('Submit Approval')
-            ->assertSee('Kirim COGM');
+            ->assertSee('Aktif')
+            ->assertSee('History')
+            ->assertSee('Tidak ada progress costing pada filter ini.');
     }
 
     public function test_document_control_registration_can_be_updated_from_embedded_modal(): void

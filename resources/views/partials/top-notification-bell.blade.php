@@ -2,6 +2,7 @@
     use App\Models\CostingData;
     use App\Models\DocumentRevision;
     use App\Models\MaterialBreakdown;
+    use App\Models\UnpricedPart;
 
     /*
      * Notification Bell Project
@@ -70,6 +71,43 @@
         $hasA00 = ($revision->a00 ?? null) === 'ada';
         $hasA04 = ($revision->a04 ?? null) === 'ada';
         $hasA05 = ($revision->a05 ?? null) === 'ada';
+        $revisionStatus = (string) ($revision->status ?? '');
+
+        // Status workflow adalah sumber utama. Project yang sudah selesai dikirim
+        // atau sudah terminal tidak boleh muncul lagi sebagai pekerjaan aktif.
+        if ($revisionStatus === DocumentRevision::STATUS_SUBMITTED_TO_MARKETING || $hasA04 || $hasA05) {
+            continue;
+        }
+
+        if ($revisionStatus === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL) {
+            if (in_array(auth()->user()?->role, ['admin', 'coordinator_costing'], true)) {
+                $notificationItems->push([
+                    'type' => 'approval',
+                    'title' => 'COGM menunggu approval',
+                    'line' => $customerName . ' - ' . $modelName . ' - Menunggu coordinator',
+                    'description' => 'Costing sudah disubmit dan menunggu keputusan Coordinator Costing.',
+                    'button_label' => 'Buka Inbox Costing',
+                    'url' => route('costing.inbox', ['status' => 'active'], false),
+                    'color' => 'orange',
+                ]);
+            }
+            continue;
+        }
+
+        if ($revisionStatus === DocumentRevision::STATUS_APPROVED_BY_COORDINATOR) {
+            if (in_array(auth()->user()?->role, ['admin', 'coordinator_costing'], true)) {
+                $notificationItems->push([
+                    'type' => 'approval',
+                    'title' => 'COGM siap dikirim',
+                    'line' => $customerName . ' - ' . $modelName . ' - Sudah approved',
+                    'description' => 'COGM sudah disetujui dan siap dikirim ke PIC Marketing.',
+                    'button_label' => 'Kirim ke Marketing',
+                    'url' => route('costing.inbox', ['status' => 'active'], false),
+                    'color' => 'blue',
+                ]);
+            }
+            continue;
+        }
 
         /*
          * Pemberitahuan dokumen project:
@@ -130,16 +168,19 @@
             continue;
         }
 
-        $missingPriceRows = $materialRows->filter(function ($row) {
-            return (float) ($row->amount1 ?? 0) <= 0;
-        });
+        $openUnpricedParts = UnpricedPart::query()
+            ->where('document_revision_id', $revision->id)
+            ->whereNull('resolved_at')
+            ->get(['part_number', 'cn_type']);
 
-        $estimatePriceRows = $materialRows->filter(function ($row) {
+        $estimatePriceRows = $openUnpricedParts->filter(function ($row) {
             return strtoupper(trim((string) ($row->cn_type ?? ''))) === 'E';
         });
 
-        $missingPriceCount = $normalizeUniquePartCount($missingPriceRows);
-        $estimatePriceCount = $normalizeUniquePartCount($estimatePriceRows);
+        $missingPriceCount = $openUnpricedParts
+            ->pluck('part_number')->map(fn ($part) => strtoupper(trim((string) $part)))->filter()->unique()->count();
+        $estimatePriceCount = $estimatePriceRows
+            ->pluck('part_number')->map(fn ($part) => strtoupper(trim((string) $part)))->filter()->unique()->count();
 
         /*
          * Project sudah costing tapi belum full priced.

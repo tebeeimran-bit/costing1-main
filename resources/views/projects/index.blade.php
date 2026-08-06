@@ -452,6 +452,10 @@
     .project-main { display: grid; gap: .18rem; }
     .project-main strong { color: #0f172a; font-size: .76rem; font-weight: 850; }
     .project-main small { color: #64748b; font-size: .65rem; font-weight: 650; }
+    .shared-a00-note{display:grid;grid-template-columns:24px minmax(0,1fr) auto;width:min(100%,270px);align-items:center;gap:.42rem;margin-top:.3rem;padding:.4rem .48rem;border:1px solid #bfdbfe;border-radius:9px;background:linear-gradient(135deg,#eff6ff,#f8fbff);box-shadow:0 2px 6px rgba(37,99,235,.06)}
+    .shared-a00-icon{display:flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:7px;background:#dbeafe;color:#2563eb}.shared-a00-icon svg{width:14px;height:14px}
+    .shared-a00-copy{min-width:0;display:grid;gap:.04rem}.shared-a00-copy span{color:#2563eb;font-size:.54rem;font-weight:900;letter-spacing:.035em;text-transform:uppercase}.shared-a00-copy strong{overflow:hidden;color:#1e3a8a;font-size:.58rem;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+    .shared-a00-count{display:grid;min-width:40px;justify-items:center;padding:.2rem .35rem;border-radius:7px;background:#fff;color:#1d4ed8;box-shadow:inset 0 0 0 1px #dbeafe}.shared-a00-count b{font-size:.68rem;line-height:1}.shared-a00-count small{color:#64748b!important;font-size:.48rem!important;font-weight:750!important;white-space:nowrap}
     .part-summary { white-space: nowrap; }
     .pic-compact { display: grid; gap: .24rem; min-width: 155px; }
     .pic-compact div { display: grid; grid-template-columns: 66px 1fr; gap: .35rem; line-height: 1.25; }
@@ -518,7 +522,7 @@
                         $rowId = 'groupRow' . md5($group->key);
                     @endphp
                     <tr class="group-row" id="{{ $rowId }}Main">
-                        <td><div class="project-main"><strong>{{ $group->project_name }}</strong><small>{{ $group->business_category }}</small></div></td>
+                        <td><div class="project-main"><strong>{{ $group->project_name }}</strong><small>{{ $group->business_category }}</small>@foreach($group->shared_a00_labels as $sharedA00)<div class="shared-a00-note" title="Digunakan bersama oleh {{ $sharedA00->project_count }} project"><span class="shared-a00-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><span class="shared-a00-copy"><span>A00 Bersama</span><strong>{{ $sharedA00->number }}</strong></span><span class="shared-a00-count"><b>{{ $sharedA00->project_count }}</b><small>Project</small></span></div>@endforeach</div></td>
                         <td>{{ $group->customer }}</td><td>{{ $group->model }}</td>
                         <td class="part-summary"><strong>{{ $group->assy_numbers ?: '-' }}</strong></td>
                         <td><div class="pic-compact"><div><span>Engineering</span><strong>
@@ -573,19 +577,6 @@
                         <template id="{{ $rowId }}Progress"><div class="progress-dialog-head"><strong>Progress Project — {{ $group->project_name }}</strong><button type="button" class="progress-dialog-close" onclick="closeProjectProgress()">×</button></div><div class="progress-dialog-body">@foreach($progress as $step)<div class="progress-detail-row"><span class="progress-dot" @if($step['state']==='done') style="border-color:#22b45b;background:#22b45b;color:#fff" @elseif($step['state']==='active') style="border-color:#2563eb;background:#2563eb;color:#fff" @endif>{{ $step['state']==='done'?'✓':$loop->iteration }}</span><strong>{{ $step['label'] }}</strong><span class="progress-detail-state {{ $step['state'] }}">{{ $step['status'] }}</span><span class="progress-detail-meta"><span>{{ $step['date'] ?: '—' }}</span>@if($step['time'])<small>{{ $step['time'] }}</small>@endif<small>{{ $step['pic'] ?: '—' }}</small></span></div>@endforeach</div></template></td>
                         <td class="updated-compact">@if($group->updated_at){{ \Carbon\Carbon::parse($group->updated_at)->format('d/m/Y') }}<small>{{ \Carbon\Carbon::parse($group->updated_at)->format('H:i') }}</small>@else - @endif</td>
                         <td><details class="row-actions"><summary aria-label="Buka aksi">⋮</summary><div class="row-action-menu">
-                                <a href="{{ route('tracking-documents.create', [
-                                    'business_category' => $group->business_category,
-                                    'customer' => $group->customer,
-                                    'model' => $group->model,
-                                ], false) }}">
-                                    + Tambah Project
-                                </a>
-                                <button type="button" onclick="toggleProjectGroup('{{ $rowId }}'); this.closest('details').removeAttribute('open')">
-                                    Lihat Semua Part
-                                </button>
-                                <a href="{{ route('database.project-documents', ['search' => $group->customer . ' ' . $group->model], false) }}">
-                                    Lihat Dokumen Group
-                                </a>
                                 <form method="POST" action="{{ route('project.group.destroy', absolute:false) }}" class="js-confirm-form" data-confirm-message="Apakah yakin akan hapus project?">
                                     @csrf
                                     @method('DELETE')
