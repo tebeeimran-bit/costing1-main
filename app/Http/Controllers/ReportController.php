@@ -12,7 +12,6 @@ use App\Models\DocumentProject;
 use App\Models\ExchangeRate;
 use App\Models\MaterialBreakdown;
 use App\Models\Product;
-use App\Models\UnpricedPart;
 use App\Models\WireRate;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -937,36 +936,6 @@ class ReportController extends Controller
         foreach ($rows as $item) {
             $sheet->fromArray([$item->{$labelField}, $item->projects, $item->material, $item->labor, $item->overhead, $item->cogm], null, 'A'.$row++);
         }
-    }
-
-    /**
-     * Unpriced Parts
-     */
-    public function unpricedParts()
-    {
-        $parts = UnpricedPart::with(['costingData.customer', 'revision'])
-            ->orderByDesc('id')
-            ->get()
-            ->map(function ($part) {
-                return (object)[
-                    'id' => $part->id,
-                    'part_number' => $part->part_number ?? '-',
-                    'part_name' => $part->part_name ?? '-',
-                    'customer' => $part->costingData?->customer?->name ?? '-',
-                    'model' => $part->costingData?->model ?? '-',
-                    'detected_price' => (float) $part->detected_price,
-                    'manual_price' => (float) $part->manual_price,
-                    'resolved_at' => $part->resolved_at,
-                    'resolution_source' => $part->resolution_source ?? '-',
-                    'notes' => $part->notes,
-                ];
-            });
-
-        $totalParts = $parts->count();
-        $resolvedParts = $parts->filter(fn($p) => $p->resolved_at !== null)->count();
-        $unresolvedParts = $totalParts - $resolvedParts;
-
-        return view('reports.unpriced-parts', compact('parts', 'totalParts', 'resolvedParts', 'unresolvedParts'));
     }
 
 }

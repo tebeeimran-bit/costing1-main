@@ -127,7 +127,6 @@ Route::middleware('auth')->group(function () {
         Route::delete('/database/rate-kurs/{id}', [ReportController::class, 'destroyExchangeRate'])->name('rate-kurs.destroy');
 
         // Unpriced
-        Route::get('/database/unpriced-parts', [ReportController::class, 'unpricedParts'])->name('unpriced-parts');
 
         // Database index & products list
         Route::get('/database', [DatabaseController::class, 'index'])->name('database');
