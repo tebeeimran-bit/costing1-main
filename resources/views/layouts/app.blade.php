@@ -117,6 +117,16 @@
                 </div>
             </div>
             <nav class="sidebar-nav">
+                @php
+                    $sidebarRole = (string) (auth()->user()->role ?? 'viewer');
+                    $sidebarCan = static fn (string $module): bool => $sidebarRole === 'admin'
+                        || \App\Models\RolePermission::hasAccess($sidebarRole, $module, 'view');
+                    $canInputData = $sidebarCan('input_data');
+                    $canDatabase = $sidebarCan('database');
+                    $canReports = $sidebarCan('laporan');
+                    $canDocumentControl = $sidebarCan('document_control');
+                    $canControlProject = $sidebarCan('control_project');
+                @endphp
                 <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Menu Utama</div>
                         <a href="{{ route('dashboard', absolute: false) }}"
@@ -137,14 +147,14 @@
                         </svg>
                         <span>Project</span>
                     </a>
-                    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'admin_control_project'], true))
+                    @if($canControlProject)
                     <a href="{{ route('control-project.a00.index', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('control-project.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16h16V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
                         <span>Control Project — A00</span>
                      </a>
                      @endif
-                     @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'document_control'], true))
+                     @if($canDocumentControl)
                      <a href="{{ route('document-control.inbox', absolute: false) }}"
                          class="sidebar-nav-item {{ request()->routeIs('document-control.*') ? 'active' : '' }}">
                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -153,14 +163,14 @@
                          <span>Document Control</span>
                      </a>
                      @endif
-                     @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'admin_costing'], true))
+                     @if($canInputData)
                      <a href="{{ route('breakdown.inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('breakdown.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
                         <span>Inbox Breakdown</span>
                     </a>
                     @endif
-                    @if(auth()->check() && in_array(auth()->user()->role, ['admin', 'admin_costing', 'editor', 'coordinator_costing'], true))
+                    @if($canInputData)
                     <a href="{{ route('costing.inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('costing.inbox') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/><path d="M9 9v11"/><path d="M13 13h4M13 17h4"/></svg>
@@ -172,6 +182,7 @@
                         <span>Inbox New Part Request</span>
                     </a>
                     @endif
+                    @if(in_array($sidebarRole, ['admin', 'marketing'], true))
                     <a href="{{ route('marketing.cogm-inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('marketing.cogm-inbox') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -180,7 +191,9 @@
                         </svg>
                         <span>Inbox Marketing</span>
                     </a>
+                    @endif
                     </div>
+                @if($canDatabase)
                 <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Input Data</div>
 <div class="sidebar-dropdown">
@@ -298,6 +311,8 @@
                         </div>
                     </div>
                 </div>
+                @endif
+                @if($canReports)
                 <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Laporan</div>
                     <a href="{{ route('laporan', absolute: false) }}"
@@ -333,6 +348,7 @@
                         <span>Compare Costing</span>
                     </a>
 </div>
+                @endif
                 @if(auth()->check() && auth()->user()->role === 'admin')
                 <div class="sidebar-nav-section">
                     <div class="sidebar-nav-title">Administrasi</div>

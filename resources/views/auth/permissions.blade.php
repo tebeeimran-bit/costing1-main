@@ -1,13 +1,40 @@
 @extends('layouts.app')
 
-@section('title', 'Permission & User Management')
-@section('page-title', 'Permission & User Management')
+@section('title', 'Manajemen User & Hak Akses')
+@section('page-title', 'Manajemen User & Hak Akses')
 
 @section('breadcrumb')
-    <a href="{{ route('dashboard') }}">Dashboard</a> / Permission
+    <a href="{{ route('dashboard') }}">Dashboard</a> / Manajemen User
 @endsection
 
 @section('content')
+<style>
+    .permission-shell{width:100%;max-width:1440px;margin:0 auto;display:grid;gap:1rem}
+    .permission-card{border:1px solid #dbe5f1;border-radius:14px;box-shadow:0 10px 28px rgba(15,23,42,.045);overflow:hidden}
+    .permission-card .card-header{padding:1rem 1.15rem;background:linear-gradient(135deg,#fff,#f7faff);border-bottom:1px solid #e2e8f0}
+    .permission-card .card-title{font-size:.92rem;color:#0f172a}
+    .permission-help{display:flex;align-items:center;gap:.45rem;color:#64748b;font-size:.7rem}
+    .permission-help:before{content:'i';display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#dbeafe;color:#2563eb;font-weight:800}
+    .access-legend{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem!important;margin-bottom:1rem!important}
+    .access-legend>span{min-height:38px;padding:.55rem .65rem;border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc;line-height:1.35}
+    .permission-table-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px}
+    .permission-table{width:100%!important;min-width:1050px}
+    .permission-table thead{background:#f1f5f9}
+    .permission-table th{padding:.7rem .65rem!important;white-space:nowrap}
+    .permission-table td{padding:.55rem .65rem!important;height:48px}
+    .permission-table tbody tr:hover{background:#f8fbff!important}
+    .permission-role{width:150px;min-width:150px}
+    .permission-role span{display:inline-flex!important;align-items:center;white-space:nowrap}
+    .permission-module{min-width:130px!important;width:14%}
+    .permission-select{width:100%;min-width:116px;max-width:145px;height:32px}
+    .permission-lock{width:100%;max-width:145px;min-height:32px;justify-content:center;white-space:nowrap}
+    .permission-actions{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem 1.15rem;border-top:1px solid #e2e8f0;background:#f8fafc}
+    .permission-change-state{font-size:.7rem;color:#64748b}.permission-change-state.is-dirty{color:#b45309;font-weight:700}
+    .permission-save{display:inline-flex;align-items:center;gap:.45rem;padding:.6rem .9rem;border:0;border-radius:8px;background:#2563eb;color:#fff;font:700 .72rem inherit;cursor:pointer;box-shadow:0 6px 14px rgba(37,99,235,.2)}
+    .permission-save:disabled{background:#cbd5e1;box-shadow:none;cursor:not-allowed}
+    @media(max-width:900px){.access-legend{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:560px){.access-legend{grid-template-columns:1fr}.permission-help{display:none}}
+</style>
 @php
     $roleBadges = [
         'admin' => ['label' => 'Admin', 'style' => 'background: #dbeafe; color: #1e40af; padding: 0.125rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem;'],
@@ -33,7 +60,7 @@
         'admin' => 'Admin',
     ];
 @endphp
-<div style="max-width: 1200px; margin: 0 auto;">
+<div class="permission-shell">
     {{-- Flash Messages --}}
     @if(session('success'))
         <div style="background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 0.75rem 1rem; border-radius: 10px; margin-bottom: 1.5rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem;">
@@ -49,14 +76,16 @@
     @endif
 
     {{-- Role Legend --}}
-    <div class="card" style="margin-bottom: 1.5rem;">
+    <form id="permissionAccessForm" method="POST" action="{{ route('permissions.update-access') }}">
+    @csrf
+    <div class="card permission-card">
         <div class="card-header">
-            <h3 class="card-title">Daftar Role & Hak Akses</h3>
-            <span style="font-size: 0.75rem; color: #64748b;">Ubah level akses per modul menggunakan dropdown</span>
+            <h3 class="card-title">Hak Akses Setiap Role</h3>
+            <span class="permission-help">Perubahan akses tersimpan otomatis saat opsi dipilih</span>
         </div>
         <div class="card-body" style="padding: 1.25rem;">
             {{-- Legend --}}
-            <div style="display: flex; gap: 1.25rem; margin-bottom: 1rem; flex-wrap: wrap;">
+            <div class="access-legend" style="display: flex; gap: 1.25rem; margin-bottom: 1rem; flex-wrap: wrap;">
                 <span style="font-size: 0.75rem; color: #15803d; display: flex; align-items: center; gap: 0.3rem;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><polyline points="20 6 9 17 4 12"/></svg> Akses penuh — bisa lihat & edit
                 </span>
@@ -70,20 +99,20 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Terkunci — tidak dapat diubah
                 </span>
             </div>
-            <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 0.8125rem;">
+            <div class="permission-table-wrap">
+            <table class="permission-table" style="width: 100%; border-collapse: collapse; font-size: 0.8125rem;">
                 <thead>
                     <tr style="border-bottom: 2px solid #e2e8f0;">
-                        <th style="text-align: left; padding: 0.625rem 0.75rem; color: #1e293b; font-weight: 700; text-transform: uppercase; font-size: 0.6875rem; letter-spacing: 0.05em; min-width: 90px;">Role</th>
+                        <th class="permission-role" style="text-align: left; padding: 0.625rem 0.75rem; color: #1e293b; font-weight: 700; text-transform: uppercase; font-size: 0.6875rem; letter-spacing: 0.05em; min-width: 90px;">Role</th>
                         @foreach($modules as $key => $label)
-                        <th style="text-align: left; padding: 0.625rem 0.75rem; color: #1e293b; font-weight: 700; text-transform: uppercase; font-size: 0.6875rem; letter-spacing: 0.05em; min-width: 160px;">{{ $label }}</th>
+                        <th class="permission-module" style="text-align: left; padding: 0.625rem 0.75rem; color: #1e293b; font-weight: 700; text-transform: uppercase; font-size: 0.6875rem; letter-spacing: 0.05em; min-width: 160px;">{{ $label }}</th>
                         @endforeach
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($roles as $role)
                     <tr style="border-bottom: 1px solid #f1f5f9; {{ $role === 'admin' ? 'background: #f8fafc;' : '' }}">
-                        <td style="padding: 0.625rem 0.75rem;">
+                        <td class="permission-role" style="padding: 0.625rem 0.75rem;">
                             @php $roleBadge = $roleBadges[$role] ?? ['label' => ucwords(str_replace('_', ' ', $role)), 'style' => $roleBadges['viewer']['style']]; @endphp
                             <span style="{{ $roleBadge['style'] }}">{{ $roleBadge['label'] }}</span>
                         </td>
@@ -97,17 +126,13 @@
                             <td style="padding: 0.5rem 0.75rem;">
                                 @if($isLocked)
                                     {{-- Terkunci: tampilkan badge saja --}}
-                                    <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.775rem; color: #94a3b8; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.25rem 0.6rem;">
+                                    <span class="permission-lock" style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.775rem; color: #94a3b8; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.25rem 0.6rem;">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                         {{ $role === 'admin' ? 'Akses penuh' : 'Tidak ada akses' }}
                                     </span>
                                 @else
                                     {{-- Dapat diubah: dropdown select --}}
-                                    <form method="POST" action="{{ route('permissions.update-access') }}">
-                                        @csrf
-                                        <input type="hidden" name="role" value="{{ $role }}">
-                                        <input type="hidden" name="module" value="{{ $moduleKey }}">
-                                        <select name="access" onchange="this.form.submit()"
+                                        <select class="permission-select" name="permissions[{{ $role }}][{{ $moduleKey }}]" data-original="{{ $access }}"
                                             style="padding: 0.3rem 0.5rem; border-radius: 6px; font-size: 0.775rem; font-family: inherit; outline: none; cursor: pointer;
                                                 border: 1.5px solid {{ $access === 'full' ? '#86efac' : ($access === 'view' ? '#fcd34d' : '#fca5a5') }};
                                                 background: {{ $access === 'full' ? '#f0fdf4' : ($access === 'view' ? '#fffbeb' : '#fef2f2') }};
@@ -116,7 +141,6 @@
                                             <option value="view" {{ $access === 'view' ? 'selected' : '' }} style="color: #b45309; background: #fffbeb;">● Lihat saja</option>
                                             <option value="none" {{ $access === 'none' ? 'selected' : '' }} style="color: #dc2626; background: #fef2f2;">✗ Tidak ada akses</option>
                                         </select>
-                                    </form>
                                 @endif
                             </td>
                         @endforeach
@@ -126,10 +150,18 @@
             </table>
             </div>
         </div>
+        <div class="permission-actions">
+            <span id="permissionChangeState" class="permission-change-state">Belum ada perubahan.</span>
+            <button id="permissionSaveButton" class="permission-save" type="submit" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+                Simpan Perubahan
+            </button>
+        </div>
     </div>
+    </form>
 
     {{-- User List --}}
-    <div class="card">
+    <div class="card permission-card">
         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
             <h3 class="card-title">Daftar User ({{ $users->count() }})</h3>
             <button onclick="document.getElementById('addUserModal').style.display='flex'" class="btn btn-primary" style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #1e40af, #2563eb); color: #fff; border: none; border-radius: 8px; font-size: 0.8125rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.375rem; font-family: inherit;">
@@ -280,5 +312,20 @@ function openEditModal(id, name, email, role) {
     document.getElementById('editRole').value = role;
     document.getElementById('editUserModal').style.display = 'flex';
 }
+
+const permissionSelects = Array.from(document.querySelectorAll('#permissionAccessForm .permission-select'));
+const permissionSaveButton = document.getElementById('permissionSaveButton');
+const permissionChangeState = document.getElementById('permissionChangeState');
+
+function refreshPermissionChangeState() {
+    const changedCount = permissionSelects.filter(select => select.value !== select.dataset.original).length;
+    permissionSaveButton.disabled = changedCount === 0;
+    permissionChangeState.classList.toggle('is-dirty', changedCount > 0);
+    permissionChangeState.textContent = changedCount > 0
+        ? `${changedCount} perubahan belum disimpan.`
+        : 'Belum ada perubahan.';
+}
+
+permissionSelects.forEach(select => select.addEventListener('change', refreshPermissionChangeState));
 </script>
 @endsection

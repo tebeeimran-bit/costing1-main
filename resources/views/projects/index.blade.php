@@ -726,7 +726,7 @@
 
     <div class="project-pagination">
         <div>
-            Menampilkan {{ $pagedGroups->firstItem() ?? 0 }} - {{ $pagedGroups->lastItem() ?? 0 }} dari {{ $pagedGroups->total() }} project group
+            Menampilkan {{ $pagedGroups->firstItem() ?? 0 }} - {{ $pagedGroups->lastItem() ?? 0 }} dari {{ $pagedGroups->total() }} project
         </div>
         <div>
             {{ $pagedGroups->onEachSide(1)->links() }}

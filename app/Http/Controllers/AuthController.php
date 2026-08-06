@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
 {
@@ -83,6 +84,37 @@ class AuthController extends Controller
 
     public function updatePermission(Request $request)
     {
+        if ($request->has('permissions')) {
+            $validated = $request->validate([
+                'permissions' => ['required', 'array'],
+                'permissions.*' => ['required', 'array'],
+                'permissions.*.*' => ['required', 'in:full,view,none'],
+            ]);
+
+            $allowedRoles = ['admin_control_project', 'admin_costing', 'coordinator_costing', 'document_control', 'engineering', 'marketing', 'editor', 'viewer'];
+            $allowedModules = ['dashboard', 'input_data', 'database', 'laporan', 'document_control', 'control_project'];
+            $updates = [];
+
+            foreach ($validated['permissions'] as $role => $modules) {
+                abort_unless(in_array($role, $allowedRoles, true), 422, 'Role permission tidak valid.');
+                foreach ($modules as $module => $access) {
+                    abort_unless(in_array($module, $allowedModules, true), 422, 'Modul permission tidak valid.');
+                    $updates[] = compact('role', 'module', 'access');
+                }
+            }
+
+            DB::transaction(function () use ($updates) {
+                foreach ($updates as $permission) {
+                    RolePermission::updateOrCreate(
+                        ['role' => $permission['role'], 'module' => $permission['module']],
+                        ['access' => $permission['access']]
+                    );
+                }
+            });
+
+            return redirect()->route('permissions')->with('success', 'Semua perubahan hak akses berhasil disimpan.');
+        }
+
         $validated = $request->validate([
             'role' => ['required', 'in:admin,admin_control_project,admin_costing,coordinator_costing,document_control,engineering,marketing,editor,viewer'],
             'module' => ['required', 'in:dashboard,input_data,database,laporan,user_management,document_control,control_project'],

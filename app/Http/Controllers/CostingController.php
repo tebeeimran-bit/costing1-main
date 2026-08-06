@@ -17,6 +17,8 @@ use App\Models\Wire;
 use App\Models\WireRate;
 use App\Models\ExchangeRate;
 use App\Models\Pic;
+use App\Models\ProjectA00Form;
+use App\Models\ProjectWorkflowTask;
 use App\Http\Requests\StoreCostingRequest;
 use App\Http\Requests\UpdateStatusProjectRequest;
 use App\Services\Costing\CostingImportService;
@@ -108,6 +110,10 @@ class CostingController extends Controller
 
     public function dashboard(Request $request)
     {
+        if ((string) ($request->user()->role ?? '') !== 'admin') {
+            return $this->roleDashboard($request);
+        }
+
         $periods = CostingData::query()
             ->select('period')
             ->distinct()
@@ -890,6 +896,105 @@ class CostingController extends Controller
             'monthlySubmitCounts',
             'maxMonthlySubmitCount'
         ));
+    }
+
+    private function roleDashboard(Request $request)
+    {
+        $user = $request->user();
+        $role = (string) ($user->role ?? 'viewer');
+        $latestRevisionIds = DocumentRevision::query()
+            ->selectRaw('MAX(id)')
+            ->whereNotNull('document_project_id')
+            ->groupBy('document_project_id');
+        $revisions = DocumentRevision::query()
+            ->with(['project.product', 'costingData', 'latestSubmission'])
+            ->whereIn('id', $latestRevisionIds);
+
+        if ($role === 'marketing') {
+            $revisions->whereRaw('LOWER(TRIM(pic_marketing)) = ?', [mb_strtolower(trim((string) $user->name))]);
+        } elseif ($role === 'engineering') {
+            $revisions->whereRaw('LOWER(TRIM(pic_engineering)) = ?', [mb_strtolower(trim((string) $user->name))]);
+        }
+
+        $roleRevisions = $revisions->get();
+        $revisionIds = $roleRevisions->pluck('id');
+        $openUnpriced = UnpricedPart::whereIn('document_revision_id', $revisionIds)->whereNull('resolved_at')->count();
+        $waitingApproval = $roleRevisions->where('status', DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL)->count();
+        $approved = $roleRevisions->where('status', DocumentRevision::STATUS_APPROVED_BY_COORDINATOR)->count();
+        $submitted = $roleRevisions->where('status', DocumentRevision::STATUS_SUBMITTED_TO_MARKETING)->count();
+        $activeCosting = $roleRevisions->whereIn('status', [
+            DocumentRevision::STATUS_PENDING_FORM_INPUT,
+            DocumentRevision::STATUS_SUDAH_COSTING,
+            DocumentRevision::STATUS_PENDING_PRICING,
+            DocumentRevision::STATUS_COGM_GENERATED,
+            DocumentRevision::STATUS_REJECTED_BY_COORDINATOR,
+        ])->count();
+        $pendingPricing = $roleRevisions->where('status', DocumentRevision::STATUS_PENDING_PRICING)->count();
+        $updatedSubmissions = CogmSubmission::whereIn('document_revision_id', $revisionIds)->whereNotNull('last_updated_at')->count();
+        $totalSubmittedCogm = (float) CogmSubmission::whereIn('document_revision_id', $revisionIds)->sum('cogm_value');
+
+        $profiles = [
+            'admin_control_project' => ['title'=>'Dashboard Control Project','subtitle'=>'Pantau penerbitan A00 dan kesiapan project baru.','action'=>'Kelola A00','route'=>'control-project.a00.index'],
+            'document_control' => ['title'=>'Dashboard Document Control','subtitle'=>'Pantau registrasi drawing dan distribusi dokumen project.','action'=>'Buka Inbox Document','route'=>'document-control.inbox'],
+            'admin_costing' => ['title'=>'Dashboard Admin Costing','subtitle'=>'Fokus pada pekerjaan costing, harga kosong, dan submission.','action'=>'Buka Inbox Costing','route'=>'costing.inbox'],
+            'coordinator_costing' => ['title'=>'Dashboard Coordinator Costing','subtitle'=>'Tinjau COGM yang menunggu approval dan siap dikirim.','action'=>'Periksa Approval','route'=>'costing.inbox'],
+            'marketing' => ['title'=>'Dashboard Marketing','subtitle'=>'COGM yang ditujukan khusus untuk '.($user->name ?: 'PIC Marketing').'.','action'=>'Buka Inbox Marketing','route'=>'marketing.cogm-inbox'],
+            'engineering' => ['title'=>'Dashboard Engineering','subtitle'=>'Project yang menjadi tanggung jawab '.($user->name ?: 'PIC Engineering').'.','action'=>'Lihat Project','route'=>'project'],
+            'editor' => ['title'=>'Dashboard Editor Costing','subtitle'=>'Pantau data costing yang masih perlu dilengkapi.','action'=>'Buka Inbox Costing','route'=>'costing.inbox'],
+            'viewer' => ['title'=>'Dashboard Project','subtitle'=>'Ringkasan status project dan COGM terbaru.','action'=>'Lihat Project','route'=>'project'],
+        ];
+        $profile = $profiles[$role] ?? $profiles['viewer'];
+
+        $metrics = match ($role) {
+            'admin_control_project' => [
+                ['label'=>'Total Project','value'=>$roleRevisions->count(),'note'=>'Project aktual','tone'=>'blue'],
+                ['label'=>'Dokumen A00','value'=>ProjectA00Form::count(),'note'=>'New Project Declaration','tone'=>'indigo'],
+                ['label'=>'Menunggu Drawing','value'=>ProjectWorkflowTask::where('stage',ProjectWorkflowTask::STAGE_DRAWING)->whereIn('status',[ProjectWorkflowTask::STATUS_PENDING,ProjectWorkflowTask::STATUS_IN_PROGRESS])->count(),'note'=>'Perlu distribusi','tone'=>'orange'],
+                ['label'=>'Dikirim Marketing','value'=>$submitted,'note'=>'Workflow selesai','tone'=>'green'],
+            ],
+            'document_control' => [
+                ['label'=>'Inbox Drawing','value'=>ProjectWorkflowTask::where('stage',ProjectWorkflowTask::STAGE_DRAWING)->whereIn('status',[ProjectWorkflowTask::STATUS_PENDING,ProjectWorkflowTask::STATUS_IN_PROGRESS])->count(),'note'=>'Perlu diproses','tone'=>'orange'],
+                ['label'=>'Drawing Selesai','value'=>ProjectWorkflowTask::where('stage',ProjectWorkflowTask::STAGE_DRAWING)->where('status',ProjectWorkflowTask::STATUS_COMPLETED)->count(),'note'=>'Sudah didistribusi','tone'=>'green'],
+                ['label'=>'Total Project','value'=>$roleRevisions->count(),'note'=>'Revisi terbaru','tone'=>'blue'],
+                ['label'=>'Masuk Costing','value'=>$roleRevisions->whereNotNull('costingData')->count(),'note'=>'Memiliki data costing','tone'=>'indigo'],
+            ],
+            'coordinator_costing' => [
+                ['label'=>'Menunggu Approval','value'=>$waitingApproval,'note'=>'Perlu diperiksa','tone'=>'orange'],
+                ['label'=>'Siap Dikirim','value'=>$approved,'note'=>'Sudah approved','tone'=>'blue'],
+                ['label'=>'Perlu Revisi','value'=>$roleRevisions->where('status',DocumentRevision::STATUS_REJECTED_BY_COORDINATOR)->count(),'note'=>'Dikembalikan ke Costing','tone'=>'red'],
+                ['label'=>'Dikirim Marketing','value'=>$submitted,'note'=>'Submission selesai','tone'=>'green'],
+            ],
+            'admin_costing', 'editor' => [
+                ['label'=>'Costing Aktif','value'=>$activeCosting,'note'=>'Masih dikerjakan','tone'=>'blue'],
+                ['label'=>'Part Tanpa Harga','value'=>$openUnpriced,'note'=>'Perlu dilengkapi','tone'=>'orange'],
+                ['label'=>'Menunggu Approval','value'=>$waitingApproval,'note'=>'Sudah diajukan','tone'=>'indigo'],
+                ['label'=>'Dikirim Marketing','value'=>$submitted,'note'=>'Workflow selesai','tone'=>'green'],
+            ],
+            'marketing' => [
+                ['label'=>'COGM Masuk','value'=>$submitted,'note'=>'Untuk PIC '.$user->name,'tone'=>'blue'],
+                ['label'=>'COGM Diperbarui','value'=>$updatedSubmissions,'note'=>'Ada revisi setelah submit','tone'=>'orange'],
+                ['label'=>'Total Nilai COGM','value'=>$totalSubmittedCogm,'note'=>'Nilai submission terbaru','tone'=>'green','currency'=>true],
+                ['label'=>'Total Project PIC','value'=>$roleRevisions->count(),'note'=>'Sesuai PIC Marketing','tone'=>'indigo'],
+            ],
+            'engineering' => [
+                ['label'=>'Project Saya','value'=>$roleRevisions->count(),'note'=>'Sesuai PIC Engineering','tone'=>'blue'],
+                ['label'=>'A00 Terbit','value'=>$roleRevisions->where('a00','ada')->count(),'note'=>'Project declaration','tone'=>'indigo'],
+                ['label'=>'Costing Berjalan','value'=>$activeCosting,'note'=>'Masih diproses','tone'=>'orange'],
+                ['label'=>'Dikirim Marketing','value'=>$submitted,'note'=>'Workflow selesai','tone'=>'green'],
+            ],
+            default => [
+                ['label'=>'Project Aktif','value'=>$activeCosting,'note'=>'Masih dikerjakan','tone'=>'blue'],
+                ['label'=>'Part Tanpa Harga','value'=>$openUnpriced,'note'=>'Belum resolved','tone'=>'orange'],
+                ['label'=>'Menunggu Approval','value'=>$waitingApproval,'note'=>'Coordinator Costing','tone'=>'indigo'],
+                ['label'=>'Dikirim Marketing','value'=>$submitted,'note'=>'Workflow selesai','tone'=>'green'],
+            ],
+        };
+
+        $recentProjects = $roleRevisions
+            ->sortByDesc(fn ($revision) => $revision->latestSubmission?->last_updated_at ?? $revision->updated_at)
+            ->take(8)->values();
+
+        return view('dashboard-role', compact('profile','metrics','recentProjects','role','openUnpriced','pendingPricing','waitingApproval','approved','submitted'));
     }
 
     public function compare(Request $request)

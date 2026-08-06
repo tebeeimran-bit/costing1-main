@@ -92,8 +92,10 @@ Route::middleware('auth')->group(function () {
 
 
     // ── DASHBOARD ─────────────────────────────────────────────────────────────
+    // Dashboard is the authenticated landing page for every role. Its contents
+    // are scoped by CostingController according to the logged-in user's role/PIC.
+    Route::get('/', [CostingController::class, 'dashboard'])->name('dashboard');
     Route::middleware('permission:dashboard')->group(function () {
-        Route::get('/', [CostingController::class, 'dashboard'])->name('dashboard');
         Route::get('/compare-costing', [CostingController::class, 'compare'])->name('compare.costing');
         Route::get('/compare-costing/revisions-search', [CostingController::class, 'searchCompareRevisions'])->name('compare.costing.revisions-search');
     });
