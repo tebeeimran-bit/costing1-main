@@ -9,23 +9,28 @@
 
 @section('content')
 <style>
-    .permission-shell{width:100%;max-width:1440px;margin:0 auto;display:grid;gap:1rem}
-    .permission-card{border:1px solid #dbe5f1;border-radius:14px;box-shadow:0 10px 28px rgba(15,23,42,.045);overflow:hidden}
+    .permission-shell{width:100%;max-width:100%;min-width:0;margin:0 auto;display:grid;gap:1rem;overflow:hidden}
+    #permissionAccessForm{display:block;width:100%;max-width:100%;min-width:0}
+    .permission-card{width:100%;max-width:100%;min-width:0;border:1px solid #dbe5f1;border-radius:14px;box-shadow:0 10px 28px rgba(15,23,42,.045);overflow:hidden}
+    .permission-card .card-body{max-width:100%;min-width:0;overflow:hidden}
     .permission-card .card-header{padding:1rem 1.15rem;background:linear-gradient(135deg,#fff,#f7faff);border-bottom:1px solid #e2e8f0}
     .permission-card .card-title{font-size:.92rem;color:#0f172a}
     .permission-help{display:flex;align-items:center;gap:.45rem;color:#64748b;font-size:.7rem}
     .permission-help:before{content:'i';display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#dbeafe;color:#2563eb;font-weight:800}
     .access-legend{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem!important;margin-bottom:1rem!important}
     .access-legend>span{min-height:38px;padding:.55rem .65rem;border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc;line-height:1.35}
-    .permission-table-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px}
-    .permission-table{width:100%!important;min-width:1050px}
+    .permission-table-wrap{display:block;width:100%;max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;border:1px solid #e2e8f0;border-radius:10px;scrollbar-color:#94a3b8 #e2e8f0;scrollbar-width:thin}
+    .permission-table-wrap::-webkit-scrollbar{height:9px}.permission-table-wrap::-webkit-scrollbar-track{background:#e2e8f0;border-radius:999px}.permission-table-wrap::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px;border:2px solid #e2e8f0}
+    .permission-table{width:max-content!important;min-width:100%;table-layout:fixed}
     .permission-table thead{background:#f1f5f9}
     .permission-table th{padding:.7rem .65rem!important;white-space:nowrap}
     .permission-table td{padding:.55rem .65rem!important;height:48px}
     .permission-table tbody tr:hover{background:#f8fbff!important}
-    .permission-role{width:150px;min-width:150px}
+    .permission-role{position:sticky;left:0;z-index:2;width:150px;min-width:150px;background:#fff;box-shadow:8px 0 12px -12px rgba(15,23,42,.55)}
+    .permission-table thead .permission-role{z-index:4;background:#f1f5f9}
+    .permission-table tbody tr:hover .permission-role{background:#f8fbff}
     .permission-role span{display:inline-flex!important;align-items:center;white-space:nowrap}
-    .permission-module{min-width:130px!important;width:14%}
+    .permission-module{min-width:132px!important;width:132px!important}
     .permission-select{width:100%;min-width:116px;max-width:145px;height:32px}
     .permission-lock{width:100%;max-width:145px;min-height:32px;justify-content:center;white-space:nowrap}
     .permission-actions{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem 1.15rem;border-top:1px solid #e2e8f0;background:#f8fafc}

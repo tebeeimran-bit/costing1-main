@@ -122,6 +122,11 @@
                     $sidebarCan = static fn (string $module): bool => $sidebarRole === 'admin'
                         || \App\Models\RolePermission::hasAccess($sidebarRole, $module, 'view');
                     $canInputData = $sidebarCan('input_data');
+                    $canProject = $sidebarCan('project');
+                    $canInboxBreakdown = $sidebarCan('inbox_breakdown');
+                    $canInboxCosting = $sidebarCan('inbox_costing');
+                    $canInboxNewPartRequest = $sidebarCan('inbox_new_part_request');
+                    $canInboxMarketing = $sidebarCan('inbox_marketing');
                     $canDatabase = $sidebarCan('database');
                     $canReports = $sidebarCan('laporan');
                     $canDocumentControl = $sidebarCan('document_control');
@@ -139,6 +144,7 @@
                         </svg>
                         <span>Dashboard</span>
                     </a>
+                    @if($canProject)
                     <a href="{{ route('project', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('project') || request()->routeIs('tracking-documents.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -147,6 +153,7 @@
                         </svg>
                         <span>Project</span>
                     </a>
+                    @endif
                     @if($canControlProject)
                     <a href="{{ route('control-project.a00.index', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('control-project.*') ? 'active' : '' }}">
@@ -163,26 +170,28 @@
                          <span>Document Control</span>
                      </a>
                      @endif
-                     @if($canInputData)
+                     @if($canInboxBreakdown)
                      <a href="{{ route('breakdown.inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('breakdown.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
                         <span>Inbox Breakdown</span>
                     </a>
                     @endif
-                    @if($canInputData)
+                    @if($canInboxCosting)
                     <a href="{{ route('costing.inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('costing.inbox') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/><path d="M9 9v11"/><path d="M13 13h4M13 17h4"/></svg>
                         <span>Inbox Costing</span>
                     </a>
+                    @endif
+                    @if($canInboxNewPartRequest)
                     <a href="{{ route('new-part-request.inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('new-part-request.*') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/><circle cx="18" cy="18" r="4" fill="white"/><path d="M18 16v4M16 18h4"/></svg>
                         <span>Inbox New Part Request</span>
                     </a>
                     @endif
-                    @if(in_array($sidebarRole, ['admin', 'marketing'], true))
+                    @if($canInboxMarketing)
                     <a href="{{ route('marketing.cogm-inbox', absolute: false) }}"
                         class="sidebar-nav-item {{ request()->routeIs('marketing.cogm-inbox') ? 'active' : '' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

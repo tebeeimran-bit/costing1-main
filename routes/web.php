@@ -50,7 +50,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/registrations/import', [DocumentControlRegistrationController::class, 'import'])->name('import');
         Route::post('/tasks/{task}/complete', [DocumentControlRegistrationController::class, 'completeDistribution'])->name('tasks.complete');
     });
-    Route::middleware('permission:input_data')->prefix('breakdown')->name('breakdown.')->group(function () {
+    Route::middleware('permission:inbox_breakdown')->prefix('breakdown')->name('breakdown.')->group(function () {
         Route::get('/inbox', [BreakdownInboxController::class, 'index'])->name('inbox');
         Route::post('/tasks/{task}/complete', [BreakdownInboxController::class, 'complete'])->name('tasks.complete');
         Route::post('/tasks/{task}/start-costing', [BreakdownInboxController::class, 'startCosting'])->name('tasks.start-costing');
@@ -61,22 +61,30 @@ Route::middleware('auth')->group(function () {
     // Project grouped page
     // Parent = Business Category + Customer + Model
     // Child = Part Number / Part Name / Revision
-    Route::get('/project', [ProjectGroupController::class, 'index'])->name('project');
-    Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
-    Route::get('/new-part-request/inbox', [NewPartRequestInboxController::class, 'index'])->name('new-part-request.inbox');
-    Route::post('/new-part-request/{revision}/submit', [NewPartRequestInboxController::class, 'submit'])->name('new-part-request.submit');
-    Route::delete('/project/group', [ProjectGroupController::class, 'destroyGroup'])->name('project.group.destroy');
-    Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
+    Route::middleware('permission:project')->group(function () {
+        Route::get('/project', [ProjectGroupController::class, 'index'])->name('project');
+        Route::delete('/project/group', [ProjectGroupController::class, 'destroyGroup'])->name('project.group.destroy');
+        Route::get('/tracking-documents', [ProjectGroupController::class, 'index'])->name('tracking-documents.index');
+    });
+    Route::middleware('permission:inbox_costing')->group(function () {
+        Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
+    });
+    Route::middleware('permission:inbox_new_part_request')->group(function () {
+        Route::get('/new-part-request/inbox', [NewPartRequestInboxController::class, 'index'])->name('new-part-request.inbox');
+        Route::post('/new-part-request/{revision}/submit', [NewPartRequestInboxController::class, 'submit'])->name('new-part-request.submit');
+    });
 
     Route::post('/costing-approvals/{revision}/submit', [CostingApprovalController::class, 'submit'])->name('costing-approvals.submit');
     Route::post('/costing-approvals/{revision}/approve', [CostingApprovalController::class, 'approve'])->name('costing-approvals.approve');
     Route::post('/costing-approvals/{revision}/reject', [CostingApprovalController::class, 'reject'])->name('costing-approvals.reject');
     Route::post('/costing-approvals/{revision}/send-marketing', [CostingApprovalController::class, 'sendToMarketing'])->name('costing-approvals.send-marketing');
-    Route::get('/marketing/cogm-inbox', [CostingApprovalController::class, 'marketingInbox'])->name('marketing.cogm-inbox');
-    Route::get('/marketing/cogm-inbox/{submission}/costing', [CostingController::class, 'marketingCostingView'])->name('marketing.cogm-costing.show');
-    Route::get('/marketing/cogm-inbox/{submission}/download', [CostingController::class, 'downloadImportedCogm'])->name('marketing.cogm-import.download');
-    Route::get('/marketing/costing-documents/{revision}/download', [CostingController::class, 'downloadCostingEdit'])->name('marketing.costing-edit.download');
-    Route::post('/marketing/cogm-inbox/{submission}/comments', [CostingApprovalController::class, 'storeMarketingComment'])->name('marketing.cogm-comments.store');
+    Route::middleware('permission:inbox_marketing')->group(function () {
+        Route::get('/marketing/cogm-inbox', [CostingApprovalController::class, 'marketingInbox'])->name('marketing.cogm-inbox');
+        Route::get('/marketing/cogm-inbox/{submission}/costing', [CostingController::class, 'marketingCostingView'])->name('marketing.cogm-costing.show');
+        Route::get('/marketing/cogm-inbox/{submission}/download', [CostingController::class, 'downloadImportedCogm'])->name('marketing.cogm-import.download');
+        Route::get('/marketing/costing-documents/{revision}/download', [CostingController::class, 'downloadCostingEdit'])->name('marketing.costing-edit.download');
+        Route::post('/marketing/cogm-inbox/{submission}/comments', [CostingApprovalController::class, 'storeMarketingComment'])->name('marketing.cogm-comments.store');
+    });
 
     Route::get('/profile', function () {
         return view('profile.show');

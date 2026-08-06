@@ -158,6 +158,22 @@ class ExampleTest extends TestCase
             ->assertDontSee('<span>Database</span>', false);
     }
 
+    public function test_new_main_menu_permissions_also_protect_direct_urls(): void
+    {
+        $user = User::factory()->create(['role' => 'admin_control_project']);
+        RolePermission::updateOrCreate(
+            ['role' => 'admin_control_project', 'module' => 'project'],
+            ['access' => 'view']
+        );
+        RolePermission::updateOrCreate(
+            ['role' => 'admin_control_project', 'module' => 'inbox_marketing'],
+            ['access' => 'none']
+        );
+
+        $this->actingAs($user)->get('/project')->assertOk();
+        $this->actingAs($user)->get('/marketing/cogm-inbox')->assertForbidden();
+    }
+
     public function test_login_page_can_be_rendered(): void
     {
         $response = $this->get('/login');

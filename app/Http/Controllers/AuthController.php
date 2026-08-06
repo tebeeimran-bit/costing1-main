@@ -71,6 +71,11 @@ class AuthController extends Controller
         $roles = ['admin', 'admin_control_project', 'admin_costing', 'coordinator_costing', 'document_control', 'engineering', 'marketing', 'editor', 'viewer'];
         $modules = [
             'dashboard' => 'Dashboard',
+            'project' => 'Project',
+            'inbox_breakdown' => 'Inbox Breakdown',
+            'inbox_costing' => 'Inbox Costing',
+            'inbox_new_part_request' => 'Inbox New Part Request',
+            'inbox_marketing' => 'Inbox Marketing',
             'input_data' => 'Input Data',
             'database' => 'Database',
             'laporan' => 'Laporan',
@@ -92,7 +97,7 @@ class AuthController extends Controller
             ]);
 
             $allowedRoles = ['admin_control_project', 'admin_costing', 'coordinator_costing', 'document_control', 'engineering', 'marketing', 'editor', 'viewer'];
-            $allowedModules = ['dashboard', 'input_data', 'database', 'laporan', 'document_control', 'control_project'];
+            $allowedModules = ['dashboard', 'project', 'inbox_breakdown', 'inbox_costing', 'inbox_new_part_request', 'inbox_marketing', 'input_data', 'database', 'laporan', 'document_control', 'control_project'];
             $updates = [];
 
             foreach ($validated['permissions'] as $role => $modules) {
@@ -117,7 +122,7 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'role' => ['required', 'in:admin,admin_control_project,admin_costing,coordinator_costing,document_control,engineering,marketing,editor,viewer'],
-            'module' => ['required', 'in:dashboard,input_data,database,laporan,user_management,document_control,control_project'],
+            'module' => ['required', 'in:dashboard,project,inbox_breakdown,inbox_costing,inbox_new_part_request,inbox_marketing,input_data,database,laporan,user_management,document_control,control_project'],
             'access' => ['required', 'in:full,view,none'],
         ]);
 
