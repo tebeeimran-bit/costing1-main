@@ -130,6 +130,9 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseHas('project_workflow_tasks',['stage'=>'drawing','assigned_role'=>'document_control','status'=>'pending']);
 
         $a00=\App\Models\ProjectA00Form::firstOrFail();
+        $this->actingAs($user)->get(route('control-project.a00.show', $a00))
+            ->assertOk()
+            ->assertSee('A00 - 0100-MKT-PROJECT-A00-VII-2026');
         $this->actingAs($user)->put(route('control-project.a00.update-operational',$a00),[
             'plant_id'=>$plant->id,'period'=>'2026-09',
             'pic_engineering'=>'Engineer Updated','pic_marketing'=>'Marketing Updated',

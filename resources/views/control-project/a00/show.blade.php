@@ -9,7 +9,7 @@
 @media print{@page{size:A4 portrait;margin:0}.sidebar,.sidebar-overlay,.header,.breadcrumb,.footer,.costing-assistant,.a00-toolbar{display:none!important}html,body,.app-wrapper,.main-wrapper,.main-content{margin:0!important;padding:0!important;width:auto!important;background:#fff!important}.a00-sheet{width:210mm;min-height:297mm;margin:0;padding:6mm;border:0}.main-content{zoom:1!important}}
 </style>
 @if(session('success'))<div style="width:210mm;max-width:100%;margin:0 auto 12px;background:#dcfce7;color:#166534;padding:10px;box-sizing:border-box">{{ session('success') }}</div>@endif
-<div class="a00-toolbar"><div class="a00-toolbar-group"><a class="a00-btn secondary" href="{{ route('control-project.a00.index',absolute:false) }}">&larr; Kembali</a><a class="a00-btn" href="{{ route('project',absolute:false) }}">Buka Menu Project</a></div><div class="a00-download-group"><span class="a00-save-hint">Pilih “Save as PDF”, lalu tentukan folder penyimpanan.</span><button class="a00-btn" type="button" onclick="downloadA00Pdf()">Download PDF</button></div></div>
+<div class="a00-toolbar"><div class="a00-toolbar-group"><a class="a00-btn secondary" href="{{ route('control-project.a00.index',absolute:false) }}">&larr; Kembali</a><a class="a00-btn" href="{{ route('project',absolute:false) }}">Buka Menu Project</a></div><div class="a00-download-group"><span class="a00-save-hint">Klik tombol, pilih <strong>Save as PDF</strong>, lalu klik Save untuk menentukan folder.</span><button class="a00-btn" type="button" onclick="downloadA00Pdf()">Simpan sebagai PDF</button></div></div>
 <article class="a00-sheet">
  <div class="a00-sheet-inner">
     <header class="a00-header">
@@ -37,10 +37,17 @@
     <div class="a00-footer-space"></div><div class="a00-note"><strong>NOTE:</strong><br>1. Jumlah assy no. dan part no. dapat dilampirkan pada halaman terpisah.<br>2. Jika ada Die Go / LoI dapat dilampirkan pada dokumen ini.</div>
  </div>
 </article>
+@php
+    $downloadFileName = 'A00 - '.str_replace(
+        ['<', '>', ':', '"', '/', '\\', '|', '?', '*'],
+        '-',
+        $a00->document_number
+    );
+@endphp
 <script>
 function downloadA00Pdf(){
     const originalTitle=document.title;
-    const fileName=@json('A00 - '.preg_replace('/[<>:"\\\/|?*]+/', '-', $a00->document_number));
+    const fileName=@json($downloadFileName);
     document.title=fileName;
     const restoreTitle=()=>{document.title=originalTitle;window.removeEventListener('afterprint',restoreTitle)};
     window.addEventListener('afterprint',restoreTitle);

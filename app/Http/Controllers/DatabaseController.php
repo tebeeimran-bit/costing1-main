@@ -89,7 +89,7 @@ class DatabaseController extends Controller
 
     public function customers()
     {
-        $customers = Customer::all();
+        $customers = Customer::withCount('costingData')->get();
         return view('database.customers', compact('customers'));
     }
 
@@ -115,10 +115,32 @@ class DatabaseController extends Controller
     {
         $customer = Customer::findOrFail($id);
 
-        $isUsed = CostingData::where('customer_id', $customer->id)->exists();
-        if ($isUsed) {
+        $costings = CostingData::query()
+            ->with('trackingRevision.project')
+            ->where('customer_id', $customer->id)
+            ->orderByDesc('id')
+            ->get();
+
+        if ($costings->isNotEmpty()) {
+            $examples = $costings->take(5)->map(function (CostingData $costing) {
+                $project = $costing->trackingRevision?->project;
+                $assyNo = trim((string) ($costing->assy_no ?: $project?->part_number ?: $costing->wo_number));
+                $assyName = trim((string) ($costing->assy_name ?: $project?->part_name));
+                $identity = $assyNo !== '' ? $assyNo : 'tanpa nomor assy';
+                if ($assyName !== '') {
+                    $identity .= ' / '.$assyName;
+                }
+                if (filled($costing->period)) {
+                    $identity .= ' ('.$costing->period.')';
+                }
+
+                return '#'.$costing->id.' — '.$identity;
+            })->implode('; ');
+            $remaining = $costings->count() - 5;
+            $suffix = $remaining > 0 ? '; dan '.$remaining.' data lainnya' : '';
+
             return back()
-                ->with('warning', 'Customer tidak bisa dihapus karena sudah digunakan pada data costing.');
+                ->with('warning', 'Customer '.$customer->code.' tidak bisa dihapus karena digunakan oleh '.$costings->count().' data costing: '.$examples.$suffix.'.');
         }
 
         $customer->delete();

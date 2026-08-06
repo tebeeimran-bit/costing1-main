@@ -137,6 +137,7 @@
                     <th style="width: 50px;">No.</th>
                     <th>Code Customer</th>
                     <th>Nama Customer</th>
+                    <th style="width: 140px; text-align: center;">Digunakan Costing</th>
                     <th style="width: 100px; text-align: center;">Aksi</th>
                 </tr>
             </thead>
@@ -146,6 +147,15 @@
                         <td>{{ $index + 1 }}</td>
                         <td>{{ $customer->code }}</td>
                         <td>{{ $customer->name }}</td>
+                        <td style="text-align: center;">
+                            @if($customer->costing_data_count > 0)
+                                <span style="display:inline-flex;padding:.25rem .55rem;border-radius:999px;background:#fef3c7;color:#92400e;font-size:.72rem;font-weight:700;">
+                                    {{ $customer->costing_data_count }} data
+                                </span>
+                            @else
+                                <span style="color:#94a3b8;">—</span>
+                            @endif
+                        </td>
                         <td style="text-align: center;">
                             <button type="button" class="btn-action btn-edit" title="Edit" onclick="openEditCustomerModal({{ $customer->id }}, '{{ $customer->code }}', '{{ $customer->name }}')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -169,7 +179,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="4" style="text-align: center;">Tidak ada customer ditemukan</td>
+                        <td colspan="5" style="text-align: center;">Tidak ada customer ditemukan</td>
                     </tr>
                 @endforelse
             </tbody>
