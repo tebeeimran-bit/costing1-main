@@ -262,6 +262,8 @@ class ProjectA00WorkflowTest extends TestCase
         $group=CostingGroup::with('items')->firstOrFail();
         $this->assertSame(CostingGroup::MODE_BULKY,$group->mode);
         $this->assertCount(2,$group->items);
+        $this->actingAs($user)->get(route('document-control.inbox'))
+            ->assertOk()->assertSee('Lihat Item')->assertSee('Menunggu Distribusi')->assertSee('2 item');
         $pdfA00=\App\Models\ProjectA00Form::with('items')->findOrFail($group->project_a00_form_id);
         $a00PdfHtml=view('control-project.a00.pdf',['a00'=>$pdfA00,'logoData'=>null])->render();
         $this->assertStringContainsString('Terlampir',$a00PdfHtml);
