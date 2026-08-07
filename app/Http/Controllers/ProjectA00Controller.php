@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BusinessCategory;
 use App\Models\Customer;
+use App\Models\DocumentControlRegistration;
 use App\Models\DocumentProject;
 use App\Models\DocumentRevision;
 use App\Models\Product;
@@ -12,6 +13,7 @@ use App\Models\ProjectA00Form;
 use App\Models\ProjectA00Item;
 use App\Models\ProjectWorkflowTask;
 use App\Services\Costing\CostingGroupService;
+use App\Support\BusinessCategoryContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -22,19 +24,56 @@ class ProjectA00Controller extends Controller
 {
     public function index(Request $request)
     {
+        $tab=in_array($request->query('tab'),['pending','issued'],true)?(string)$request->query('tab'):'pending';
+        $search=trim((string)$request->query('q'));
         $query=ProjectA00Form::with(['project','items'])->latest('document_date')->latest('id');
-        if($search=trim((string)$request->query('q'))) $query->where(fn($q)=>$q->where('document_number','like',"%{$search}%")->orWhere('customer','like',"%{$search}%")->orWhere('model','like',"%{$search}%")->orWhere('assy_number','like',"%{$search}%"));
-        return view('control-project.a00.index',['forms'=>$query->paginate(25)->withQueryString()]);
+        BusinessCategoryContext::apply($query);
+        if($search!=='') $query->where(fn($q)=>$q->where('document_number','like',"%{$search}%")->orWhere('customer','like',"%{$search}%")->orWhere('model','like',"%{$search}%")->orWhere('assy_number','like',"%{$search}%"));
+
+        $pendingQuery=DocumentProject::with(['product','revisions'=>fn($q)=>$q->latest('version_number'),'workflowTasks'])
+            ->whereDoesntHave('a00Form')->whereDoesntHave('a00Item')
+            ->whereHas('workflowTasks',fn($q)=>$q->where(function($sourceQuery){
+                $sourceQuery->where('metadata->source','manual_drawing_registration')
+                    ->orWhere('metadata->source','manual_breakdown');
+            }))
+            ->when($search!=='',fn($q)=>$q->where(fn($projectQuery)=>$projectQuery
+                ->where('customer','like',"%{$search}%")->orWhere('model','like',"%{$search}%")
+                ->orWhere('part_number','like',"%{$search}%")->orWhere('part_name','like',"%{$search}%")))
+            ->latest('updated_at')->latest('id');
+        BusinessCategoryContext::applyToProjects($pendingQuery);
+
+        return view('control-project.a00.index',[
+            'forms'=>$query->paginate(25,['*'],'a00_page')->withQueryString(),
+            'pendingProjects'=>$pendingQuery->paginate(25,['*'],'pending_page')->withQueryString(),
+            'tab'=>$tab,
+        ]);
     }
 
-    public function create()
+    public function create(Request $request)
     {
+        $projectIds=collect($request->input('project_ids',[]));
+        if($request->filled('project_id')) $projectIds->push($request->integer('project_id'));
+        $projectIds=$projectIds->map(fn($id)=>(int)$id)->filter()->unique()->values();
+        abort_if($projectIds->count()>100,422,'Maksimal 100 project dapat digabungkan dalam satu A00.');
+        $sourceProjects=collect();
+        if($projectIds->isNotEmpty()){
+            $sourceProjects=DocumentProject::with(['product','revisions'=>fn($q)=>$q->latest('version_number')])
+                ->whereDoesntHave('a00Form')->whereDoesntHave('a00Item')
+                ->whereIn('id',$projectIds)->get()->sortBy(fn($project)=>$projectIds->search($project->id))->values();
+            abort_if($sourceProjects->count()!==$projectIds->count(),422,'Salah satu project sudah memiliki A00 atau tidak ditemukan.');
+            abort_if($sourceProjects->pluck('customer')->map(fn($value)=>mb_strtolower(trim((string)$value)))->unique()->count()>1,422,'Project gabungan harus memiliki customer yang sama.');
+            abort_if($sourceProjects->pluck('product.code')->filter()->unique()->count()>1,422,'Project gabungan harus memiliki Business Category yang sama.');
+        }
+        $sourceProject=$sourceProjects->first();
         return view('control-project.a00.create',[
             'customers'=>Customer::orderBy('name')->get(), 'categories'=>BusinessCategory::orderBy('name')->get(),
             'plants'=>Plant::orderBy('code')->get(),
             'picsEngineering'=>Pic::where('type','engineering')->orderBy('name')->get(),
             'picsMarketing'=>Pic::where('type','marketing')->orderBy('name')->get(),
             'nextNumber'=>null,
+            'sourceProject'=>$sourceProject,
+            'sourceProjects'=>$sourceProjects,
+            'defaultCategoryId'=>BusinessCategoryContext::selectedId(),
         ]);
     }
 
@@ -46,6 +85,7 @@ class ProjectA00Controller extends Controller
             'pic_marketing'=>['required','string','max:255'],'period'=>['required','date_format:Y-m'],
             'business_category_id'=>['required','exists:business_categories,id'],'customer_id'=>['required','exists:customers,id'],
             'items'=>['required','array','min:1','max:100'],'items.*.model'=>['required','string','max:255'],
+            'items.*.document_project_id'=>['nullable','integer','exists:document_projects,id'],
             'items.*.assy_name'=>['required','string','max:255'],'items.*.assy_number'=>['required','string','max:255'],
             'items.*.quantity'=>['nullable','integer','min:0'],'items.*.quantity_uom'=>['required','string','max:20'],
             'items.*.quantity_basis'=>['required','string','max:30'],'items.*.product_life_years'=>['nullable','integer','min:0','max:99'],
@@ -59,6 +99,7 @@ class ProjectA00Controller extends Controller
             'prepared_signature'=>['nullable','string','max:150000'],'acknowledged_signature'=>['nullable','string','max:150000'],'approved_signature'=>['nullable','string','max:150000'],
         ]);
         $customer=Customer::findOrFail($data['customer_id']); $category=BusinessCategory::findOrFail($data['business_category_id']);
+        abort_if(BusinessCategoryContext::selectedId() && BusinessCategoryContext::selectedId() !== $category->id,422,'Business Category form harus sama dengan kategori aktif.');
         $file=$request->file('source_file'); $stored=$file?['name'=>$file->getClientOriginalName(),'path'=>$file->store('control-project/a00-sources')]:['name'=>null,'path'=>null];
         $signaturePaths=[];
         foreach (['prepared','acknowledged','approved'] as $signatureType) {
@@ -68,27 +109,51 @@ class ProjectA00Controller extends Controller
         $form=DB::transaction(function() use($data,$customer,$category,$stored,$signaturePaths,$request){
             $product=Product::firstOrCreate(['code'=>$category->code ?: strtoupper(Str::slug($category->name,'-'))],['name'=>$category->name,'line'=>'']);
             $created=[];
+            $linkedProjectCount=collect($data['items'])->pluck('document_project_id')->filter()->unique()->count();
             foreach($data['items'] as $index=>$item){
-                $key=hash('sha256',mb_strtolower(implode('|',[trim($customer->name),trim($item['model']),trim($item['assy_number']),trim($item['assy_name'])])));
-                if(DocumentProject::where('project_key',$key)->exists()) abort(422,'Project pada baris '.($index+1).' sudah ada.');
-                $project=DocumentProject::create(['product_id'=>$product->id,'customer'=>$customer->name,'model'=>$item['model'],'part_number'=>$item['assy_number'],'part_name'=>$item['assy_name'],'project_key'=>$key]);
-                $revision=DocumentRevision::create(['document_project_id'=>$project->id,'version_number'=>1,'received_date'=>$data['document_date'],'plant_id'=>$data['plant_id'],'period'=>$data['period'],'pic_engineering'=>$data['pic_engineering'],'pic_marketing'=>$data['pic_marketing'],'status'=>DocumentRevision::STATUS_A00_ISSUED,'a00'=>'ada','a00_received_date'=>$data['document_date'],'partlist_original_name'=>'','partlist_file_path'=>'','umh_original_name'=>'','umh_file_path'=>'','notes'=>$data['notes']??null,'change_remark'=>'A00 New Project Declaration diterbitkan.']);
+                $existingProjectId=(int)($item['document_project_id']??0);
+                unset($item['document_project_id']);
+                if($existingProjectId>0){
+                    $project=DocumentProject::lockForUpdate()->findOrFail($existingProjectId);
+                    abort_if($project->a00Form()->exists()||$project->a00Item()->exists(),422,'Project pada baris '.($index+1).' sudah memiliki A00.');
+                    if($linkedProjectCount>1){
+                        abort_if(mb_strtolower(trim((string)$project->customer))!==mb_strtolower(trim($customer->name)),422,'Semua project gabungan harus memiliki customer yang sama.');
+                        abort_if($project->product?->code!==$category->code,422,'Semua project gabungan harus memiliki Business Category yang sama.');
+                    }
+                    $key=hash('sha256',mb_strtolower(implode('|',[trim($customer->name),trim($item['model']),trim($item['assy_number']),trim($item['assy_name'])])));
+                    $duplicate=DocumentProject::where('project_key',$key)->whereKeyNot($project->id)->exists();
+                    abort_if($duplicate,422,'Data project pada baris '.($index+1).' sama dengan project lain.');
+                    $project->update(['product_id'=>$product->id,'customer'=>$customer->name,'model'=>$item['model'],'part_number'=>$item['assy_number'],'part_name'=>$item['assy_name'],'project_key'=>$key]);
+                    $revision=$project->revisions()->latest('version_number')->lockForUpdate()->firstOrFail();
+                    $revision->update(['received_date'=>$data['document_date'],'plant_id'=>$data['plant_id'],'period'=>$data['period'],'pic_engineering'=>$data['pic_engineering'],'pic_marketing'=>$data['pic_marketing'],'status'=>DocumentRevision::STATUS_A00_ISSUED,'a00'=>'ada','a00_received_date'=>$data['document_date'],'notes'=>$data['notes']??$revision->notes,'change_remark'=>'A00 New Project Declaration diterbitkan untuk project yang telah diregistrasi.']);
+                }else{
+                    $key=hash('sha256',mb_strtolower(implode('|',[trim($customer->name),trim($item['model']),trim($item['assy_number']),trim($item['assy_name'])])));
+                    if(DocumentProject::where('project_key',$key)->exists()) abort(422,'Project pada baris '.($index+1).' sudah ada. Pilih project tersebut dari daftar menunggu A00.');
+                    $project=DocumentProject::create(['product_id'=>$product->id,'customer'=>$customer->name,'model'=>$item['model'],'part_number'=>$item['assy_number'],'part_name'=>$item['assy_name'],'project_key'=>$key]);
+                    $revision=DocumentRevision::create(['document_project_id'=>$project->id,'version_number'=>1,'received_date'=>$data['document_date'],'plant_id'=>$data['plant_id'],'period'=>$data['period'],'pic_engineering'=>$data['pic_engineering'],'pic_marketing'=>$data['pic_marketing'],'status'=>DocumentRevision::STATUS_A00_ISSUED,'a00'=>'ada','a00_received_date'=>$data['document_date'],'partlist_original_name'=>'','partlist_file_path'=>'','umh_original_name'=>'','umh_file_path'=>'','notes'=>$data['notes']??null,'change_remark'=>'A00 New Project Declaration diterbitkan.']);
+                }
                 $created[]=['project'=>$project,'revision'=>$revision,'item'=>$item];
             }
             $first=$created[0]; $items=$data['items']; unset($data['items'],$data['business_category_id'],$data['customer_id'],$data['source_file'],$data['plant_id'],$data['period'],$data['pic_engineering'],$data['pic_marketing']);
             $form=ProjectA00Form::create($data+$signaturePaths+['document_project_id'=>$first['project']->id,'document_revision_id'=>$first['revision']->id,'customer'=>$customer->name,'model'=>$first['item']['model'],'assy_number'=>$first['item']['assy_number'],'assy_name'=>$first['item']['assy_name'],'quantity'=>$first['item']['quantity']??null,'quantity_uom'=>$first['item']['quantity_uom'],'quantity_basis'=>$first['item']['quantity_basis'],'product_life_years'=>$first['item']['product_life_years']??null,'spot_order'=>!empty($first['item']['spot_order']),'source_file_name'=>$stored['name'],'source_file_path'=>$stored['path'],'status'=>'issued','issued_at'=>now(),'created_by'=>$request->user()->id]);
             foreach($created as $index=>$entry) {
                 ProjectA00Item::create(['project_a00_form_id'=>$form->id,'document_project_id'=>$entry['project']->id,'document_revision_id'=>$entry['revision']->id,'line_number'=>$index+1]+$entry['item']);
-                ProjectWorkflowTask::create([
-                    'document_project_id'=>$entry['project']->id,
+                $drawingTask=ProjectWorkflowTask::firstOrCreate([
                     'document_revision_id'=>$entry['revision']->id,
                     'stage'=>ProjectWorkflowTask::STAGE_DRAWING,
+                ],[
+                    'document_project_id'=>$entry['project']->id,
                     'assigned_role'=>'document_control',
                     'status'=>ProjectWorkflowTask::STATUS_PENDING,
                     'available_at'=>now(),
                     'notes'=>'A00 '.$form->document_number.' telah diterbitkan. Menunggu registrasi dan distribusi drawing.',
                     'metadata'=>['a00_form_id'=>$form->id,'a00_number'=>$form->document_number],
                 ]);
+                $drawingTask->update(['metadata'=>array_merge($drawingTask->metadata??[],['a00_form_id'=>$form->id,'a00_number'=>$form->document_number,'without_a00'=>false])]);
+                ProjectWorkflowTask::where('document_revision_id',$entry['revision']->id)->get()->each(function($task)use($form){
+                    $task->update(['metadata'=>array_merge($task->metadata??[],['a00_form_id'=>$form->id,'a00_number'=>$form->document_number,'without_a00'=>false])]);
+                });
+                DocumentControlRegistration::where('document_revision_id',$entry['revision']->id)->update(['a00'=>'ada']);
             }
             app(CostingGroupService::class)->syncFromA00($form, $request->user()->id);
             return $form;

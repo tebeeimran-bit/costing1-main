@@ -17,6 +17,10 @@ class TrackingDocumentUnpricedPartService
 {
     public function submitImportedPrices(DocumentRevision $revision, int $actorUserId): array
     {
+        $costingEditPath = trim((string) $revision->costing_edit_file_path);
+        $hasCostingEditWorkbook = $costingEditPath !== ''
+            && Storage::disk('local')->exists($costingEditPath);
+
         $rows = UnpricedPart::where('document_revision_id', $revision->id)
             ->whereNull('resolved_at')
             ->whereNotNull('new_part_price_imported_at')
@@ -42,7 +46,10 @@ class TrackingDocumentUnpricedPartService
                     'maker' => (string) ($row->maker ?? ''),
                     'add_cost_percent' => $row->add_cost_percent,
                     'use_database_lookup' => false,
-                    'update_costing_edit' => true,
+                    // The Form Costing database is the primary target. The
+                    // imported costing workbook is synchronized only when the
+                    // project actually has that file stored.
+                    'update_costing_edit' => $hasCostingEditWorkbook,
                     '_actor_user_id' => $actorUserId,
                 ]);
                 $submitted++;
@@ -55,7 +62,10 @@ class TrackingDocumentUnpricedPartService
             throw new \RuntimeException('Submit gagal. ' . implode(' | ', array_slice($errors, 0, 3)));
         }
 
-        $message = "{$submitted} harga part berhasil diterapkan ke Material dan file Import Hasil Edit.";
+        $message = "{$submitted} harga part berhasil diterapkan ke Material dan Form Costing.";
+        if ($hasCostingEditWorkbook) {
+            $message .= ' File Import Hasil Edit juga telah diperbarui.';
+        }
         if ($errors !== []) {
             $message .= ' Sebagian belum diproses: ' . implode(' | ', array_slice($errors, 0, 3));
         }

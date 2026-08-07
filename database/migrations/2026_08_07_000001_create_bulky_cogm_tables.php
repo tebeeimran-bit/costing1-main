@@ -24,8 +24,8 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('costing_group_id')->constrained('costing_groups')->cascadeOnDelete();
             $table->foreignId('project_a00_item_id')->unique()->constrained('project_a00_items')->cascadeOnDelete();
-            $table->foreignId('document_project_id')->constrained('document_projects')->restrictOnDelete();
-            $table->foreignId('active_document_revision_id')->constrained('document_revisions')->restrictOnDelete();
+            $table->foreignId('document_project_id')->constrained('document_projects')->cascadeOnDelete();
+            $table->foreignId('active_document_revision_id')->constrained('document_revisions')->cascadeOnDelete();
             $table->foreignId('costing_data_id')->nullable()->constrained('costing_data')->nullOnDelete();
             $table->unsignedInteger('sequence');
             $table->string('status', 30)->default('pending')->index();
@@ -45,7 +45,7 @@ return new class extends Migration {
 
         Schema::create('costing_group_versions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('costing_group_id')->constrained('costing_groups')->restrictOnDelete();
+            $table->foreignId('costing_group_id')->constrained('costing_groups')->cascadeOnDelete();
             $table->unsignedInteger('version_number');
             $table->string('type', 20);
             $table->string('status', 20)->default('generated');
@@ -72,8 +72,8 @@ return new class extends Migration {
         Schema::create('costing_group_version_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('costing_group_version_id')->constrained('costing_group_versions')->cascadeOnDelete();
-            $table->foreignId('costing_group_item_id')->constrained('costing_group_items')->restrictOnDelete();
-            $table->foreignId('document_revision_id')->constrained('document_revisions')->restrictOnDelete();
+            $table->foreignId('costing_group_item_id')->constrained('costing_group_items')->cascadeOnDelete();
+            $table->foreignId('document_revision_id')->constrained('document_revisions')->cascadeOnDelete();
             $table->foreignId('costing_data_id')->nullable()->constrained('costing_data')->nullOnDelete();
             $table->unsignedInteger('item_revision_number')->default(0);
             $table->string('assy_number')->nullable();

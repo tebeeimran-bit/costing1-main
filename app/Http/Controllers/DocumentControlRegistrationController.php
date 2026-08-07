@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BusinessCategory;
+use App\Models\Customer;
 use App\Models\DocumentControlRegistration;
 use App\Models\DocumentControlColumn;
 use App\Models\DocumentControlCustomCell;
@@ -14,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Support\BusinessCategoryContext;
 
 class DocumentControlRegistrationController extends Controller
 {
@@ -29,6 +32,7 @@ class DocumentControlRegistrationController extends Controller
     public function index(Request $request)
     {
         $query = DocumentControlRegistration::query();
+        BusinessCategoryContext::apply($query);
         if ($search = trim((string) $request->query('q'))) {
             $query->where(function ($q) use ($search) {
                 foreach (['registration_no','customer','project','part_number','part_name','revision_record'] as $i => $field) {
@@ -46,11 +50,19 @@ class DocumentControlRegistrationController extends Controller
         foreach (['customer','drawing_status','business_category'] as $field) {
             $options[$field] = DocumentControlRegistration::whereNotNull($field)->distinct()->orderBy($field)->pluck($field);
         }
+        $formOptions = [
+            'drawing_type' => DocumentControlRegistration::whereNotNull('drawing_type')->distinct()->pluck('drawing_type')
+                ->merge(['Drawing Sub, Assy', 'Drawing Component', 'Drawing Customer'])->filter()->unique()->sort()->values(),
+            'customer' => Customer::orderBy('name')->pluck('name')->filter()->unique()->values(),
+            'drawing_status' => DocumentControlRegistration::whereNotNull('drawing_status')->distinct()->pluck('drawing_status')
+                ->merge(['New Drawing', 'Revisi Drawing'])->filter()->unique()->sort()->values(),
+            'business_category' => BusinessCategory::orderBy('name')->pluck('name')->filter()->unique()->values(),
+        ];
         $workflowTask = $request->filled('workflow_task')
             ? ProjectWorkflowTask::with(['project.product','revision'])->where('stage',ProjectWorkflowTask::STAGE_DRAWING)->findOrFail($request->integer('workflow_task'))
             : null;
         $editRegistration=$request->filled('edit') ? DocumentControlRegistration::findOrFail($request->integer('edit')) : null;
-        return view('document-control.index', compact('rows', 'options', 'customColumns', 'workflowTask', 'editRegistration'));
+        return view('document-control.index', compact('rows', 'options', 'formOptions', 'customColumns', 'workflowTask', 'editRegistration'));
     }
 
     public function store(Request $request)
@@ -59,7 +71,26 @@ class DocumentControlRegistrationController extends Controller
             ? ProjectWorkflowTask::where('stage',ProjectWorkflowTask::STAGE_DRAWING)->findOrFail($request->integer('workflow_task_id'))
             : null;
         $payload=$this->validated($request);
+        if(!$workflowTask && $request->filled('manual_project_id')){
+            $project=DocumentProject::with(['product','revisions'=>fn($q)=>$q->latest('version_number')])
+                ->whereHas('workflowTasks',fn($q)=>$q->where('stage',ProjectWorkflowTask::STAGE_BREAKDOWN)->where('metadata->source','manual_breakdown'))
+                ->findOrFail($request->integer('manual_project_id'));
+            $activeCategory=BusinessCategoryContext::selected();
+            abort_if($activeCategory && $project->product?->code!==$activeCategory->code,422,'Project tidak berada pada Business Category aktif.');
+            $revision=$project->revisions->firstOrFail();
+            $workflowTask=ProjectWorkflowTask::firstOrCreate([
+                'document_revision_id'=>$revision->id,
+                'stage'=>ProjectWorkflowTask::STAGE_DRAWING,
+            ],[
+                'document_project_id'=>$project->id,'assigned_role'=>'document_control',
+                'status'=>ProjectWorkflowTask::STATUS_PENDING,'available_at'=>now(),
+                'metadata'=>['source'=>'manual_breakdown_registration','without_a00'=>true],
+            ]);
+            $payload['a00']=$revision->a00==='ada'?'ada':'tidak ada';
+        }
         if (!$workflowTask && $request->boolean('create_manual_project')) {
+            $activeCategory=BusinessCategoryContext::selected();
+            abort_if($activeCategory && strcasecmp(trim((string)$payload['business_category']),$activeCategory->name)!==0,422,'Business Category form harus sama dengan kategori aktif.');
             $request->validate([
                 'customer' => ['required','string','max:500'],
                 'project' => ['required','string','max:500'],

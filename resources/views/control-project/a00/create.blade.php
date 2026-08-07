@@ -22,6 +22,12 @@
 <div class="a00-hero"><div class="a00-code">A00</div><div><h2>New Project Declaration</h2><p>Lengkapi informasi project, schedule internal, dan jadwal customer.</p></div><div class="a00-number"><small>Doc. No</small><strong>Diisi manual</strong></div></div>
 <div class="steps"><div class="step"><span>1</span>Dokumen</div><div class="step"><span>2</span>Sumber Project</div><div class="step"><span>3</span>Informasi Umum</div><div class="step"><span>4</span>Schedule</div><div class="step"><span>5</span>Penerbitan</div></div>
 @if($errors->any())<div class="form-error"><strong>Form belum dapat disimpan.</strong><br>{{ $errors->first() }}</div>@endif
+@if($sourceProject)<div class="approval-admin-note" style="margin-bottom:.75rem"><strong>Membuat A00 untuk project yang sudah terdaftar.</strong> {{ $sourceProjects->count() }} project terpilih akan ditautkan sebagai item dalam satu A00 yang sama tanpa membuat project baru.</div>@endif
+@php
+    $sourceRevision=$sourceProject?->revisions?->first();
+    $sourceCustomerId=$sourceProject ? $customers->firstWhere('name',$sourceProject->customer)?->id : null;
+    $sourceCategoryId=$sourceProject ? $categories->first(fn($category)=>$category->code===$sourceProject->product?->code||$category->name===$sourceProject->product?->name)?->id : $defaultCategoryId;
+@endphp
 <form method="POST" action="{{ route('control-project.a00.store',absolute:false) }}" enctype="multipart/form-data">@csrf @if(request()->boolean('embedded'))<input type="hidden" name="embedded" value="1">@endif
 <section class="section"><h3>Identitas Dokumen A00</h3><div class="document-meta-wrap"><table class="meta-input-table"><tbody><tr><th>Doc. No *</th><td><input name="document_number" value="{{ old('document_number') }}" placeholder="Contoh: 0100/MKT-PROJECT/A00/VII/2026" required></td></tr><tr><th>Date *</th><td><input id="a00DocumentDate" type="date" name="document_date" value="{{ old('document_date',date('Y-m-d')) }}" required></td></tr><tr><th>Revision *</th><td><input name="revision" value="{{ old('revision','00') }}" required></td></tr><tr><th>From - To *</th><td><div class="from-to-input"><input name="from_department" value="{{ old('from_department','MKT') }}" required><span>—</span><input name="to_department" value="{{ old('to_department','TEAM PROJECT') }}" required></div></td></tr></tbody></table><div class="source-note"><strong>A00 — New Project Declaration</strong><br>Nomor dokumen sementara diisi manual. Pastikan nomor sesuai dokumen resmi dan belum pernah digunakan.</div></div></section>
 <section class="section"><h3>Sumber Project — RFI/RFQ</h3><div class="document-meta-wrap"><table class="meta-input-table"><tbody><tr><th>Request Type</th><td><select name="request_type"><option value="">Pilih RFI/RFQ</option>@foreach(['RFI','RFQ','OTHER'] as $v)<option @selected(old('request_type')===$v)>{{ $v }}</option>@endforeach</select></td></tr><tr><th>Request No.</th><td><input name="request_number" value="{{ old('request_number') }}" placeholder="Nomor RFI/RFQ"></td></tr><tr><th>Received Date</th><td><input type="date" name="request_received_date" value="{{ old('request_received_date') }}"></td></tr><tr><th>Attachment</th><td><input type="file" name="source_file" accept=".pdf,.xls,.xlsx,.doc,.docx"></td></tr></tbody></table><div class="source-note"><strong>Dokumen sumber project</strong><br>Lampirkan RFI, RFQ, atau dokumen permintaan customer sebagai referensi penerbitan A00.</div></div></section>
@@ -40,18 +46,35 @@
 <div class="actions"><span class="actions-note">Field bertanda * wajib diisi.</span>@if(request()->boolean('embedded'))<button type="button" class="btn alt" onclick="parent.postMessage({type:'a00-cancel'},location.origin)">Batal</button>@else<a class="btn alt" href="{{ route('control-project.a00.index',absolute:false) }}">Batal</a>@endif<button class="btn">Terbitkan A00 & Buat Project</button></div>
 </form></div>
 @php
-    $oldA00Items = old('items', [[
-        'model' => '', 'assy_number' => '', 'assy_name' => '', 'quantity' => '',
+    $sourceItemDefaults = $sourceProjects->map(fn($project) => [
+        'document_project_id' => $project->id,
+        'model' => $project->model ?? '', 'assy_number' => $project->part_number ?? '',
+        'assy_name' => $project->part_name ?? '', 'quantity' => '',
         'quantity_uom' => 'Pcs', 'quantity_basis' => 'per Year',
         'product_life_years' => '', 'spot_order' => false,
+    ])->values()->all();
+    $oldA00Items = old('items', $sourceItemDefaults ?: [[
+        'document_project_id' => null, 'model' => '', 'assy_number' => '', 'assy_name' => '',
+        'quantity' => '', 'quantity_uom' => 'Pcs', 'quantity_basis' => 'per Year',
+        'product_life_years' => '', 'spot_order' => false,
     ]]);
+    $sourceDefaults = [
+        'business_category_id'=>$sourceCategoryId,
+        'customer_id'=>$sourceCustomerId,
+        'plant_id'=>$sourceRevision?->plant_id,
+        'period'=>$sourceRevision?->period,
+        'pic_engineering'=>$sourceRevision?->pic_engineering,
+        'pic_marketing'=>$sourceRevision?->pic_marketing,
+    ];
 @endphp
 <template id="projectItemTemplate"><div class="project-item"><div class="doc-item-head"><span>ITEM <b data-item-number></b></span><button class="remove-item" type="button" onclick="removeProjectItem(this)">Hapus</button></div><div class="doc-item-body"><div class="doc-item-row"><label>Model *</label><span class="row-colon">:</span><input data-name="model" placeholder="Contoh: K4MA" required></div><div class="doc-item-row"><label>Assy Name *</label><span class="row-colon">:</span><input data-name="assy_name" placeholder="Contoh: Cord Assy" required></div><div class="doc-item-row"><label>Assy No. *</label><span class="row-colon">:</span><input data-name="assy_number" placeholder="Contoh: W40294" required></div><div class="doc-item-row"><label>Quantity</label><span class="row-colon">:</span><div class="doc-inline"><input type="number" min="0" data-name="quantity" placeholder="0"><select data-name="quantity_uom" required><option>Pcs</option><option>Set</option><option>Unit</option></select><select data-name="quantity_basis" required><option>per Year</option><option>per Month</option><option>Spot Order</option></select></div></div><div class="doc-item-row"><label>Product's Life</label><span class="row-colon">:</span><div class="life-inline"><div style="display:flex;align-items:center"><input type="number" min="0" max="99" data-name="product_life_years" placeholder="0"><span style="font-size:.7rem;margin-left:.3rem">Years</span></div><label class="item-check"><input type="checkbox" value="1" data-name="spot_order"> Spot Order</label></div></div></div></div></template>
 <script>
 const projectItems=document.getElementById('projectItems'),itemTemplate=document.getElementById('projectItemTemplate');
 const oldItems=@json($oldA00Items);
+const sourceDefaults=@json($sourceDefaults);
+Object.entries(sourceDefaults).forEach(([name,value])=>{const field=document.querySelector(`[name="${name}"]`);if(field&&value&&!field.value)field.value=value});
 function refreshProjectItems(){[...projectItems.children].forEach((item,index)=>{item.querySelector('[data-item-number]').textContent=index+1;item.querySelectorAll('[data-name]').forEach(input=>input.name=`items[${index}][${input.dataset.name}]`);item.querySelector('.remove-item').style.visibility=projectItems.children.length===1?'hidden':'visible'})}
-function addProjectItem(values={}){const item=itemTemplate.content.firstElementChild.cloneNode(true);item.querySelectorAll('[data-name]').forEach(input=>{const value=values[input.dataset.name];if(input.type==='checkbox')input.checked=value===true||value===1||value==='1';else if(value!==undefined)input.value=value});projectItems.appendChild(item);refreshProjectItems();item.scrollIntoView({behavior:'smooth',block:'nearest'})}
+function addProjectItem(values={}){const item=itemTemplate.content.firstElementChild.cloneNode(true);const projectId=document.createElement('input');projectId.type='hidden';projectId.dataset.name='document_project_id';projectId.value=values.document_project_id||'';item.prepend(projectId);item.querySelectorAll('[data-name]').forEach(input=>{const value=values[input.dataset.name];if(input.type==='checkbox')input.checked=value===true||value===1||value==='1';else if(value!==undefined)input.value=value});projectItems.appendChild(item);refreshProjectItems();item.scrollIntoView({behavior:'smooth',block:'nearest'})}
 function removeProjectItem(button){if(projectItems.children.length<=1)return;button.closest('.project-item').remove();refreshProjectItems()}
 oldItems.forEach(item=>addProjectItem(item));
 function syncDateGroup(group){const hidden=group.querySelector('[data-date-value]'),day=group.querySelector('[data-day]').value,month=group.querySelector('[data-month]').value,year=group.querySelector('[data-year]').value;if(day&&month&&year){const maxDay=new Date(Number(year),Number(month),0).getDate();if(Number(day)>maxDay){group.querySelector('[data-day]').value=maxDay}hidden.value=`${year}-${String(month).padStart(2,'0')}-${String(group.querySelector('[data-day]').value).padStart(2,'0')}`}else hidden.value=''}

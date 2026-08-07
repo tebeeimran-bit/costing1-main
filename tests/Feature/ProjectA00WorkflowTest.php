@@ -85,6 +85,8 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseHas('document_control_registrations', ['registration_no' => 'A-MANUAL-01', 'a00' => 'tidak ada']);
         $this->assertDatabaseHas('project_workflow_tasks', ['stage' => 'drawing', 'status' => 'completed']);
         $this->assertDatabaseHas('project_workflow_tasks', ['stage' => 'breakdown', 'status' => 'pending']);
+        $this->actingAs($user)->get(route('control-project.a00.index'))
+            ->assertOk()->assertSee('W40999')->assertSee('+ Registrasi Drawing')->assertSee('Menunggu A00');
         $this->actingAs($user)->get(route('project'))->assertOk()->assertSeeInOrder(['No. Assy', 'W40999']);
 
         $projectId = \App\Models\DocumentProject::where('part_number', 'W40999')->value('id');
@@ -125,6 +127,161 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseMissing('project_workflow_tasks',['stage'=>'drawing']);
         $this->assertDatabaseHas('project_workflow_tasks',['stage'=>'breakdown','status'=>'pending']);
         $this->actingAs($user)->get(route('project'))->assertOk()->assertSee('BD-001')->assertSee('Sedang Breakdown');
+    }
+
+    public function test_manual_breakdown_project_is_listed_and_can_receive_a00_without_duplication(): void
+    {
+        $user=User::factory()->create(['role'=>'admin']);
+        $customer=Customer::create(['code'=>'WAIT-A00','name'=>'Customer Waiting A00']);
+        $category=BusinessCategory::create(['code'=>'WA','name'=>'Waiting A00 Category']);
+        $plant=Plant::create(['code'=>'DEM','name'=>'Dharma Electrindo Mfg']);
+
+        $this->actingAs($user)->post(route('breakdown.manual.store'),[
+            'business_category_id'=>$category->id,'customer_id'=>$customer->id,
+            'model'=>'WAIT1','assy_name'=>'WAITING ASSY','assy_number'=>'WA-001',
+            'received_date'=>'2026-08-07','pic_engineering'=>'Engineer Waiting','pic_marketing'=>'Marketing Waiting',
+        ])->assertRedirect(route('breakdown.inbox'));
+
+        $project=\App\Models\DocumentProject::where('part_number','WA-001')->firstOrFail();
+        $this->actingAs($user)->get(route('control-project.a00.index'))
+            ->assertOk()->assertSee('Project Menunggu Pembuatan A00')->assertSee('WA-001')->assertSee('+ Breakdown');
+        $this->actingAs($user)->get(route('control-project.a00.create',['project_id'=>$project->id]))
+            ->assertOk()->assertSee('WAIT1')->assertSee('WA-001')->assertSee('Membuat A00 untuk project yang sudah terdaftar');
+
+        $this->actingAs($user)->post(route('control-project.a00.store'),[
+            'business_category_id'=>$category->id,'customer_id'=>$customer->id,
+            'plant_id'=>$plant->id,'period'=>'2026-08','pic_engineering'=>'Engineer Waiting','pic_marketing'=>'Marketing Waiting',
+            'items'=>[['document_project_id'=>$project->id,'model'=>'WAIT1','assy_name'=>'WAITING ASSY','assy_number'=>'WA-001','quantity'=>1000,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year']],
+            'document_number'=>'WAIT/MKT-PROJECT/A00/VIII/2026','document_date'=>'2026-08-07','revision'=>'00',
+            'from_department'=>'MKT','to_department'=>'TEAM PROJECT','issue_location'=>'Cikarang',
+        ])->assertRedirect();
+
+        $this->assertDatabaseCount('document_projects',1);
+        $this->assertDatabaseHas('project_a00_items',['document_project_id'=>$project->id,'assy_number'=>'WA-001']);
+        $this->assertDatabaseHas('document_revisions',['document_project_id'=>$project->id,'a00'=>'ada']);
+        $this->assertDatabaseHas('project_workflow_tasks',['document_project_id'=>$project->id,'stage'=>'breakdown']);
+    }
+
+    public function test_active_business_category_filters_control_project_and_breakdown_inbox(): void
+    {
+        $user=User::factory()->create(['role'=>'admin']);
+        $wh=BusinessCategory::create(['code'=>'WH','name'=>'WIRING HARNESS']);
+        $aep=BusinessCategory::create(['code'=>'AEP','name'=>'AUTOMOTIVE ELECTRONIC PART']);
+        $customer=Customer::create(['code'=>'FILTER','name'=>'Filter Customer']);
+
+        foreach ([[$wh,'WH-MODEL','WH-ASSY'],[$aep,'AEP-MODEL','AEP-ASSY']] as [$category,$model,$assy]) {
+            $this->actingAs($user)->post(route('breakdown.manual.store'),[
+                'business_category_id'=>$category->id,'customer_id'=>$customer->id,
+                'model'=>$model,'assy_name'=>$category->name,'assy_number'=>$assy,
+                'received_date'=>'2026-08-07','pic_engineering'=>'Engineer Filter',
+            ])->assertRedirect(route('breakdown.inbox'));
+        }
+
+        $session=[\App\Support\BusinessCategoryContext::SESSION_KEY=>$wh->id];
+        $this->actingAs($user)->withSession($session)->get(route('control-project.a00.index'))
+            ->assertOk()->assertSee('WH-ASSY')->assertDontSee('AEP-ASSY');
+        $this->actingAs($user)->withSession($session)->get(route('breakdown.inbox'))
+            ->assertOk()->assertSee('WH-ASSY')->assertDontSee('AEP-ASSY');
+
+        $this->actingAs($user)->from(route('control-project.a00.index'))->post(route('business-category-context.update'),[
+            'business_category_id'=>$aep->id,
+        ])->assertRedirect(route('control-project.a00.index'))->assertSessionHas(\App\Support\BusinessCategoryContext::SESSION_KEY,$aep->id);
+    }
+
+    public function test_manual_breakdown_project_can_receive_drawing_registration_without_duplication(): void
+    {
+        $user=User::factory()->create(['role'=>'admin']);
+        $customer=Customer::create(['code'=>'DRAW-BD','name'=>'Drawing Breakdown Customer']);
+        $category=BusinessCategory::create(['code'=>'DBD','name'=>'Drawing Breakdown Category']);
+
+        $this->actingAs($user)->post(route('breakdown.manual.store'),[
+            'business_category_id'=>$category->id,'customer_id'=>$customer->id,
+            'model'=>'DBD1','assy_name'=>'DRAWING ASSY','assy_number'=>'DBD-001',
+            'received_date'=>'2026-08-07','pic_engineering'=>'Engineer Drawing',
+        ])->assertRedirect(route('breakdown.inbox'));
+
+        $project=\App\Models\DocumentProject::where('part_number','DBD-001')->firstOrFail();
+        $revision=$project->revisions()->firstOrFail();
+        $this->actingAs($user)->get(route('document-control.inbox'))
+            ->assertOk()->assertSee('Project Breakdown Menunggu Registrasi Drawing')
+            ->assertSee('DBD-001')->assertSee('Buat Registrasi Drawing');
+
+        $this->actingAs($user)->post(route('document-control.store'),[
+            'manual_project_id'=>$project->id,'complete_distribution'=>1,
+            'registration_no'=>'REG-DBD-001','registration_date'=>'2026-08-07',
+            'drawing_type'=>'Drawing Assy','customer'=>$project->customer,'project'=>$project->model,
+            'part_number'=>$project->part_number,'part_name'=>$project->part_name,
+            'revision_number'=>'V0','drawing_status'=>'New Drawing','business_category'=>$category->name,
+            'a00'=>'tidak ada','pd_distribution'=>'2026-08-07',
+        ])->assertRedirect(route('document-control.inbox'));
+
+        $this->assertDatabaseCount('document_projects',1);
+        $this->assertDatabaseCount('document_revisions',1);
+        $this->assertDatabaseHas('document_control_registrations',[
+            'document_project_id'=>$project->id,'document_revision_id'=>$revision->id,'registration_no'=>'REG-DBD-001',
+        ]);
+        $this->assertSame(1,ProjectWorkflowTask::where('document_revision_id',$revision->id)->where('stage','breakdown')->count());
+        $this->assertDatabaseHas('project_workflow_tasks',[
+            'document_revision_id'=>$revision->id,'stage'=>'drawing','status'=>'completed',
+        ]);
+    }
+
+    public function test_breakdown_project_can_upload_partlist_revision_excel(): void
+    {
+        Storage::fake('local');
+        $user=User::factory()->create(['role'=>'admin']);
+        $customer=Customer::create(['code'=>'REV-DOC','name'=>'Revision Customer']);
+        $category=BusinessCategory::create(['code'=>'REV','name'=>'Revision Category']);
+        $this->actingAs($user)->post(route('breakdown.manual.store'),[
+            'business_category_id'=>$category->id,'customer_id'=>$customer->id,
+            'model'=>'REV1','assy_name'=>'REVISION ASSY','assy_number'=>'REV-001',
+            'received_date'=>'2026-08-07','pic_engineering'=>'Engineer Revision',
+        ])->assertRedirect(route('breakdown.inbox'));
+
+        $task=ProjectWorkflowTask::where('stage','breakdown')->firstOrFail();
+        $file=UploadedFile::fake()->create('partlist-revisi-01.xlsx',120,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->actingAs($user)->post(route('breakdown.tasks.revision',$task),[
+            'revision_type'=>'partlist','revision_file'=>$file,
+            'description'=>'Perbaikan quantity material.',
+        ])->assertRedirect()->assertSessionHas('success');
+
+        $this->assertDatabaseHas('project_document_revisions',[
+            'document_project_id'=>$task->document_project_id,'document_revision_id'=>$task->document_revision_id,
+            'revision_type'=>'partlist','original_name'=>'partlist-revisi-01.xlsx',
+            'description'=>'Perbaikan quantity material.',
+        ]);
+        $task->revision->refresh();
+        $this->assertSame('partlist-revisi-01.xlsx',$task->revision->partlist_original_name);
+        Storage::disk('local')->assertExists($task->revision->partlist_file_path);
+        $this->assertDatabaseCount('document_revisions',1);
+    }
+
+    public function test_saving_breakdown_automatically_sends_project_to_costing_inbox(): void
+    {
+        Storage::fake('local');
+        $user=User::factory()->create(['role'=>'admin']);
+        $customer=Customer::create(['code'=>'AUTO-COST','name'=>'Automatic Costing Customer']);
+        $category=BusinessCategory::create(['code'=>'AC','name'=>'Automatic Costing Category']);
+        $this->actingAs($user)->post(route('breakdown.manual.store'),[
+            'business_category_id'=>$category->id,'customer_id'=>$customer->id,
+            'model'=>'AC01','assy_name'=>'AUTOMATIC COSTING ASSY','assy_number'=>'AC-001',
+            'received_date'=>'2026-08-07','pic_engineering'=>'Engineer Costing',
+        ])->assertRedirect(route('breakdown.inbox'));
+
+        $task=ProjectWorkflowTask::where('stage','breakdown')->firstOrFail();
+        $this->actingAs($user)->post(route('breakdown.tasks.complete',$task),[
+            'partlist_file'=>UploadedFile::fake()->create('partlist.xlsx',100,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            'umh_file'=>UploadedFile::fake()->create('umh.xlsx',100,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+        ])->assertRedirect(route('breakdown.inbox'))->assertSessionHas('success');
+
+        $this->assertDatabaseHas('project_workflow_tasks',[
+            'document_revision_id'=>$task->document_revision_id,
+            'stage'=>ProjectWorkflowTask::STAGE_COSTING,
+            'status'=>ProjectWorkflowTask::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseMissing('costing_data',['tracking_revision_id'=>$task->document_revision_id]);
+        $this->actingAs($user)->get(route('costing.inbox'))
+            ->assertOk()->assertSee('AC-001')->assertSee('Form Costing');
     }
 
     public function test_publishing_a00_creates_project_and_v0_revision(): void

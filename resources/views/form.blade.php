@@ -425,7 +425,7 @@
                     </button>
                     @if(isset($trackingRevision) && $trackingRevision)
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('newPartRequestFileInput').click()">Import New Part Request</button>
-                        <button type="button" class="btn btn-secondary" onclick="exportNewPartRequestAndRefresh(@js(route('tracking-documents.export-new-part-request', ['revision' => $trackingRevision->id], absolute: false)))">Export New Part Request</button>
+                        <button type="button" class="btn btn-secondary" onclick="exportNewPartRequestAndRefresh(@js(route('tracking-documents.export-new-part-request', ['revision' => $trackingRevision->id], absolute: false)), @js(route('tracking-documents.sync-new-part-request', ['revision' => $trackingRevision->id], absolute: false)))">Export New Part Request</button>
                     @endif
                 </div>
             </div>
@@ -468,7 +468,7 @@
                                     $matchedWires = collect($item->matched_wires ?? []);
                                     $matchedSource = $item->matched_source ?? null;
                                 @endphp
-                                <tr data-unpriced-part="{{ $item->part_number }}">
+                                <tr data-unpriced-part="{{ $item->part_number }}" data-unpriced-open="{{ is_null($item->resolved_at) ? '1' : '0' }}">
                                     <td>
                                         <span style="display:inline-flex;align-items:center;gap:0.3rem;">
                                             <input type="checkbox" class="unpriced-row-select" data-part-number="{{ $item->part_number }}">
@@ -1887,14 +1887,15 @@
             // synchronizes this recap from the latest imported costing-edit file.
             if (hasServerUnpricedData) {
                 const visibleRows = tbody.querySelectorAll('tr[data-unpriced-part]').length;
+                const openRows = tbody.querySelectorAll('tr[data-unpriced-part][data-unpriced-open="1"]').length;
                 const banner = document.getElementById('unpricedTopBanner');
                 const bannerText = document.getElementById('unpricedTopBannerText');
 
                 if (banner) {
-                    banner.style.display = visibleRows > 0 ? 'flex' : 'none';
+                    banner.style.display = openRows > 0 ? 'flex' : 'none';
                 }
-                if (bannerText && visibleRows > 0) {
-                    bannerText.textContent = `Terdapat ${visibleRows} part yang belum memiliki harga pada versi dokumen ini.`;
+                if (bannerText && openRows > 0) {
+                    bannerText.textContent = `Terdapat ${openRows} part yang belum memiliki harga pada versi dokumen ini.`;
                 }
 
                 bindUnpricedManualPriceInputs();
@@ -2955,17 +2956,37 @@
             cancelBtn.focus();
         }
 
-        async function exportNewPartRequestAndRefresh(url) {
+        async function exportNewPartRequestAndRefresh(url, syncUrl) {
             if (!url) return;
 
             const assyNo = document.querySelector('#costingForm [name="assy_no"]')?.value || '';
+            const customerCode = document.querySelector('#costingForm [name="customer_id"]')?.selectedOptions?.[0]?.dataset?.code || 'CUSTOMER';
+            const now = new Date();
+            const exportDate = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('.');
+            const safeAssyNo = String(assyNo || 'NEW-PART').replace(/[^A-Za-z0-9_-]/g, '_');
             const destination = await chooseExportDestination(
-                safeExportFileName(`New Part Request - ${assyNo}.xlsx`, 'New-Part-Request.xlsx')
+                safeExportFileName(`${exportDate} ${String(customerCode).toUpperCase()} - ${safeAssyNo}.xlsx`, 'New-Part-Request.xlsx')
             );
             if (destination.cancelled) return;
 
             showAppLoading('Memperbarui rekapan dan membuat New Part Request...');
             try {
+                const materialRows = collectMaterialRowsForPayload().map(row => ({
+                    part_no: row.part_no || '', id_code: row.id_code || '',
+                    part_name: row.part_name || '', amount1: row.amount1 ?? '',
+                }));
+                const syncResponse = await fetch(syncUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json', 'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    },
+                    body: JSON.stringify({materials: materialRows}),
+                });
+                const syncResult = await syncResponse.json().catch(() => ({}));
+                if (!syncResponse.ok || syncResult.success === false) {
+                    throw new Error(syncResult.message || 'Rekapan part tanpa harga gagal diperbarui.');
+                }
                 const response = await fetch(url, {
                     method: 'GET',
                     headers: { 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },

@@ -11,6 +11,7 @@ use App\Http\Controllers\DocumentReceiptController;
 use App\Http\Controllers\DocumentControlRegistrationController;
 use App\Http\Controllers\DocumentControlInboxController;
 use App\Http\Controllers\BreakdownInboxController;
+use App\Http\Controllers\BusinessCategoryContextController;
 use App\Http\Controllers\ProjectA00Controller;
 use App\Http\Controllers\ProjectGroupController;
 use App\Http\Controllers\ReportController;
@@ -27,6 +28,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // All app routes require authentication
 Route::middleware('auth')->group(function () {
+    Route::post('/business-category-context',[BusinessCategoryContextController::class,'update'])->name('business-category-context.update');
     Route::post('/notifications/{notification}/open',[NotificationController::class,'open'])->name('notifications.open');
     Route::post('/notifications/read-all',[NotificationController::class,'markAllRead'])->name('notifications.read-all');
     Route::patch('/costing-group-items/{item}/pics',[CostingGroupController::class,'updateItemPics'])->name('control-project.costing-group-items.pics');
@@ -64,6 +66,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/manual', [BreakdownInboxController::class, 'storeManual'])->name('manual.store');
         Route::post('/tasks/{task}/complete', [BreakdownInboxController::class, 'complete'])->name('tasks.complete');
         Route::post('/tasks/{task}/start-costing', [BreakdownInboxController::class, 'startCosting'])->name('tasks.start-costing');
+        Route::post('/tasks/{task}/revision', [BreakdownInboxController::class, 'uploadRevision'])->name('tasks.revision');
     });
     Route::get('/project-selection', [AuthController::class, 'projectSelection'])->name('project-selection');
     Route::get('/costing-product-performance', [AuthController::class, 'productPerformance'])->name('costing-product-performance');
@@ -78,6 +81,7 @@ Route::middleware('auth')->group(function () {
     });
     Route::middleware('permission:inbox_costing')->group(function () {
         Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
+        Route::post('/costing/revisions/{revision}', [ProjectGroupController::class, 'uploadCostingRevision'])->name('costing.revisions.store');
         Route::get('/costing-groups/{group}',[CostingGroupController::class,'workspace'])->name('costing-groups.workspace');
         Route::post('/costing-groups/{group}/draft',[CostingGroupController::class,'draft'])->name('control-project.costing-groups.draft');
         Route::post('/costing-groups/{group}/submit-approval',[CostingGroupController::class,'submitApproval'])->name('control-project.costing-groups.submit-approval');
@@ -265,6 +269,8 @@ Route::middleware('auth')->group(function () {
              ->name('tracking-documents.export-unpriced');
          Route::get('/tracking-documents/{revision}/export-new-part-request', [TrackingDocumentController::class, 'exportNewPartRequest'])
              ->name('tracking-documents.export-new-part-request');
+         Route::post('/tracking-documents/{revision}/sync-new-part-request', [TrackingDocumentController::class, 'syncNewPartRequestRows'])
+             ->name('tracking-documents.sync-new-part-request');
          Route::post('/tracking-documents/{revision}/import-new-part-request', [TrackingDocumentController::class, 'importNewPartRequest'])
              ->name('tracking-documents.import-new-part-request');
     });

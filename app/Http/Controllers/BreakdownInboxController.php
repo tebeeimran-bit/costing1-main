@@ -9,9 +9,11 @@ use App\Models\DocumentRevision;
 use App\Models\Product;
 use App\Models\Pic;
 use App\Models\ProjectWorkflowTask;
+use App\Models\ProjectDocumentRevision;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Support\BusinessCategoryContext;
 
 class BreakdownInboxController extends Controller
 {
@@ -36,19 +38,21 @@ class BreakdownInboxController extends Controller
                 ->orWhere('model', 'like', "%{$search}%")
                 ->orWhere('part_number', 'like', "%{$search}%")
                 ->orWhere('part_name', 'like', "%{$search}%")))
-            ->oldest('available_at')->oldest('id')
-            ->paginate(20)->withQueryString();
+            ->oldest('available_at')->oldest('id');
+        BusinessCategoryContext::apply($tasks);
+        $tasks=$tasks->paginate(20)->withQueryString();
 
         $customers=Customer::orderBy('name')->get();
         $categories=BusinessCategory::orderBy('code')->orderBy('name')->get();
         $picsEngineering=Pic::where('type','engineering')->orderBy('name')->get();
         $picsMarketing=Pic::where('type','marketing')->orderBy('name')->get();
-        return view('breakdown.inbox', compact('tasks', 'search', 'filter', 'customers', 'categories', 'picsEngineering', 'picsMarketing'));
+        $activeBusinessCategory=BusinessCategoryContext::selected();
+        return view('breakdown.inbox', compact('tasks', 'search', 'filter', 'customers', 'categories', 'picsEngineering', 'picsMarketing', 'activeBusinessCategory'));
     }
 
     public function storeManual(Request $request)
     {
-        $data=$request->validate([
+        $data=$request->validateWithBag('manualBreakdown',[
             'business_category_id'=>['required','exists:business_categories,id'],
             'customer_id'=>['required','exists:customers,id'],
             'model'=>['required','string','max:255'],'assy_name'=>['required','string','max:255'],
@@ -57,6 +61,7 @@ class BreakdownInboxController extends Controller
             'notes'=>['nullable','string','max:1000'],
         ]);
         $category=BusinessCategory::findOrFail($data['business_category_id']);
+        abort_if(BusinessCategoryContext::selectedId() && BusinessCategoryContext::selectedId() !== $category->id,422,'Business Category form harus sama dengan kategori aktif.');
         $customer=Customer::findOrFail($data['customer_id']);
 
         DB::transaction(function() use($data,$category,$customer,$request){
@@ -169,6 +174,62 @@ class BreakdownInboxController extends Controller
             ? 'Partlist berhasil disimpan. Form Costing sudah dapat diproses sementara Breakdown menunggu UMH.'
             : 'Dokumen berhasil disimpan. Breakdown tetap terbuka dan menunggu '.$waitingFor.'.';
         return redirect()->route('breakdown.inbox')->with('success', $message);
+    }
+
+    public function uploadRevision(Request $request, ProjectWorkflowTask $task)
+    {
+        abort_unless($task->stage===ProjectWorkflowTask::STAGE_BREAKDOWN&&$task->assigned_role==='admin_costing',404);
+        $data=$request->validate([
+            'revision_type'=>['required','in:design,partlist,drawing,umh'],
+            'revision_file'=>['required','file','mimes:xls,xlsx','max:20480'],
+            'description'=>['nullable','string','max:1000'],
+        ],[
+            'revision_type.required'=>'Pilih jenis revisi dokumen.',
+            'revision_file.required'=>'Pilih file Excel revisi.',
+            'revision_file.mimes'=>'Dokumen revisi harus berupa file Excel (.xls atau .xlsx).',
+        ]);
+
+        $file=$data['revision_file'];
+        $path=$file->store('workflow/revisions/'.$task->document_revision_id.'/'.$data['revision_type']);
+
+        DB::transaction(function()use($request,$task,$data,$file,$path){
+            ProjectDocumentRevision::create([
+                'document_project_id'=>$task->document_project_id,
+                'document_revision_id'=>$task->document_revision_id,
+                'workflow_task_id'=>$task->id,
+                'revision_type'=>$data['revision_type'],
+                'original_name'=>$file->getClientOriginalName(),
+                'file_path'=>$path,
+                'description'=>$data['description']??null,
+                'uploaded_by'=>$request->user()->id,
+            ]);
+
+            if($data['revision_type']==='partlist'){
+                $task->revision->update([
+                    'partlist_original_name'=>$file->getClientOriginalName(),
+                    'partlist_file_path'=>$path,
+                    'partlist_update_count'=>((int)$task->revision->partlist_update_count)+1,
+                    'partlist_updated_at'=>now(),
+                ]);
+            }elseif($data['revision_type']==='umh'){
+                $task->revision->update([
+                    'umh_original_name'=>$file->getClientOriginalName(),
+                    'umh_file_path'=>$path,
+                    'umh_update_count'=>((int)$task->revision->umh_update_count)+1,
+                    'umh_updated_at'=>now(),
+                ]);
+            }
+        });
+
+        return back()->with('success','Dokumen '.$this->revisionTypeLabel($data['revision_type']).' berhasil diunggah.');
+    }
+
+    private function revisionTypeLabel(string $type): string
+    {
+        return match($type){
+            'design'=>'Revisi Design','partlist'=>'Revisi Partlist',
+            'drawing'=>'Revisi Drawing','umh'=>'Revisi UMH',
+        };
     }
 
     public function startCosting(Request $request, ProjectWorkflowTask $task)

@@ -7,11 +7,17 @@ use App\Models\DocumentRevision;
 use App\Models\DocumentProject;
 use App\Models\DocumentControlRegistration;
 use App\Models\MaterialBreakdown;
+use App\Models\ProjectWorkflowTask;
+use App\Models\ProjectDocumentRevision;
+use App\Models\CogmSubmission;
+use App\Models\User;
+use App\Notifications\CostingGroupChanged;
 use App\Services\TrackingDocument\TrackingDocumentFileService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use App\Support\BusinessCategoryContext;
 
 class ProjectGroupController extends Controller
 {
@@ -28,11 +34,13 @@ class ProjectGroupController extends Controller
             ->with([
                 'customer', 'product', 'materialBreakdowns',
                 'trackingRevision.project.product',
+                'trackingRevision.latestCostingRevision',
                 'trackingRevision.latestApproval.submitter',
                 'trackingRevision.latestApproval.approver',
             ])
             ->whereNotNull('tracking_revision_id')
             ->orderByDesc('updated_at');
+        BusinessCategoryContext::apply($query, 'trackingRevision.project');
 
         if ($search !== '') {
             $query->where(function ($builder) use ($search) {
@@ -69,6 +77,29 @@ class ProjectGroupController extends Controller
         ];
         if (isset($statusMap[$status])) {
             $query->whereHas('trackingRevision', fn ($revision) => $revision->whereIn('status', $statusMap[$status]));
+        }
+
+        $pendingCostingTasks = collect();
+        if ($status !== 'history') {
+            $pendingQuery = ProjectWorkflowTask::query()
+                ->with(['revision.latestCostingRevision', 'project.product'])
+                ->where('stage', ProjectWorkflowTask::STAGE_COSTING)
+                ->whereIn('status', [ProjectWorkflowTask::STATUS_PENDING, ProjectWorkflowTask::STATUS_IN_PROGRESS])
+                ->whereHas('revision')
+                ->whereDoesntHave('revision.costingData')
+                ->orderByDesc('updated_at');
+            BusinessCategoryContext::apply($pendingQuery);
+
+            if ($search !== '') {
+                $pendingQuery->whereHas('project', function ($project) use ($search) {
+                    $project->where('customer', 'like', "%{$search}%")
+                        ->orWhere('model', 'like', "%{$search}%")
+                        ->orWhere('part_number', 'like', "%{$search}%")
+                        ->orWhere('part_name', 'like', "%{$search}%");
+                });
+            }
+
+            $pendingCostingTasks = $pendingQuery->get();
         }
 
         $items = $query->paginate(20)->withQueryString();
@@ -108,7 +139,88 @@ class ProjectGroupController extends Controller
             return $costing;
         });
 
-        return view('costing.inbox', compact('items', 'search', 'status'));
+        return view('costing.inbox', compact('items', 'pendingCostingTasks', 'search', 'status'));
+    }
+
+    public function uploadCostingRevision(Request $request, DocumentRevision $revision)
+    {
+        $data = $request->validate([
+            'revision_type' => ['required', 'in:price,partlist,umh'],
+            'revision_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:20480'],
+            'description' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'revision_type.required' => 'Pilih jenis update dokumen.',
+            'revision_file.required' => 'Pilih file Excel yang akan diunggah.',
+            'revision_file.mimes' => 'Dokumen update harus berupa file Excel (.xls atau .xlsx).',
+        ]);
+
+        $revision->loadMissing('project');
+        $file = $data['revision_file'];
+        $path = $file->store('workflow/costing-revisions/'.$revision->id.'/'.$data['revision_type']);
+        $costingTask = $revision->workflowTasks()->where('stage', ProjectWorkflowTask::STAGE_COSTING)->latest('id')->first();
+
+        $submission = DB::transaction(function () use ($request, $revision, $costingTask, $data, $file, $path) {
+            ProjectDocumentRevision::create([
+                'document_project_id' => $revision->document_project_id,
+                'document_revision_id' => $revision->id,
+                'workflow_task_id' => $costingTask?->id,
+                'revision_type' => $data['revision_type'],
+                'original_name' => $file->getClientOriginalName(),
+                'file_path' => $path,
+                'description' => $data['description'] ?? null,
+                'uploaded_by' => $request->user()->id,
+            ]);
+
+            if ($data['revision_type'] === 'partlist') {
+                $revision->update([
+                    'partlist_original_name' => $file->getClientOriginalName(),
+                    'partlist_file_path' => $path,
+                    'partlist_update_count' => ((int) $revision->partlist_update_count) + 1,
+                    'partlist_updated_at' => now(),
+                ]);
+            } elseif ($data['revision_type'] === 'umh') {
+                $revision->update([
+                    'umh_original_name' => $file->getClientOriginalName(),
+                    'umh_file_path' => $path,
+                    'umh_update_count' => ((int) $revision->umh_update_count) + 1,
+                    'umh_updated_at' => now(),
+                ]);
+            }
+
+            $submission = CogmSubmission::where('document_revision_id', $revision->id)->latest('submitted_at')->first();
+            if ($submission) {
+                $submission->update([
+                    'update_count' => ((int) $submission->update_count) + 1,
+                    'last_updated_by' => $request->user()->name,
+                    'last_updated_at' => now(),
+                ]);
+            }
+
+            return $submission;
+        });
+
+        $label = match ($data['revision_type']) {
+            'price' => 'Update harga', 'partlist' => 'Update Partlist', 'umh' => 'Update UMH',
+        };
+
+        if ($submission) {
+            $picName = mb_strtolower(trim((string) $submission->pic_marketing));
+            $recipients = User::query()->where('role', 'marketing')
+                ->when($picName !== '', fn ($query) => $query->whereRaw('LOWER(TRIM(name)) = ?', [$picName]))
+                ->get();
+            $payload = [
+                'event' => $data['revision_type'].'_updated',
+                'title' => 'Revisi Form Costing',
+                'message' => $label.' untuk '.$revision->project->part_number.' telah dikirim ke Inbox Marketing.',
+                'a00_number' => $revision->project->part_number,
+                'url' => route('marketing.cogm-inbox', absolute: false),
+            ];
+            $recipients->each->notify(new CostingGroupChanged($payload));
+        }
+
+        $message = $label.' berhasil diunggah dan disimpan pada riwayat project.';
+        if ($submission) $message .= ' Inbox Marketing dan notifikasi PIC Marketing telah diperbarui.';
+        return back()->with('success', $message);
     }
 
     public function destroyGroup(Request $request, TrackingDocumentFileService $fileService)
@@ -306,17 +418,23 @@ class ProjectGroupController extends Controller
         });
 
         $groups = $children
-            ->groupBy(fn ($item) => $this->groupKey($item->business_category, $item->customer, $item->model)
-                .'|assy:'.$this->normalizePartNumber($item->part_number))
+            ->groupBy(fn ($item) => $item->a00_form_id
+                ? 'a00:'.$item->a00_form_id
+                : $this->groupKey($item->business_category, $item->customer, $item->model)
+                    .'|assy:'.$this->normalizePartNumber($item->part_number))
             ->map(function (Collection $items) {
                 $first = $items->first();
+                $groupedByA00 = !empty($first->a00_form_id);
 
                 return (object) [
-                    'key' => $this->groupKey($first->business_category, $first->customer, $first->model)
-                        .'|assy:'.$this->normalizePartNumber($first->part_number),
+                    'key' => $groupedByA00
+                        ? 'a00:'.$first->a00_form_id
+                        : $this->groupKey($first->business_category, $first->customer, $first->model)
+                            .'|assy:'.$this->normalizePartNumber($first->part_number),
+                    'grouped_by_a00' => $groupedByA00,
                     'business_category' => $first->business_category,
                     'customer' => $first->customer,
-                    'model' => $first->model,
+                    'model' => $this->joinUnique($items->pluck('model')),
                     'project_name' => $this->joinUnique($items->pluck('part_name')),
                     'assy_numbers' => $this->joinUnique($items->pluck('part_number')),
                     'pic_engineering' => $this->joinUnique($items->pluck('pic_engineering')),

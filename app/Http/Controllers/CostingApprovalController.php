@@ -11,6 +11,7 @@ use App\Models\ProjectA00Item;
 use App\Models\CostingGroupVersion;
 use App\Services\Costing\CostingGroupService;
 use Illuminate\Http\Request;
+use App\Support\BusinessCategoryContext;
 use Illuminate\Support\Facades\DB;
 
 class CostingApprovalController extends Controller
@@ -173,7 +174,7 @@ class CostingApprovalController extends Controller
         $this->authorizeRole($request, ['admin', 'admin_costing', 'marketing', 'coordinator_costing']);
         $search = trim((string) $request->query('search'));
 
-        $submissions = CogmSubmission::with(['revision.project.product'])
+        $submissions = CogmSubmission::with(['revision.project.product','revision.latestCostingRevision'])
             ->when(
                 (string) $request->user()->role === 'marketing',
                 fn ($query) => $query->whereRaw('LOWER(TRIM(pic_marketing)) = ?', [
@@ -189,8 +190,9 @@ class CostingApprovalController extends Controller
                         ->orWhere('part_number', 'like', "%{$search}%")
                         ->orWhere('part_name', 'like', "%{$search}%"));
             }))
-            ->orderByDesc('submitted_at')
-            ->paginate(15)->withQueryString();
+            ->orderByRaw('COALESCE(last_updated_at, submitted_at) DESC');
+        BusinessCategoryContext::apply($submissions, 'revision.project');
+        $submissions=$submissions->paginate(15)->withQueryString();
 
         $name=mb_strtolower(trim((string)$request->user()->name));
         $groupSubmissions=CostingGroupVersion::with(['group.a00Form','group.activeItems.a00Item','group.activeItems.project'])
@@ -211,7 +213,12 @@ class CostingApprovalController extends Controller
                         ->where('model','like',"%{$search}%")
                         ->orWhere('part_number','like',"%{$search}%")
                         ->orWhere('part_name','like',"%{$search}%")))))
-            ->latest('submitted_at')->get();
+            ->latest('submitted_at');
+        if(BusinessCategoryContext::selected()){
+            $categoryCode=BusinessCategoryContext::selected()?->code;
+            $groupSubmissions->whereHas('group.activeItems.project.product',fn($product)=>$product->where('code',$categoryCode));
+        }
+        $groupSubmissions=$groupSubmissions->get();
 
         return view('reports.marketing-cogm-inbox', compact('submissions','groupSubmissions','search'));
     }

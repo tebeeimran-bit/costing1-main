@@ -49,6 +49,8 @@ class DocumentRevision extends Model
         'umh_file_path',
         'umh_update_count',
         'umh_updated_at',
+        'new_part_request_exported_at',
+        'new_part_request_exported_by_id',
         'costing_edit_original_name',
         'costing_edit_file_path',
         'costing_edit_uploaded_at',
@@ -67,6 +69,7 @@ class DocumentRevision extends Model
         'a05_received_date' => 'date',
         'partlist_updated_at' => 'datetime',
         'umh_updated_at' => 'datetime',
+        'new_part_request_exported_at' => 'datetime',
         'costing_edit_uploaded_at' => 'datetime',
         'cogm_import_uploaded_at' => 'datetime',
     ];
@@ -112,6 +115,13 @@ class DocumentRevision extends Model
     }
 
     public function workflowTasks(){return $this->hasMany(ProjectWorkflowTask::class,'document_revision_id');}
+
+    public function latestCostingRevision()
+    {
+        return $this->hasOne(ProjectDocumentRevision::class, 'document_revision_id')
+            ->whereIn('revision_type', ['price', 'partlist', 'umh'])
+            ->latestOfMany();
+    }
 
     public function getVersionLabelAttribute(): string
     {

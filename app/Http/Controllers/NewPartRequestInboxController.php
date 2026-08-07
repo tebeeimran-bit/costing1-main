@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\DocumentRevision;
+use App\Models\Customer;
 use App\Services\TrackingDocument\TrackingDocumentUnpricedPartService;
 use Illuminate\Http\Request;
+use App\Support\BusinessCategoryContext;
 
 class NewPartRequestInboxController extends Controller
 {
@@ -37,9 +39,16 @@ class NewPartRequestInboxController extends Controller
                     ->whereIn('resolution_source', ['new_part_request_import', 'realtime_manual_input', 'realtime_db_lookup']),
             ])
             ->withMax('unpricedParts', 'updated_at')
-            ->whereHas('unpricedParts')
+            ->where(function ($query) {
+                $query->whereHas('unpricedParts')->orWhereNotNull('new_part_request_exported_at');
+            })
             ->when($status === 'active', fn ($query) => $query
-                ->whereHas('unpricedParts', fn ($part) => $part->whereNull('resolved_at')))
+                ->where(function ($active) {
+                    $active->whereHas('unpricedParts', fn ($part) => $part->whereNull('resolved_at'))
+                        ->orWhere(function ($exported) {
+                            $exported->whereNotNull('new_part_request_exported_at')->whereDoesntHave('unpricedParts');
+                        });
+                }))
             ->when($status === 'history', fn ($query) => $query
                 ->whereDoesntHave('unpricedParts', fn ($part) => $part->whereNull('resolved_at'))
                 ->whereHas('unpricedParts', fn ($part) => $part->whereNotNull('resolved_at')))
@@ -60,16 +69,21 @@ class NewPartRequestInboxController extends Controller
                     });
                 });
             })
-            ->orderByDesc('updated_at')
-            ->paginate(15)
+            ->orderByDesc('updated_at');
+        BusinessCategoryContext::apply($projects);
+        $projects=$projects->paginate(15)
             ->withQueryString();
 
-        $totalOpenParts = (int) DocumentRevision::query()
+        $totalOpenPartsQuery = DocumentRevision::query()
             ->join('unpriced_parts', 'unpriced_parts.document_revision_id', '=', 'document_revisions.id')
-            ->whereNull('unpriced_parts.resolved_at')
-            ->count('unpriced_parts.id');
+            ->whereNull('unpriced_parts.resolved_at');
+        BusinessCategoryContext::apply($totalOpenPartsQuery);
+        $totalOpenParts=(int)$totalOpenPartsQuery->count('unpriced_parts.id');
 
-        return view('new-part-request.inbox', compact('projects', 'search', 'status', 'totalOpenParts'));
+        $customerCodes = Customer::query()->get(['name','code'])
+            ->mapWithKeys(fn ($customer) => [mb_strtolower(trim((string) $customer->name)) => $customer->code]);
+
+        return view('new-part-request.inbox', compact('projects', 'search', 'status', 'totalOpenParts', 'customerCodes'));
     }
 
     public function submit(

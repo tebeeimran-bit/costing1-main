@@ -3,9 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\CogmSubmission;
+use App\Models\Customer;
 use App\Models\DocumentProject;
 use App\Models\DocumentRevision;
 use App\Models\UnpricedPart;
+use App\Models\ProjectDocumentRevision;
+use App\Models\ProjectWorkflowTask;
+use App\Models\User;
+use App\Notifications\CostingGroupChanged;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -258,14 +263,33 @@ class TrackingDocumentController extends Controller
     public function exportNewPartRequest(DocumentRevision $revision)
     {
         $revision->load(['project.a00Form', 'project.revisions', 'project.product']);
-        $costing = \App\Models\CostingData::with('customer')->where('tracking_revision_id', $revision->id)->first();
+        $costing = \App\Models\CostingData::with(['customer', 'materialBreakdowns'])->where('tracking_revision_id', $revision->id)->first();
         $editedMaterialRows = $this->newPartRowsFromCostingEdit($revision);
+        if ($editedMaterialRows === null && $costing) {
+            $editedMaterialRows = $costing->materialBreakdowns
+                ->filter(fn ($row) => $row->amount1 === null || (float) $row->amount1 <= 0)
+                ->map(fn ($row) => [
+                    'item_code' => trim((string) $row->part_no),
+                    'id_code' => trim((string) $row->id_code),
+                    'description' => trim((string) $row->part_name),
+                ])
+                ->filter(fn ($row) => $row['item_code'] !== '')
+                ->values()->all();
+        }
         if ($editedMaterialRows !== null) {
             $this->syncUnpricedPartsFromCostingEdit($revision, $costing, $editedMaterialRows);
+            if ($editedMaterialRows !== []) $revision->touch();
         }
+        $revision->update([
+            'new_part_request_exported_at' => now(),
+            'new_part_request_exported_by_id' => auth()->id(),
+        ]);
         $rows = UnpricedPart::where('document_revision_id', $revision->id)->whereNull('resolved_at')->orderBy('part_number')->get();
-        $customer = $costing?->customer;
         $project = $revision->project;
+        $customer = $costing?->customer;
+        if (!$customer && $project?->customer) {
+            $customer = Customer::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim((string) $project->customer))])->first();
+        }
         $customerCode = strtoupper(trim((string) ($customer?->code ?: $project?->customer ?: 'CUSTOMER')));
         $customerName = (string) ($customer?->name ?: $project?->customer ?: '');
         $sop = $project?->a00Form?->sop_mp_date?->format('d/m/Y') ?: 'TBA';
@@ -288,13 +312,21 @@ class TrackingDocumentController extends Controller
             foreach ($editedMaterialRows as $index => $row) {
                 $line = 12 + $index;
                 $sheet->setCellValue("A{$line}", $row['id_code']);
+                $sheet->setCellValue("B{$line}", null);
+                $sheet->setCellValue("C{$line}", null);
                 $sheet->setCellValue("D{$line}", $row['item_code']);
                 $sheet->setCellValue("E{$line}", $row['description']);
+                $sheet->setCellValue("F{$line}", null);
+                $sheet->setCellValue("L{$line}", null);
+                $sheet->setCellValue("M{$line}", null);
             }
         } else {
             foreach ($rows as $index => $row) {
                 $line = 12 + $index;
-                $values = [$row->id_code ?? '', $row->part_number, $row->notes ?? '', '', $row->part_name, $row->manual_price ?? $row->detected_price ?? 0, '', '', '', '', '', 0, 1];
+                // Keep the exported workbook aligned with the agreed template:
+                // A = ID code, B-C = blank, D = customer part number,
+                // E = description. Price, Add Cost, and Qty are user inputs.
+                $values = [$row->id_code ?? '', '', '', $row->part_number, $row->part_name, '', '', '', '', '', '', '', ''];
                 foreach ($values as $column => $value) {
                     $sheet->setCellValue(Coordinate::stringFromColumnIndex($column + 1) . $line, $value);
                 }
@@ -304,7 +336,43 @@ class TrackingDocumentController extends Controller
         return response()->streamDownload(function () use ($spreadsheet) { (new Xlsx($spreadsheet))->save('php://output'); }, $filename, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
-    public function importNewPartRequest(Request $request, DocumentRevision $revision)
+    public function syncNewPartRequestRows(Request $request, DocumentRevision $revision)
+    {
+        $data = $request->validate([
+            'materials' => ['required', 'array', 'max:10000'],
+            'materials.*.part_no' => ['nullable', 'string', 'max:255'],
+            'materials.*.id_code' => ['nullable', 'string', 'max:255'],
+            'materials.*.part_name' => ['nullable', 'string', 'max:500'],
+            'materials.*.amount1' => ['nullable'],
+        ]);
+
+        $costing = \App\Models\CostingData::where('tracking_revision_id', $revision->id)->latest('id')->first();
+        $rows = collect($data['materials'])
+            ->filter(function ($row) {
+                $partNumber = trim((string) ($row['part_no'] ?? ''));
+                $price = $this->newPartRequestNumber($row['amount1'] ?? null);
+                return $partNumber !== '' && ($price === null || $price <= 0);
+            })
+            ->map(fn ($row) => [
+                'item_code' => trim((string) ($row['part_no'] ?? '')),
+                'id_code' => trim((string) ($row['id_code'] ?? '')),
+                'description' => trim((string) ($row['part_name'] ?? '')),
+            ])->values()->all();
+
+        $this->syncUnpricedPartsFromCostingEdit($revision, $costing, $rows);
+        $revision->update([
+            'new_part_request_exported_at' => now(),
+            'new_part_request_exported_by_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'count' => count($rows),
+            'message' => count($rows).' part tanpa harga berhasil dimasukkan ke Inbox New Part Request.',
+        ]);
+    }
+
+    public function importNewPartRequest(Request $request, DocumentRevision $revision, TrackingDocumentUnpricedPartService $unpricedPartService)
     {
         $validated = $request->validate([
             'new_part_request_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:10240'],
@@ -319,12 +387,13 @@ class TrackingDocumentController extends Controller
             $notFound = [];
             $emptyStreak = 0;
 
-            DB::transaction(function () use ($sheet, $revision, &$updated, &$notFound, &$emptyStreak) {
+            DB::transaction(function () use ($sheet, $revision, $request, &$updated, &$notFound, &$emptyStreak) {
                 $highestRow = max(12, (int) $sheet->getHighestDataRow());
                 for ($row = 12; $row <= $highestRow; $row++) {
                     $idCode = trim((string) $sheet->getCell("A{$row}")->getFormattedValue());
                     $partNumber = trim((string) $sheet->getCell("D{$row}")->getFormattedValue());
-                    if ($partNumber === '' && $idCode === '') {
+                    $usableIdCode = !in_array($idCode, ['', '-'], true) ? $idCode : '';
+                    if ($partNumber === '' && $usableIdCode === '') {
                         $emptyStreak++;
                         if ($emptyStreak >= 20) break;
                         continue;
@@ -333,24 +402,24 @@ class TrackingDocumentController extends Controller
 
                     $item = UnpricedPart::where('document_revision_id', $revision->id)
                         ->whereNull('resolved_at')
-                        ->where(function ($query) use ($partNumber, $idCode) {
+                        ->where(function ($query) use ($partNumber, $usableIdCode) {
                             if ($partNumber !== '') {
                                 $query->whereRaw('LOWER(part_number) = ?', [mb_strtolower($partNumber)]);
                             }
-                            if ($idCode !== '') {
+                            if ($usableIdCode !== '') {
                                 $method = $partNumber !== '' ? 'orWhereRaw' : 'whereRaw';
-                                $query->{$method}('LOWER(id_code) = ?', [mb_strtolower($idCode)]);
+                                $query->{$method}('LOWER(id_code) = ?', [mb_strtolower($usableIdCode)]);
                             }
                         })
                         ->first();
 
                     if (!$item) {
-                        $notFound[] = $partNumber !== '' ? $partNumber : $idCode;
+                        $notFound[] = $partNumber !== '' ? $partNumber : $usableIdCode;
                         continue;
                     }
 
                     $item->update([
-                        'id_code' => $idCode !== '' ? $idCode : $item->id_code,
+                        'id_code' => $usableIdCode !== '' ? $usableIdCode : $item->id_code,
                         'detected_price' => $this->newPartRequestNumber($sheet->getCell("F{$row}")->getFormattedValue()),
                         'purchase_unit' => trim((string) $sheet->getCell("G{$row}")->getFormattedValue()) ?: null,
                         'currency' => strtoupper(trim((string) $sheet->getCell("H{$row}")->getFormattedValue())) ?: null,
@@ -366,10 +435,58 @@ class TrackingDocumentController extends Controller
                 }
             });
 
+            $submitResult = $unpricedPartService->submitImportedPrices($revision, (int) $request->user()->id);
+            $uploadedFile = $validated['new_part_request_file'];
+            $storedPath = $uploadedFile->store('workflow/costing-revisions/'.$revision->id.'/price');
+            $costingTask = $revision->workflowTasks()->where('stage', ProjectWorkflowTask::STAGE_COSTING)->latest('id')->first();
+            ProjectDocumentRevision::create([
+                'document_project_id' => $revision->document_project_id,
+                'document_revision_id' => $revision->id,
+                'workflow_task_id' => $costingTask?->id,
+                'revision_type' => 'price',
+                'original_name' => $uploadedFile->getClientOriginalName(),
+                'file_path' => $storedPath,
+                'description' => $submitResult['submitted'].' harga kosong diperbarui melalui Inbox New Part Request.',
+                'uploaded_by' => $request->user()->id,
+            ]);
+
+            $submission = CogmSubmission::where('document_revision_id', $revision->id)->latest('submitted_at')->first();
+            if ($submission) {
+                $submission->update([
+                    'update_count' => ((int) $submission->update_count) + 1,
+                    'last_updated_by' => $request->user()->name,
+                    'last_updated_at' => now(),
+                ]);
+            }
+
+            $revision->loadMissing('project');
+            $projectNumber = $revision->project?->part_number ?: 'Project';
+            $costingRecipients = User::whereIn('role', ['admin', 'admin_costing', 'coordinator_costing', 'editor'])->get();
+            $costingPayload = [
+                'event' => 'price_updated', 'title' => 'Update Harga New Part Request',
+                'message' => $projectNumber.' telah menerima update harga untuk '.$submitResult['submitted'].' part.',
+                'a00_number' => $projectNumber, 'url' => route('costing.inbox', absolute: false),
+            ];
+            $costingRecipients->each->notify(new CostingGroupChanged($costingPayload));
+
+            if ($submission) {
+                $picName = mb_strtolower(trim((string) $submission->pic_marketing));
+                $marketingRecipients = User::where('role', 'marketing')
+                    ->when($picName !== '', fn ($query) => $query->whereRaw('LOWER(TRIM(name)) = ?', [$picName]))
+                    ->get();
+                $marketingPayload = [
+                    'event' => 'price_updated', 'title' => 'Update Harga Form Costing',
+                    'message' => 'Harga '.$projectNumber.' telah diperbarui melalui New Part Request.',
+                    'a00_number' => $projectNumber, 'url' => route('marketing.cogm-inbox', absolute: false),
+                ];
+                $marketingRecipients->each->notify(new CostingGroupChanged($marketingPayload));
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => "{$updated} part berhasil diperbarui dari New Part Request.",
+                'message' => $submitResult['message'].($submission ? ' Inbox Marketing juga telah diperbarui.' : ''),
                 'updated' => $updated,
+                'submitted' => $submitResult['submitted'],
                 'not_found' => $notFound,
             ]);
         } catch (\Throwable $exception) {

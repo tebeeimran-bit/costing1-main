@@ -57,6 +57,21 @@
             flex-shrink: 0;
         }
 
+        .business-category-context {
+            display: flex;
+            align-items: center;
+            gap: .45rem;
+            height: 38px;
+            padding: 0 .55rem 0 .7rem;
+            border: 1px solid rgba(255,255,255,.25);
+            border-radius: 10px;
+            background: rgba(255,255,255,.13);
+            color: #fff;
+        }
+
+        .business-category-context label { font-size: .68rem; font-weight: 800; white-space: nowrap; }
+        .business-category-context select { max-width: 205px; border: 0; outline: 0; background: #fff; color: #173765; border-radius: 6px; padding: .35rem .45rem; font-size: .7rem; font-weight: 750; cursor: pointer; }
+
         @media (max-width: 920px) {
             .project-selection-button span {
                 display: none;
@@ -85,6 +100,17 @@
 
         .sidebar-nav {
             padding-bottom: 7rem;
+        }
+
+        .demo-mode-banner {
+            background: #fff7ed;
+            border-bottom: 1px solid #fed7aa;
+            color: #9a3412;
+            padding: .45rem 1rem;
+            text-align: center;
+            font-size: .76rem;
+            font-weight: 800;
+            letter-spacing: .02em;
         }
     </style>
 </head>
@@ -558,6 +584,12 @@
 
         <!-- Main Content Wrapper -->
         <div class="main-wrapper">
+            @if (config('deployment.mode') === 'demo')
+                <div class="demo-mode-banner" role="status">
+                    MODE DEMO (SQLite) — data di komputer ini terpisah dari data production VPS.
+                </div>
+            @endif
+
             <!-- Header -->
             <header class="header">
                 <div class="header-content">
@@ -577,6 +609,16 @@
                     </div>
                     <div class="header-right">
                         @yield('header-filters')
+                        <form class="business-category-context" method="POST" action="{{ route('business-category-context.update', absolute:false) }}">
+                            @csrf
+                            <label for="globalBusinessCategory">Business Category</label>
+                            <select id="globalBusinessCategory" name="business_category_id" onchange="this.form.submit()" aria-label="Business Category aktif">
+                                <option value="">Semua Kategori</option>
+                                @foreach($globalBusinessCategories as $globalCategory)
+                                    <option value="{{ $globalCategory->id }}" @selected($activeBusinessCategory?->id === $globalCategory->id)>{{ $globalCategory->code }} — {{ $globalCategory->name }}</option>
+                                @endforeach
+                            </select>
+                        </form>
                         <a href="{{ route('project-selection', absolute: false) }}" class="project-selection-button" title="Kembali ke Pilih Menu Utama">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15">
                                 <rect x="3" y="3" width="7" height="7" rx="1.5" />

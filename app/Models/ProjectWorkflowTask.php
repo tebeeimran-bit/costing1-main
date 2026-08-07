@@ -20,4 +20,5 @@ class ProjectWorkflowTask extends Model
     public function revision(){return $this->belongsTo(DocumentRevision::class,'document_revision_id');}
     public function assignedUser(){return $this->belongsTo(User::class,'assigned_user_id');}
     public function completedBy(){return $this->belongsTo(User::class,'completed_by_id');}
+    public function drawingRegistration(){return $this->hasOne(DocumentControlRegistration::class,'workflow_task_id');}
 }

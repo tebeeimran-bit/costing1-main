@@ -171,6 +171,11 @@
                     @php
                         $revision = $submission->revision;
                         $project = $revision?->project;
+                        $latestCostingRevision = $revision?->latestCostingRevision;
+                        $costingUpdateLabel = match($latestCostingRevision?->revision_type) {
+                            'price' => 'Update Harga', 'partlist' => 'Update Partlist',
+                            'umh' => 'Update UMH', default => 'COGM diperbarui',
+                        };
                     @endphp
                     <tr data-href="{{ route('marketing.cogm-costing.show',$submission,absolute:false) }}" tabindex="0" aria-label="Lihat Form Costing {{ $project?->part_number }}">
                         <td>
@@ -184,7 +189,7 @@
                         <td style="text-align:right;"><span class="inbox-cogm">Rp {{ number_format((float) $submission->cogm_value, 0, ',', '.') }}</span></td>
                         <td>{{ $submission->submitted_by ?? '-' }}</td>
                         <td>{{ $submission->submitted_at ? $submission->submitted_at->format('d/m/Y H:i') : '-' }}</td>
-                        <td><span class="inbox-pill">Submitted to Marketing</span>@if($submission->last_updated_at)<div class="inbox-update">COGM diperbarui ({{ $submission->update_count }}x)<small>{{ $submission->last_updated_by }} · {{ $submission->last_updated_at->format('d/m/Y H:i') }}</small></div>@endif</td>
+                        <td><span class="inbox-pill">Submitted to Marketing</span>@if($submission->last_updated_at)<div class="inbox-update">{{ $costingUpdateLabel }} ({{ $submission->update_count }}x)<small>{{ $submission->last_updated_by }} · {{ $submission->last_updated_at->format('d/m/Y H:i') }}</small>@if($latestCostingRevision?->description)<small>{{ $latestCostingRevision->description }}</small>@endif</div>@endif</td>
                         <td style="text-align:right;">
                             <div class="inbox-actions">
                                 @if($revision?->costing_edit_file_path)

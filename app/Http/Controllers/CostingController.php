@@ -1490,7 +1490,10 @@ class CostingController extends Controller
                     $periods = $periods->push($trackingRevision->period)->filter()->unique()->sortDesc()->values();
                 }
                 $openUnpricedParts = UnpricedPart::where('document_revision_id', $trackingRevision->id)
-                    ->whereNull('resolved_at')
+                    ->where(function ($query) {
+                        $query->whereNull('resolved_at')
+                            ->orWhereNotNull('new_part_price_imported_at');
+                    })
                     ->orderBy('part_number')
                     ->get()
                     ->unique('part_number');
