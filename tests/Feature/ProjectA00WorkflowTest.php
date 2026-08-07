@@ -105,6 +105,28 @@ class ProjectA00WorkflowTest extends TestCase
             ->assertSee('name="due_umh" value="'.$defaultDate.'"', false);
     }
 
+    public function test_manual_breakdown_creates_project_and_active_breakdown_task(): void
+    {
+        $user=User::factory()->create(['role'=>'admin']);
+        $customer=Customer::create(['code'=>'MAN-BD','name'=>'Manual Breakdown Customer']);
+        $category=BusinessCategory::create(['code'=>'BD','name'=>'Breakdown Category']);
+
+        $this->actingAs($user)->get(route('breakdown.inbox'))
+            ->assertOk()->assertSee('+ Breakdown')->assertSee('Tambah Breakdown Manual');
+        $this->actingAs($user)->post(route('breakdown.manual.store'),[
+            'business_category_id'=>$category->id,'customer_id'=>$customer->id,
+            'model'=>'KBD1','assy_name'=>'MANUAL ASSY','assy_number'=>'BD-001',
+            'received_date'=>'2026-08-07','pic_engineering'=>'Engineer Manual','pic_marketing'=>'Marketing Manual',
+            'notes'=>'Dibuat dari Inbox Breakdown',
+        ])->assertRedirect(route('breakdown.inbox'))->assertSessionHas('success');
+
+        $this->assertDatabaseHas('document_projects',['customer'=>$customer->name,'model'=>'KBD1','part_number'=>'BD-001']);
+        $this->assertDatabaseHas('document_revisions',['a00'=>'tidak ada','pic_engineering'=>'Engineer Manual','pic_marketing'=>'Marketing Manual']);
+        $this->assertDatabaseMissing('project_workflow_tasks',['stage'=>'drawing']);
+        $this->assertDatabaseHas('project_workflow_tasks',['stage'=>'breakdown','status'=>'pending']);
+        $this->actingAs($user)->get(route('project'))->assertOk()->assertSee('BD-001')->assertSee('Sedang Breakdown');
+    }
+
     public function test_publishing_a00_creates_project_and_v0_revision(): void
     {
         $user=User::factory()->create(['role'=>'admin']);

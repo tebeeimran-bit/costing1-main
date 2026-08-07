@@ -306,12 +306,14 @@ class ProjectGroupController extends Controller
         });
 
         $groups = $children
-            ->groupBy(fn ($item) => $this->groupKey($item->business_category, $item->customer, $item->model))
+            ->groupBy(fn ($item) => $this->groupKey($item->business_category, $item->customer, $item->model)
+                .'|assy:'.$this->normalizePartNumber($item->part_number))
             ->map(function (Collection $items) {
                 $first = $items->first();
 
                 return (object) [
-                    'key' => $this->groupKey($first->business_category, $first->customer, $first->model),
+                    'key' => $this->groupKey($first->business_category, $first->customer, $first->model)
+                        .'|assy:'.$this->normalizePartNumber($first->part_number),
                     'business_category' => $first->business_category,
                     'customer' => $first->customer,
                     'model' => $first->model,
@@ -390,7 +392,8 @@ class ProjectGroupController extends Controller
         $drawingTask = $workflowTasks->get('drawing');
         $breakdownTask = $workflowTasks->get('breakdown');
         $costingTask = $workflowTasks->get('costing');
-        $hasA00 = $revision->a00 === 'ada' || $revision->a00_received_date || $revision->status === DocumentRevision::STATUS_A00_ISSUED;
+        $isManualBreakdown = data_get($breakdownTask?->metadata, 'source') === 'manual_breakdown';
+        $hasA00 = !$isManualBreakdown && (in_array($revision->a00, ['ada','tidak ada'], true) || $revision->a00_received_date || $revision->status === DocumentRevision::STATUS_A00_ISSUED);
         $hasDrawing = $drawingTask
             ? $drawingTask->status === 'completed'
             : (bool) $drawing;
@@ -437,11 +440,17 @@ class ProjectGroupController extends Controller
         $lastDone = collect($definitions)->search(fn ($step) => !$step['done']);
         $activeIndex = $lastDone === false ? null : $lastDone;
 
-        return collect($definitions)->map(function ($step, $index) use ($activeIndex) {
+        return collect($definitions)->map(function ($step, $index) use ($activeIndex, $isManualBreakdown) {
             $state = $step['done'] ? 'done' : (($step['active'] ?? false) || $index === $activeIndex ? 'active' : 'pending');
+            if ($isManualBreakdown) {
+                if (in_array($step['key'], ['a00','drawing'], true)) $state = 'pending';
+                if ($step['key'] === 'breakdown' && !$step['done']) $state = 'active';
+            }
             return [
                 'key'=>$step['key'],'label'=>$step['label'],'state'=>$state,
-                'status'=>$state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai'),
+                'status'=>$isManualBreakdown && in_array($step['key'],['a00','drawing'],true)
+                    ? 'Belum diproses'
+                    : ($state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai')),
                 'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->locale('id')->translatedFormat('d F Y') : null,
                 'time'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->format('H:i') : null,
                 'pic'=>$step['pic'] ?: '-',

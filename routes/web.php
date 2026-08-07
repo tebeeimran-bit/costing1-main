@@ -61,6 +61,7 @@ Route::middleware('auth')->group(function () {
     });
     Route::middleware('permission:inbox_breakdown')->prefix('breakdown')->name('breakdown.')->group(function () {
         Route::get('/inbox', [BreakdownInboxController::class, 'index'])->name('inbox');
+        Route::post('/manual', [BreakdownInboxController::class, 'storeManual'])->name('manual.store');
         Route::post('/tasks/{task}/complete', [BreakdownInboxController::class, 'complete'])->name('tasks.complete');
         Route::post('/tasks/{task}/start-costing', [BreakdownInboxController::class, 'startCosting'])->name('tasks.start-costing');
     });

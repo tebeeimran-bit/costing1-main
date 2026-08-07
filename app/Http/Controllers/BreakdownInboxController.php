@@ -2,9 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BusinessCategory;
+use App\Models\Customer;
+use App\Models\DocumentProject;
+use App\Models\DocumentRevision;
+use App\Models\Product;
+use App\Models\Pic;
 use App\Models\ProjectWorkflowTask;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class BreakdownInboxController extends Controller
 {
@@ -32,7 +39,55 @@ class BreakdownInboxController extends Controller
             ->oldest('available_at')->oldest('id')
             ->paginate(20)->withQueryString();
 
-        return view('breakdown.inbox', compact('tasks', 'search', 'filter'));
+        $customers=Customer::orderBy('name')->get();
+        $categories=BusinessCategory::orderBy('code')->orderBy('name')->get();
+        $picsEngineering=Pic::where('type','engineering')->orderBy('name')->get();
+        $picsMarketing=Pic::where('type','marketing')->orderBy('name')->get();
+        return view('breakdown.inbox', compact('tasks', 'search', 'filter', 'customers', 'categories', 'picsEngineering', 'picsMarketing'));
+    }
+
+    public function storeManual(Request $request)
+    {
+        $data=$request->validate([
+            'business_category_id'=>['required','exists:business_categories,id'],
+            'customer_id'=>['required','exists:customers,id'],
+            'model'=>['required','string','max:255'],'assy_name'=>['required','string','max:255'],
+            'assy_number'=>['required','string','max:255'],'received_date'=>['required','date'],
+            'pic_engineering'=>['required','string','max:255'],'pic_marketing'=>['nullable','string','max:255'],
+            'notes'=>['nullable','string','max:1000'],
+        ]);
+        $category=BusinessCategory::findOrFail($data['business_category_id']);
+        $customer=Customer::findOrFail($data['customer_id']);
+
+        DB::transaction(function() use($data,$category,$customer,$request){
+            $product=Product::firstOrCreate(
+                ['code'=>$category->code?:strtoupper(Str::slug($category->name,'-'))],
+                ['name'=>$category->name,'line'=>'']
+            );
+            $projectKey=hash('sha256',mb_strtolower(implode('|',[
+                trim($customer->name),trim($data['model']),trim($data['assy_number']),trim($data['assy_name']),
+            ])));
+            $project=DocumentProject::firstOrCreate(['project_key'=>$projectKey],[
+                'product_id'=>$product->id,'customer'=>$customer->name,'model'=>$data['model'],
+                'part_number'=>$data['assy_number'],'part_name'=>$data['assy_name'],
+            ]);
+            $version=((int)$project->revisions()->max('version_number'))+1;
+            $revision=DocumentRevision::create([
+                'document_project_id'=>$project->id,'version_number'=>$version,'received_date'=>$data['received_date'],
+                'pic_engineering'=>$data['pic_engineering'],'pic_marketing'=>$data['pic_marketing']??null,
+                'status'=>DocumentRevision::STATUS_PENDING_FORM_INPUT,'a00'=>'tidak ada',
+                'partlist_original_name'=>'','partlist_file_path'=>'','umh_original_name'=>'','umh_file_path'=>'',
+                'notes'=>$data['notes']??null,'change_remark'=>'Breakdown dibuat manual tanpa proses A00 dan distribusi drawing.',
+            ]);
+            ProjectWorkflowTask::create([
+                'document_project_id'=>$project->id,'document_revision_id'=>$revision->id,
+                'stage'=>ProjectWorkflowTask::STAGE_BREAKDOWN,'assigned_role'=>'admin_costing',
+                'status'=>ProjectWorkflowTask::STATUS_PENDING,'available_at'=>now(),
+                'metadata'=>['source'=>'manual_breakdown','without_a00'=>true],
+            ]);
+        });
+
+        return redirect()->route('breakdown.inbox')->with('success','Breakdown manual berhasil dibuat dan sudah masuk ke halaman Project.');
     }
 
     public function complete(Request $request, ProjectWorkflowTask $task)
