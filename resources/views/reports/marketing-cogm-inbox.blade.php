@@ -18,6 +18,7 @@
         box-shadow: 0 12px 30px rgba(15, 23, 42, 0.045);
         overflow: hidden;
     }
+    .marketing-search-bar{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-bottom:12px}.marketing-search{display:flex;gap:7px}.marketing-search input{width:290px;height:34px;box-sizing:border-box;padding:0 10px;border:1px solid #cbd8ea;border-radius:7px;font-size:11px}.marketing-search-btn{display:inline-flex;min-height:32px;align-items:center;justify-content:center;padding:0 12px;border:0;border-radius:7px;background:#2864e8;color:#fff;text-decoration:none;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap}.marketing-search-btn.secondary{border:1px solid #b9c9df;background:#fff;color:#17458e}@media(max-width:700px){.marketing-search-bar,.marketing-search{align-items:stretch;flex-direction:column}.marketing-search input{width:100%}}
 
     .marketing-inbox-header {
         display: flex;
@@ -134,9 +135,18 @@
     }
 </style>
 
+<div class="marketing-search-bar"><form class="marketing-search" method="GET"><input name="search" value="{{ $search }}" placeholder="Cari customer, model, part, atau PIC..."><button class="marketing-search-btn">Cari</button>@if($search !== '')<a class="marketing-search-btn secondary" href="{{ route('marketing.cogm-inbox',absolute:false) }}">Reset</a>@endif</form></div>
 <div class="marketing-inbox-card">
+    @if($groupSubmissions->isNotEmpty())
+    <div class="marketing-inbox-header"><h3>Bulky COGM per A00</h3><span>{{ $groupSubmissions->count() }} submission group</span></div>
+    <div class="marketing-inbox-table-wrap"><table class="marketing-inbox-table"><thead><tr><th>A00</th><th>Item</th><th>PIC Marketing</th><th style="text-align:right">Total Extended COGM</th><th>Versi</th><th>Submitted At</th><th>Status</th><th style="text-align:right">Aksi</th></tr></thead><tbody>
+    @foreach($groupSubmissions as $version) @php $group=$version->group; @endphp
+    <tr><td><strong>{{ $group->a00Form?->document_number }}</strong><br><small>{{ $group->a00Form?->customer }}</small></td><td>{{ $version->items()->count() }} item<br><small>{{ $group->activeItems->pluck('a00Item.assy_number')->filter()->implode(', ') }}</small></td><td>{{ collect([$group->pic_marketing])->merge($group->activeItems->pluck('pic_marketing'))->filter()->unique()->implode(', ') ?: '-' }}</td><td style="text-align:right"><span class="inbox-cogm">{{ $version->total_extended_cogm!==null?'Rp '.number_format((float)$version->total_extended_cogm,0,',','.'):'-' }}</span></td><td>V{{ $version->version_number }}</td><td>{{ $version->submitted_at?->format('d/m/Y H:i') }}</td><td><span class="inbox-pill">Submitted to Marketing</span></td><td style="text-align:right"><a class="inbox-action download" href="{{ route('marketing.bulky-cogm.download',$version,absolute:false) }}">Download COGM</a></td></tr>
+    @endforeach
+    </tbody></table></div>
+    @endif
     <div class="marketing-inbox-header">
-        <h3>COGM Approved yang Dikirim ke Marketing</h3>
+        <h3>COGM Per Item / Legacy</h3>
         <span>{{ $submissions->total() }} submission</span>
     </div>
 

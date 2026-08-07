@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\BusinessCategory;
 use App\Models\Customer;
+use App\Models\CostingGroup;
+use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Models\DocumentControlRegistration;
 use App\Models\ProjectWorkflowTask;
@@ -128,11 +130,18 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseHas('document_revisions',['version_number'=>1,'status'=>DocumentRevision::STATUS_A00_ISSUED]);
         $this->assertDatabaseHas('document_revisions',['plant_id'=>$plant->id,'period'=>'2026-08','pic_engineering'=>'Engineer Test','pic_marketing'=>'Marketing Test']);
         $this->assertDatabaseHas('project_workflow_tasks',['stage'=>'drawing','assigned_role'=>'document_control','status'=>'pending']);
+        $this->assertDatabaseHas('costing_groups',['mode'=>'normal','status'=>'draft','pic_engineering'=>'Engineer Test','pic_marketing'=>'Marketing Test']);
+        $this->assertDatabaseHas('costing_group_items',['sequence'=>1,'status'=>'pending','quantity'=>810000]);
 
         $a00=\App\Models\ProjectA00Form::firstOrFail();
         $this->actingAs($user)->get(route('control-project.a00.show', $a00))
             ->assertOk()
-            ->assertSee('A00 - 0100-MKT-PROJECT-A00-VII-2026');
+            ->assertSee('Download PDF')
+            ->assertDontSee('Buat Snapshot Draft');
+        $pdfResponse=$this->actingAs($user)->get(route('control-project.a00.pdf',$a00));
+        $pdfResponse->assertOk()->assertHeader('content-type','application/pdf');
+        $this->assertStringStartsWith('%PDF-', (string)$pdfResponse->getContent());
+        $this->assertStringContainsString('attachment;',strtolower((string)$pdfResponse->headers->get('content-disposition')));
         $this->actingAs($user)->put(route('control-project.a00.update-operational',$a00),[
             'plant_id'=>$plant->id,'period'=>'2026-09',
             'pic_engineering'=>'Engineer Updated','pic_marketing'=>'Marketing Updated',
@@ -230,5 +239,107 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertSame('umh.pdf',$revision->umh_original_name);
         Storage::disk('local')->assertExists($revision->partlist_file_path);
         Storage::disk('local')->assertExists($revision->umh_file_path);
+    }
+
+    public function test_multi_item_a00_creates_bulky_group_and_incomplete_draft_snapshot(): void
+    {
+        $user=User::factory()->create(['role'=>'admin']);
+        $category=BusinessCategory::create(['code'=>'WHB','name'=>'Wiring Harness Bulky']);
+        $customer=Customer::create(['code'=>'BULK','name'=>'Bulk Customer']);
+        $plant=Plant::create(['code'=>'BULK','name'=>'Bulk Plant']);
+
+        $this->actingAs($user)->post(route('control-project.a00.store'),[
+            'business_category_id'=>$category->id,'customer_id'=>$customer->id,'plant_id'=>$plant->id,
+            'period'=>'2026-08','pic_engineering'=>'Engineer Bulky','pic_marketing'=>'Marketing Bulky',
+            'items'=>[
+                ['model'=>'M1','assy_name'=>'ASSY 1','assy_number'=>'B001','quantity'=>10,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year'],
+                ['model'=>'M2','assy_name'=>'ASSY 2','assy_number'=>'B002','quantity'=>null,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year'],
+            ],
+            'document_number'=>'BULKY/A00/001','document_date'=>'2026-08-07','revision'=>'00',
+            'from_department'=>'MKT','to_department'=>'TEAM PROJECT','issue_location'=>'Cikarang',
+        ])->assertRedirect();
+
+        $group=CostingGroup::with('items')->firstOrFail();
+        $this->assertSame(CostingGroup::MODE_BULKY,$group->mode);
+        $this->assertCount(2,$group->items);
+        $pdfA00=\App\Models\ProjectA00Form::with('items')->findOrFail($group->project_a00_form_id);
+        $a00PdfHtml=view('control-project.a00.pdf',['a00'=>$pdfA00,'logoData'=>null])->render();
+        $this->assertStringContainsString('Terlampir',$a00PdfHtml);
+        $this->assertStringContainsString('MASSPRO',$a00PdfHtml);
+        $this->assertStringContainsString('B001',$a00PdfHtml);
+        $this->assertStringContainsString('B002',$a00PdfHtml);
+        $bulkyPdf=$this->actingAs($user)->get(route('control-project.a00.pdf',$pdfA00));
+        $bulkyPdf->assertOk()->assertHeader('content-type','application/pdf');
+        $this->assertStringStartsWith('%PDF-',(string)$bulkyPdf->getContent());
+        $version=app(\App\Services\Costing\BulkyCogmSnapshotService::class)->create($group,'draft',$user->id);
+        $this->assertTrue($version->has_incomplete_price);
+        $this->assertTrue($version->has_incomplete_quantity);
+        $this->assertCount(2,$version->items);
+        $this->assertDatabaseHas('costing_group_events',['costing_group_id'=>$group->id,'event_type'=>'draft_generated']);
+        $recipient=User::factory()->create(['name'=>'Marketing Item Bulky','role'=>'marketing']);
+        $item=$group->items->first();
+        $this->actingAs($user)->patch(route('control-project.costing-group-items.pics',$item),[
+            'pic_engineering'=>null,'pic_marketing'=>'Marketing Item Bulky',
+        ])->assertRedirect();
+        $this->assertSame('Marketing Item Bulky',$item->fresh()->effectivePicMarketing());
+        $this->assertDatabaseHas('notifications',['notifiable_id'=>$recipient->id,'notifiable_type'=>User::class]);
+        $notification=$recipient->unreadNotifications()->firstOrFail();
+        $this->actingAs($recipient)->post(route('notifications.open',$notification))->assertRedirect(route('project',absolute:false));
+        $this->assertNotNull($notification->fresh()->read_at);
+        $this->actingAs($user)->post(route('control-project.costing-groups.items.add',$group),[
+            'model'=>'M3','assy_name'=>'ASSY 3','assy_number'=>'B003','quantity'=>30,
+            'quantity_uom'=>'Pcs','quantity_basis'=>'per Year','pic_marketing'=>'Marketing Item Bulky',
+            'reason'=>'Tambahan kebutuhan customer',
+        ])->assertRedirect();
+        $added=$group->items()->whereHas('a00Item',fn($query)=>$query->where('assy_number','B003'))->firstOrFail();
+        $this->assertDatabaseHas('project_workflow_tasks',['document_revision_id'=>$added->active_document_revision_id,'stage'=>'drawing','status'=>'pending']);
+        $this->assertDatabaseHas('costing_group_events',['costing_group_item_id'=>$added->id,'event_type'=>'item_added']);
+        $this->actingAs($user)->delete(route('control-project.costing-group-items.remove',$added),['reason'=>'Dibatalkan customer'])->assertRedirect();
+        $this->assertNotNull($added->fresh()->removed_at);
+        $this->assertDatabaseHas('costing_group_events',['costing_group_item_id'=>$added->id,'event_type'=>'item_removed','reason'=>'Dibatalkan customer']);
+        foreach($group->fresh()->activeItems()->with(['project','revision','a00Item'])->get() as $activeItem){
+            if($activeItem->quantity===null) $activeItem->a00Item->update(['quantity'=>20]);
+            $costing=CostingData::create(['product_id'=>$activeItem->project->product_id,'customer_id'=>$customer->id,'tracking_revision_id'=>$activeItem->revision->id,'period'=>'2026-08']);
+            $activeItem->revision->update(['status'=>DocumentRevision::STATUS_APPROVED_BY_COORDINATOR]);
+        }
+        app(\App\Services\Costing\CostingGroupService::class)->syncFromA00($group->a00Form,$user->id);
+        Storage::fake('local');
+        $this->actingAs($user)->post(route('control-project.costing-groups.final-file',$group),[
+            'final_file'=>UploadedFile::fake()->create('Bulky-Final.xlsx',20,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            'change_summary'=>'Final awal bulky',
+        ])->assertRedirect()->assertSessionHas('success');
+        $superseded=$group->versions()->where('type','final')->latest('version_number')->firstOrFail();
+        $this->actingAs($user)->post(route('control-project.costing-groups.final-file',$group),[
+            'final_file'=>UploadedFile::fake()->create('Bulky-Final-Updated.xlsx',20,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            'change_summary'=>'Final pengganti',
+        ])->assertRedirect()->assertSessionHas('success');
+        $this->assertSame('superseded',$superseded->fresh()->status);
+        $this->actingAs($user)->post(route('control-project.costing-groups.submit-final',$group))
+            ->assertRedirect()->assertSessionHas('success');
+        $finalVersion=$group->versions()->where('type','final')->where('status','submitted')->firstOrFail();
+        $this->assertSame('submitted',$finalVersion->status);
+        $this->assertSame($finalVersion->id,$group->fresh()->last_submitted_version_id);
+        $this->actingAs($user)->post(route('control-project.costing-groups.submit-final',$group))->assertStatus(422);
+        $this->actingAs($user)->get(route('marketing.cogm-inbox'))->assertOk()->assertSee('Bulky COGM per A00')->assertSee('BULKY/A00/001');
+        $this->actingAs($user)->get(route('marketing.cogm-inbox',['search'=>'BULKY/A00/001']))
+            ->assertOk()->assertSee('BULKY/A00/001')->assertSee('Reset');
+        $coordinator=User::factory()->create(['name'=>'Coordinator Bulky','role'=>'coordinator_costing']);
+        $this->actingAs($coordinator)->get(route('costing-groups.workspace',$group))->assertOk()->assertSee('Approve Group');
+        $this->actingAs($coordinator)->get(route('control-project.a00.show',$group->a00Form))->assertForbidden();
+        $this->actingAs($recipient)->get(route('marketing.bulky-cogm.download',$finalVersion))->assertOk();
+        $otherMarketing=User::factory()->create(['name'=>'Marketing Lain','role'=>'marketing']);
+        $this->actingAs($otherMarketing)->get(route('marketing.bulky-cogm.download',$finalVersion))->assertForbidden();
+        Storage::put($finalVersion->file_path,'tampered');
+        $this->actingAs($recipient)->get(route('marketing.bulky-cogm.download',$finalVersion))->assertStatus(409);
+        $this->actingAs($user)->get(route('costing-groups.workspace',$group))
+            ->assertOk()->assertSee('Bulky COGM')->assertSee('Marketing Item Bulky')->assertSee('Riwayat:')
+            ->assertSee('Terlampir')->assertSee('MASSPRO')->assertSee('Lampiran Item');
+        $a00=$group->a00Form;
+        $projectIds=$a00->items()->pluck('document_project_id')->all();
+        $this->actingAs($user)->delete(route('control-project.a00.destroy',$a00))
+            ->assertRedirect(route('control-project.a00.index'))
+            ->assertSessionHas('success');
+        $this->assertDatabaseMissing('project_a00_forms',['id'=>$a00->id]);
+        foreach($projectIds as $projectId) $this->assertDatabaseMissing('document_projects',['id'=>$projectId]);
     }
 }

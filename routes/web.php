@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CostingController;
+use App\Http\Controllers\CostingGroupController;
 use App\Http\Controllers\CostingApprovalController;
 use App\Http\Controllers\CostingAssistantController;
 use App\Http\Controllers\Database\DocumentRecapController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\ProjectGroupController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TrackingDocumentController;
 use App\Http\Controllers\NewPartRequestInboxController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TubesController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,15 +27,22 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // All app routes require authentication
 Route::middleware('auth')->group(function () {
+    Route::post('/notifications/{notification}/open',[NotificationController::class,'open'])->name('notifications.open');
+    Route::post('/notifications/read-all',[NotificationController::class,'markAllRead'])->name('notifications.read-all');
+    Route::patch('/costing-group-items/{item}/pics',[CostingGroupController::class,'updateItemPics'])->name('control-project.costing-group-items.pics');
     Route::middleware('permission:control_project')->prefix('control-project')->name('control-project.')->group(function(){
         Route::get('/a00',[ProjectA00Controller::class,'index'])->name('a00.index');
         Route::get('/a00/create',[ProjectA00Controller::class,'create'])->name('a00.create');
         Route::post('/a00',[ProjectA00Controller::class,'store'])->name('a00.store');
         Route::get('/a00/{a00}',[ProjectA00Controller::class,'show'])->name('a00.show');
+        Route::get('/a00/{a00}/pdf',[ProjectA00Controller::class,'downloadPdf'])->name('a00.pdf');
         Route::get('/a00/{a00}/edit',[ProjectA00Controller::class,'edit'])->name('a00.edit');
         Route::put('/a00/{a00}',[ProjectA00Controller::class,'update'])->name('a00.update');
+        Route::delete('/a00/{a00}',[ProjectA00Controller::class,'destroy'])->name('a00.destroy');
         Route::get('/a00/{a00}/edit-operational',[ProjectA00Controller::class,'editOperational'])->name('a00.edit-operational');
         Route::put('/a00/{a00}/operational',[ProjectA00Controller::class,'updateOperational'])->name('a00.update-operational');
+        Route::post('/costing-groups/{group}/items',[CostingGroupController::class,'addItem'])->name('costing-groups.items.add');
+        Route::delete('/costing-group-items/{item}',[CostingGroupController::class,'removeItem'])->name('costing-group-items.remove');
     });
     Route::middleware('permission:document_control')->prefix('document-control')->name('document-control.')->group(function () {
         Route::get('/inbox', [DocumentControlInboxController::class, 'index'])->name('inbox');
@@ -68,6 +77,12 @@ Route::middleware('auth')->group(function () {
     });
     Route::middleware('permission:inbox_costing')->group(function () {
         Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
+        Route::get('/costing-groups/{group}',[CostingGroupController::class,'workspace'])->name('costing-groups.workspace');
+        Route::post('/costing-groups/{group}/draft',[CostingGroupController::class,'draft'])->name('control-project.costing-groups.draft');
+        Route::post('/costing-groups/{group}/submit-approval',[CostingGroupController::class,'submitApproval'])->name('control-project.costing-groups.submit-approval');
+        Route::post('/costing-groups/{group}/approve',[CostingGroupController::class,'approve'])->name('control-project.costing-groups.approve');
+        Route::post('/costing-groups/{group}/final-file',[CostingGroupController::class,'uploadFinal'])->name('control-project.costing-groups.final-file');
+        Route::post('/costing-groups/{group}/submit-final',[CostingGroupController::class,'submitFinal'])->name('control-project.costing-groups.submit-final');
     });
     Route::middleware('permission:inbox_new_part_request')->group(function () {
         Route::get('/new-part-request/inbox', [NewPartRequestInboxController::class, 'index'])->name('new-part-request.inbox');
@@ -84,6 +99,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/marketing/cogm-inbox/{submission}/download', [CostingController::class, 'downloadImportedCogm'])->name('marketing.cogm-import.download');
         Route::get('/marketing/costing-documents/{revision}/download', [CostingController::class, 'downloadCostingEdit'])->name('marketing.costing-edit.download');
         Route::post('/marketing/cogm-inbox/{submission}/comments', [CostingApprovalController::class, 'storeMarketingComment'])->name('marketing.cogm-comments.store');
+        Route::get('/marketing/bulky-cogm/{version}/download',[CostingGroupController::class,'download'])->name('marketing.bulky-cogm.download');
     });
 
     Route::get('/profile', function () {

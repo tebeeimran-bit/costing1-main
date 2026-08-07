@@ -23,6 +23,10 @@
         ->get();
 
     $notificationItems = collect();
+    foreach (auth()->user()?->unreadNotifications()->latest()->limit(20)->get() ?? [] as $databaseNotification) {
+        $data = $databaseNotification->data;
+        $notificationItems->push(['type'=>'bulky','title'=>$data['title']??'Pembaruan Bulky COGM','line'=>($data['a00_number']??'A00').' - '.($data['event']??'updated'),'description'=>$data['message']??'Terdapat pembaruan Bulky COGM.','button_label'=>'Buka','url'=>$data['url']??'#','color'=>'blue','notification_id'=>$databaseNotification->id]);
+    }
 
     $normalizeUniquePartCount = function ($rows): int {
         return $rows
@@ -500,6 +504,7 @@
             <div class="top-notification-count-text">
                 {{ $notificationCount }} notifikasi
             </div>
+            @if(auth()->user()->unreadNotifications()->exists())<form method="post" action="{{ route('notifications.read-all',absolute:false) }}">@csrf<button type="submit" style="border:0;background:transparent;color:#2563eb;font-size:.68rem;font-weight:900;cursor:pointer">Tandai semua dibaca</button></form>@endif
         </div>
 
         <div class="top-notification-body">
@@ -520,9 +525,7 @@
                             {{ $item['description'] }}
                         </div>
 
-                        <a href="{{ $item['url'] }}" class="top-notification-action is-{{ $item['color'] }}">
-                            {{ $item['button_label'] }}
-                        </a>
+                        @if(!empty($item['notification_id']))<form method="post" action="{{ route('notifications.open',$item['notification_id'],absolute:false) }}">@csrf<button type="submit" class="top-notification-action is-{{ $item['color'] }}" style="border:0;cursor:pointer">{{ $item['button_label'] }}</button></form>@else<a href="{{ $item['url'] }}" class="top-notification-action is-{{ $item['color'] }}">{{ $item['button_label'] }}</a>@endif
                     </div>
                 </div>
             @empty

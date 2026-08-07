@@ -13,5 +13,6 @@ class ProjectA00Form extends Model
     public function project(){return $this->belongsTo(DocumentProject::class,'document_project_id');}
     public function projectRevision(){return $this->belongsTo(DocumentRevision::class,'document_revision_id');}
     public function items(){return $this->hasMany(ProjectA00Item::class)->orderBy('line_number');}
+    public function costingGroup(){return $this->hasOne(CostingGroup::class,'project_a00_form_id');}
     public function creator(){return $this->belongsTo(User::class,'created_by');}
 }

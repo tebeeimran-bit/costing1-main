@@ -7,6 +7,9 @@ use App\Models\CostingApproval;
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Models\UnpricedPart;
+use App\Models\ProjectA00Item;
+use App\Models\CostingGroupVersion;
+use App\Services\Costing\CostingGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -52,6 +55,7 @@ class CostingApprovalController extends Controller
                 'status' => DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
             ]);
         });
+        $this->refreshCostingGroup($revision);
 
         return back()->with('success', 'Costing berhasil disubmit ke Coordinator Costing untuk approval.');
     }
@@ -81,6 +85,7 @@ class CostingApprovalController extends Controller
                 'status' => DocumentRevision::STATUS_APPROVED_BY_COORDINATOR,
             ]);
         });
+        $this->refreshCostingGroup($revision);
 
         return back()->with('success', 'COGM berhasil di-approve oleh Coordinator Costing.');
     }
@@ -110,6 +115,7 @@ class CostingApprovalController extends Controller
                 'status' => DocumentRevision::STATUS_REJECTED_BY_COORDINATOR,
             ]);
         });
+        $this->refreshCostingGroup($revision);
 
         return back()->with('success', 'Costing dikembalikan ke Admin Costing dengan catatan revisi.');
     }
@@ -157,6 +163,7 @@ class CostingApprovalController extends Controller
                 'pic_marketing' => $picMarketing,
             ]);
         });
+        $this->refreshCostingGroup($revision);
 
         return back()->with('success', 'COGM approved berhasil dikirim ke Team Marketing.');
     }
@@ -164,6 +171,7 @@ class CostingApprovalController extends Controller
     public function marketingInbox(Request $request)
     {
         $this->authorizeRole($request, ['admin', 'admin_costing', 'marketing', 'coordinator_costing']);
+        $search = trim((string) $request->query('search'));
 
         $submissions = CogmSubmission::with(['revision.project.product'])
             ->when(
@@ -172,10 +180,40 @@ class CostingApprovalController extends Controller
                     mb_strtolower(trim((string) $request->user()->name)),
                 ])
             )
+            ->when($search !== '', fn ($query) => $query->where(function ($searchQuery) use ($search) {
+                $searchQuery->where('pic_marketing', 'like', "%{$search}%")
+                    ->orWhere('submitted_by', 'like', "%{$search}%")
+                    ->orWhereHas('revision.project', fn ($projectQuery) => $projectQuery
+                        ->where('customer', 'like', "%{$search}%")
+                        ->orWhere('model', 'like', "%{$search}%")
+                        ->orWhere('part_number', 'like', "%{$search}%")
+                        ->orWhere('part_name', 'like', "%{$search}%"));
+            }))
             ->orderByDesc('submitted_at')
-            ->paginate(15);
+            ->paginate(15)->withQueryString();
 
-        return view('reports.marketing-cogm-inbox', compact('submissions'));
+        $name=mb_strtolower(trim((string)$request->user()->name));
+        $groupSubmissions=CostingGroupVersion::with(['group.a00Form','group.activeItems.a00Item','group.activeItems.project'])
+            ->where('type','final')->where('status','submitted')
+            ->when((string)$request->user()->role==='marketing',fn($query)=>$query->whereHas('group',fn($groupQuery)=>$groupQuery
+                ->whereRaw('LOWER(TRIM(pic_marketing)) = ?',[$name])
+                ->orWhereHas('activeItems',fn($itemQuery)=>$itemQuery->whereRaw('LOWER(TRIM(pic_marketing)) = ?',[$name]))))
+            ->when($search !== '', fn($query) => $query->whereHas('group', fn($groupQuery) => $groupQuery
+                ->where('pic_marketing','like',"%{$search}%")
+                ->orWhereHas('a00Form',fn($a00Query)=>$a00Query
+                    ->where('document_number','like',"%{$search}%")
+                    ->orWhere('customer','like',"%{$search}%")
+                    ->orWhere('model','like',"%{$search}%")
+                    ->orWhere('assy_number','like',"%{$search}%"))
+                ->orWhereHas('activeItems',fn($itemQuery)=>$itemQuery
+                    ->where('pic_marketing','like',"%{$search}%")
+                    ->orWhereHas('project',fn($projectQuery)=>$projectQuery
+                        ->where('model','like',"%{$search}%")
+                        ->orWhere('part_number','like',"%{$search}%")
+                        ->orWhere('part_name','like',"%{$search}%")))))
+            ->latest('submitted_at')->get();
+
+        return view('reports.marketing-cogm-inbox', compact('submissions','groupSubmissions','search'));
     }
 
     public function storeMarketingComment(Request $request, CogmSubmission $submission)
@@ -200,6 +238,12 @@ class CostingApprovalController extends Controller
         if (!in_array($role, $allowedRoles, true)) {
             abort(403, 'Role Anda tidak memiliki akses untuk aksi approval ini.');
         }
+    }
+
+    private function refreshCostingGroup(DocumentRevision $revision): void
+    {
+        $a00Item = ProjectA00Item::with('form')->where('document_revision_id', $revision->id)->first();
+        if ($a00Item?->form) app(CostingGroupService::class)->syncFromA00($a00Item->form, auth()->id());
     }
 
     private function authorizeMarketingSubmission(Request $request, CogmSubmission $submission): void

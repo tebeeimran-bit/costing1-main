@@ -11,10 +11,12 @@ use App\Models\Pic;
 use App\Models\ProjectA00Form;
 use App\Models\ProjectA00Item;
 use App\Models\ProjectWorkflowTask;
+use App\Services\Costing\CostingGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class ProjectA00Controller extends Controller
 {
@@ -88,6 +90,7 @@ class ProjectA00Controller extends Controller
                     'metadata'=>['a00_form_id'=>$form->id,'a00_number'=>$form->document_number],
                 ]);
             }
+            app(CostingGroupService::class)->syncFromA00($form, $request->user()->id);
             return $form;
         });
         if ($request->boolean('embedded')) {
@@ -96,7 +99,23 @@ class ProjectA00Controller extends Controller
         return redirect()->route('control-project.a00.show',$form)->with('success','A00 diterbitkan dan Project V0 berhasil dibuat.');
     }
 
-    public function show(ProjectA00Form $a00){$a00->load('project','projectRevision','items.project');return view('control-project.a00.show',compact('a00'));}
+    public function show(ProjectA00Form $a00){
+        app(CostingGroupService::class)->syncFromA00($a00, auth()->id());
+        $a00->load('project','projectRevision','items.project','costingGroup.items.a00Item','costingGroup.items.project','costingGroup.items.costingData','costingGroup.items.revision');
+        return view('control-project.a00.show',['a00'=>$a00,'picsEngineering'=>Pic::where('type','engineering')->orderBy('name')->get(),'picsMarketing'=>Pic::where('type','marketing')->orderBy('name')->get()]);
+    }
+
+    public function downloadPdf(ProjectA00Form $a00)
+    {
+        $a00->load(['items','projectRevision']);
+        $logoPath=public_path('images/logo-dharma-mark.png');
+        $logoData=null;
+        if(is_file($logoPath)){
+            $logoData='data:image/png;base64,'.base64_encode((string)file_get_contents($logoPath));
+        }
+        $filename='A00 - '.str_replace(['<','>',':','"','/','\\','|','?','*'],'-',$a00->document_number).'.pdf';
+        return Pdf::loadView('control-project.a00.pdf',compact('a00','logoData'))->setPaper('a4','portrait')->download($filename);
+    }
 
     public function edit(ProjectA00Form $a00)
     {
@@ -153,6 +172,7 @@ class ProjectA00Controller extends Controller
             if($storedFile){$formData['source_file_name']=$storedFile->getClientOriginalName();$formData['source_file_path']=$storedFile->store('control-project/a00-sources');}
             $a00->update($formData);
             ProjectWorkflowTask::whereIn('document_revision_id',$a00->items->pluck('document_revision_id'))->where('stage',ProjectWorkflowTask::STAGE_DRAWING)->get()->each(function($task) use($a00){$task->update(['metadata'=>array_merge($task->metadata??[],['a00_number'=>$a00->document_number])]);});
+            app(CostingGroupService::class)->syncFromA00($a00, auth()->id());
         });
 
         if($request->boolean('embedded')) return response('<!doctype html><script>parent.postMessage({type:"a00-updated"},location.origin)</script>');
@@ -183,11 +203,49 @@ class ProjectA00Controller extends Controller
         $revisionIds = $a00->items->pluck('document_revision_id')
             ->push($a00->document_revision_id)->filter()->unique();
         DocumentRevision::whereIn('id', $revisionIds)->update($data);
+        app(CostingGroupService::class)->syncFromA00($a00, $request->user()->id);
 
         if ($request->boolean('embedded')) {
             return response('<!doctype html><script>parent.postMessage({type:"a00-updated"},location.origin)</script>');
         }
         return redirect()->route('control-project.a00.index')->with('success','Data operasional project berhasil diperbarui.');
+    }
+
+    public function destroy(ProjectA00Form $a00)
+    {
+        $number = $a00->document_number;
+        $sourcePath = $a00->source_file_path;
+        $signaturePaths = collect([
+            $a00->prepared_signature_path,
+            $a00->acknowledged_signature_path,
+            $a00->approved_signature_path,
+        ])->filter()->values();
+
+        DB::transaction(function () use ($a00) {
+            $a00->load('items','costingGroup');
+            $projectIds = $a00->items->pluck('document_project_id')
+                ->push($a00->document_project_id)->filter()->unique()->values();
+
+            // Putus referensi versi terakhir sebelum cascade menghapus group beserta versinya.
+            if ($a00->costingGroup) {
+                $groupId = $a00->costingGroup->id;
+                $versionIds = DB::table('costing_group_versions')->where('costing_group_id',$groupId)->pluck('id');
+                DB::table('costing_groups')->where('id',$groupId)->update(['last_submitted_version_id'=>null]);
+                DB::table('costing_group_events')->where('costing_group_id',$groupId)->delete();
+                DB::table('costing_group_version_items')->whereIn('costing_group_version_id',$versionIds)->delete();
+                DB::table('costing_group_versions')->where('costing_group_id',$groupId)->delete();
+                DB::table('costing_group_items')->where('costing_group_id',$groupId)->delete();
+                DB::table('costing_groups')->where('id',$groupId)->delete();
+            }
+            $a00->delete();
+            DocumentProject::whereIn('id', $projectIds)->delete();
+        });
+
+        if ($sourcePath) Storage::delete($sourcePath);
+        $signaturePaths->each(fn ($path) => Storage::disk('public')->delete($path));
+
+        return redirect()->route('control-project.a00.index')
+            ->with('success', "A00 {$number} beserta workflow terkait berhasil dihapus.");
     }
 
     private function storeSignature(?string $dataUrl, string $type): ?string
