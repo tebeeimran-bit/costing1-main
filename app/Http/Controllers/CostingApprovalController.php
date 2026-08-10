@@ -8,6 +8,7 @@ use App\Models\CostingData;
 use App\Models\DocumentRevision;
 use App\Models\UnpricedPart;
 use App\Models\ProjectA00Item;
+use App\Models\ProjectWorkflowTask;
 use App\Models\CostingGroupVersion;
 use App\Models\User;
 use App\Notifications\CostingGroupChanged;
@@ -171,6 +172,16 @@ class CostingApprovalController extends Controller
                 'status' => DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
                 'pic_marketing' => $picMarketing,
             ]);
+            $revision->workflowTasks()
+                ->where('stage', ProjectWorkflowTask::STAGE_COSTING)
+                ->whereIn('status', [ProjectWorkflowTask::STATUS_PENDING, ProjectWorkflowTask::STATUS_IN_PROGRESS])
+                ->update([
+                    'status' => ProjectWorkflowTask::STATUS_COMPLETED,
+                    'completed_by_id' => $request->user()->id,
+                    'completed_at' => now(),
+                    'notes' => 'Costing selesai dan COGM telah dikirim ke Marketing.',
+                    'updated_at' => now(),
+                ]);
         });
         $this->refreshCostingGroup($revision);
 

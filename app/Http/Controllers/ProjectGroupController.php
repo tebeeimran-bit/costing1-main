@@ -585,7 +585,7 @@ class ProjectGroupController extends Controller
             return [
                 'key'=>$step['key'],'label'=>$step['label'],'state'=>$state,
                 'status'=>$isManualBreakdown && in_array($step['key'],['a00','drawing'],true)
-                    ? 'Belum diproses'
+                    ? 'Dilewati — project dimulai dari Breakdown'
                     : ($state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai')),
                 'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->locale('id')->translatedFormat('d F Y') : null,
                 'time'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->format('H:i') : null,

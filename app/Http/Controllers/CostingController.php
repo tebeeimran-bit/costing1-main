@@ -1979,6 +1979,18 @@ class CostingController extends Controller
             $productId = $persistenceService->resolveProductId($request, $costingData);
             $costingData = $persistenceService->saveCostingData($request, $validated, $updateSection, $costingData, $productId);
 
+            if ($trackingRevisionId) {
+                ProjectWorkflowTask::where('document_revision_id', $trackingRevisionId)
+                    ->where('stage', ProjectWorkflowTask::STAGE_COSTING)
+                    ->where('status', ProjectWorkflowTask::STATUS_PENDING)
+                    ->update([
+                        'status' => ProjectWorkflowTask::STATUS_IN_PROGRESS,
+                        'started_at' => now(),
+                        'notes' => 'Form Costing sudah dibuat dan sedang diproses.',
+                        'updated_at' => now(),
+                    ]);
+            }
+
             if ($trackingRevisionId && ($updateSection === '' || $updateSection === 'informasi_project')) {
                 $revisionPayload = array_filter([
                     'pic_engineering' => $validated['pic_engineering'] ?? null,

@@ -591,6 +591,14 @@
                                     $itemProgress = collect($assyItem->progress)->values();
                                     $itemProgressId = $rowId.'Item'.$assyItem->revision->id;
                                     $itemCurrentStep = $itemProgress->firstWhere('state', 'active');
+                                    $itemAllDone = $itemProgress->every(fn ($step) => $step['state'] === 'done');
+                                    $itemAllPending = $itemProgress->every(fn ($step) => $step['state'] === 'pending');
+                                    $itemSkipped = $itemProgress->filter(fn ($step) => str_starts_with((string) ($step['status'] ?? ''), 'Dilewati'));
+                                    $itemProgressCaption = $itemCurrentStep
+                                        ? 'Sedang '.$itemCurrentStep['label']
+                                        : ($itemAllDone ? 'Semua tahapan selesai'
+                                            : ($itemAllPending ? 'Belum ada tahapan dimulai'
+                                                : ($itemSkipped->isNotEmpty() ? 'Tahap '.$itemSkipped->pluck('label')->join(', ').' dilewati' : 'Menunggu kelanjutan workflow')));
                                 @endphp
                                 <div class="assy-progress-item">
                                     <strong class="assy-progress-title">{{ $assyItem->part_number }}</strong>
@@ -608,6 +616,15 @@
                                 $newPartStep = ['key' => 'new-part-request', 'label' => 'New Part Request', 'state' => 'pending', 'status' => 'Belum dimulai', 'date' => null, 'time' => null, 'pic' => '-'];
                                 $progress->splice($costingIndex === false ? $progress->count() : $costingIndex + 1, 0, [$newPartStep]);
                             }
+                            $currentStep = $progress->firstWhere('state','active');
+                            $allStepsDone = $progress->every(fn ($step) => $step['state'] === 'done');
+                            $allStepsPending = $progress->every(fn ($step) => $step['state'] === 'pending');
+                            $skippedSteps = $progress->filter(fn ($step) => str_starts_with((string) ($step['status'] ?? ''), 'Dilewati'));
+                            $progressCaption = $currentStep
+                                ? 'Sedang '.$currentStep['label']
+                                : ($allStepsDone ? 'Semua tahapan selesai'
+                                    : ($allStepsPending ? 'Belum ada tahapan dimulai'
+                                        : ($skippedSteps->isNotEmpty() ? 'Tahap '.$skippedSteps->pluck('label')->join(', ').' dilewati' : 'Menunggu kelanjutan workflow')));
                         @endphp
                         <td><button type="button" class="progress-trigger" onclick="openProjectProgress('{{ $rowId }}')"><span class="progress-track">@foreach($progress as $step)<span class="progress-step {{ $step['state'] }}"><span class="progress-dot">{{ $step['state']==='done'?'✓':$loop->iteration }}</span><span>{{ $step['label'] }}</span></span>@endforeach</span>@php $currentStep=$progress->firstWhere('state','active'); @endphp<span class="progress-caption">{{ $currentStep ? 'Sedang '.$currentStep['label'] : 'Semua tahapan selesai' }} · klik untuk detail</span></button>
                         <template id="{{ $rowId }}Progress"><div class="progress-dialog-head"><strong>Progress Project — {{ $group->project_name }}</strong><button type="button" class="progress-dialog-close" onclick="closeProjectProgress()">×</button></div><div class="progress-dialog-body">@foreach($progress as $step)<div class="progress-detail-row"><span class="progress-dot" @if($step['state']==='done') style="border-color:#22b45b;background:#22b45b;color:#fff" @elseif($step['state']==='active') style="border-color:#2563eb;background:#2563eb;color:#fff" @endif>{{ $step['state']==='done'?'✓':$loop->iteration }}</span><strong>{{ $step['label'] }}</strong><span class="progress-detail-state {{ $step['state'] }}">{{ $step['status'] }}</span><span class="progress-detail-meta"><span>{{ $step['date'] ?: '—' }}</span>@if($step['time'])<small>{{ $step['time'] }}</small>@endif<small>{{ $step['pic'] ?: '—' }}</small></span></div>@endforeach</div></template></td>
@@ -825,5 +842,25 @@
             });
         });
     });
+
+    function correctProjectProgressCaptions() {
+        document.querySelectorAll('.progress-trigger').forEach(function (button) {
+            const steps = Array.from(button.querySelectorAll('.progress-step'));
+            const caption = button.querySelector('.progress-caption');
+            if (!caption || steps.some(step => step.classList.contains('active'))) return;
+
+            const allDone = steps.length > 0 && steps.every(step => step.classList.contains('done'));
+            const allPending = steps.length > 0 && steps.every(step => step.classList.contains('pending'));
+            if (allDone) {
+                caption.textContent = 'Semua tahapan selesai · klik untuk detail';
+            } else if (allPending) {
+                caption.textContent = 'Belum ada tahapan dimulai · klik untuk detail';
+            } else {
+                caption.textContent = 'Ada tahapan dilewati atau belum diselesaikan · klik untuk detail';
+            }
+        });
+    }
+
+    correctProjectProgressCaptions();
 </script>
 @endsection
