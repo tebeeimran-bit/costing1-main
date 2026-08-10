@@ -386,7 +386,10 @@ class ProjectA00WorkflowTest extends TestCase
         Storage::fake('local');
         $breakdownTask=ProjectWorkflowTask::where('stage','breakdown')->firstOrFail();
         $this->assertSame(['QA','PNP & QT','PPE/PME'], $breakdownTask->metadata['pending_distributions']);
-        $this->actingAs($user)->get(route('breakdown.inbox'))->assertOk()->assertSee('A38-UPDATED');
+        $this->actingAs($user)->get(route('breakdown.inbox'))
+            ->assertOk()
+            ->assertSee('W40294-EDIT')
+            ->assertSeeInOrder(['Tanggal', 'Customer', 'Model', 'No. Assy', 'Assy Name', 'Progress', 'Status', 'Update', 'Partlist', 'UMH', 'Aksi', 'Grup A00']);
         $this->actingAs($user)->post(route('breakdown.tasks.complete',$breakdownTask), [
             'partlist_file'=>UploadedFile::fake()->createWithContent('partlist.pdf', '%PDF-1.4 partlist'),
         ])->assertRedirect(route('breakdown.inbox'));
@@ -443,6 +446,27 @@ class ProjectA00WorkflowTest extends TestCase
         $group=CostingGroup::with('items')->firstOrFail();
         $this->assertSame(CostingGroup::MODE_BULKY,$group->mode);
         $this->assertCount(2,$group->items);
+        $firstRevisionId = $group->items->first()->active_document_revision_id;
+        $this->actingAs($user)->get(route('form', ['tracking_revision_id' => $firstRevisionId]))
+            ->assertOk()
+            ->assertSee('Form Costing per Assy')
+            ->assertSee('B001')
+            ->assertSee('B002');
+        ProjectWorkflowTask::firstOrCreate([
+            'document_revision_id' => $firstRevisionId,
+            'stage' => ProjectWorkflowTask::STAGE_BREAKDOWN,
+        ], [
+            'document_project_id' => $group->items->first()->document_project_id,
+            'assigned_role' => 'admin_costing',
+            'status' => ProjectWorkflowTask::STATUS_PENDING,
+            'available_at' => now(),
+        ]);
+        $this->actingAs($user)->get(route('breakdown.inbox'))
+            ->assertOk()
+            ->assertSeeInOrder(['B001', 'B002'])
+            ->assertSee('Menunggu Dokumen')
+            ->assertSee('name="partlist_file"', false)
+            ->assertSee('name="umh_file"', false);
         $this->actingAs($user)->get(route('document-control.inbox'))
             ->assertOk()->assertSee('Lihat Item')->assertSee('Menunggu Distribusi')->assertSee('2 item');
         $pdfA00=\App\Models\ProjectA00Form::with('items')->findOrFail($group->project_a00_form_id);

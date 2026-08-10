@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\CogmSubmission;
 use App\Models\Material;
 use App\Models\CostingData;
+use App\Models\CostingExcelTemplate;
 use App\Models\UnpricedPart;
 use App\Models\DocumentRevision;
 use App\Models\CycleTimeTemplate;
@@ -72,6 +73,18 @@ class CostingController extends Controller
             $revision->costing_edit_file_path,
             $revision->costing_edit_original_name ?: 'Import-Hasil-Edit.xlsx'
         );
+    }
+
+    public function downloadExportedCogm(Request $request, DocumentRevision $revision)
+    {
+        $role = (string) ($request->user()->role ?? '');
+        abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing', 'editor'], true), 403);
+
+        $path = $revision->cogm_export_file_path ?: $revision->cogm_import_file_path;
+        $name = $revision->cogm_export_original_name ?: $revision->cogm_import_original_name ?: 'COGM.xlsx';
+        abort_unless($path && Storage::disk('local')->exists($path), 404, 'File Excel COGM belum tersedia. Lakukan Export COGM dari Form Costing terlebih dahulu.');
+
+        return Storage::disk('local')->download($path, $name);
     }
 
     public function downloadImportedCogm(Request $request, CogmSubmission $submission)
@@ -1475,11 +1488,33 @@ class CostingController extends Controller
             'plant_code' => null,
             'period' => null,
         ];
+        $a00CostingTabs = collect();
 
         if ($trackingRevisionId) {
             $trackingRevision = DocumentRevision::with(['project','plant'])->find($trackingRevisionId);
 
             if ($trackingRevision) {
+                $a00Form = ProjectA00Form::with([
+                    'items.projectRevision',
+                    'items.project.revisions' => fn ($query) => $query->latest('version_number'),
+                ])
+                    ->where(function ($query) use ($trackingRevision) {
+                        $query->where('document_project_id', $trackingRevision->document_project_id)
+                            ->orWhereHas('items', fn ($itemQuery) => $itemQuery
+                                ->where('document_project_id', $trackingRevision->document_project_id));
+                    })
+                    ->first();
+                if ($a00Form) {
+                    $a00CostingTabs = $a00Form->items->map(function ($item) {
+                        $revision = $item->projectRevision ?: $item->project?->revisions?->first();
+
+                        return (object) [
+                            'assy_number' => $item->assy_number,
+                            'assy_name' => $item->assy_name,
+                            'revision' => $revision,
+                        ];
+                    })->filter(fn ($tab) => $tab->revision)->values();
+                }
                 $editSubmittedMode = $request->boolean('edit_submitted')
                     && $trackingRevision->status === DocumentRevision::STATUS_SUBMITTED_TO_MARKETING
                     && in_array((string) ($request->user()->role ?? ''), ['admin', 'admin_costing', 'editor'], true);
@@ -1844,7 +1879,8 @@ class CostingController extends Controller
             'picsMarketing',
             'readOnlyMode',
             'editSubmittedMode',
-            'cogmSubmission'
+            'cogmSubmission',
+            'a00CostingTabs'
         ));
     }
 
@@ -2326,7 +2362,7 @@ class CostingController extends Controller
         }
     }
 
-    public function exportMaterialEditor(Request $request)
+    public function exportMaterialEditor(Request $request, CostingImportService $importService)
     {
         // Template v9 memuat sheet MM60 yang besar; beri waktu cukup hanya untuk proses export ini.
         @set_time_limit(180);
@@ -2361,13 +2397,49 @@ class CostingController extends Controller
         abort_unless(is_array($cycleRows), 422, 'Data Cycle Time tidak valid.');
         abort_if(count($rows) > 739, 422, 'Template Costing maksimal menampung 739 baris material.');
 
-        $templatePath = storage_path('app/templates/form-costing-v9.xlsx');
+        $exportMode = (string) ($validated['export_mode'] ?? 'editor');
+        $a00ExportForm = null;
+        $a00ExportItem = null;
+        $assyCount = 1;
+        if (!empty($validated['tracking_revision_id'])) {
+            $a00ExportForm = ProjectA00Form::with([
+                'items.project',
+                'items.projectRevision.plant',
+            ])->whereHas('items', fn ($query) => $query
+                ->where('document_revision_id', (int) $validated['tracking_revision_id']))->first();
+            if ($a00ExportForm) {
+                $assyCount = max(1, $a00ExportForm->items->count());
+                $a00ExportItem = $a00ExportForm->items->firstWhere(
+                    'document_revision_id',
+                    (int) $validated['tracking_revision_id']
+                );
+            }
+        }
+
+        $uploadedTemplate = ($assyCount > 1 || $exportMode === 'cogm')
+            ? CostingExcelTemplate::where('template_type', 'costing')
+                ->where('assy_count', $assyCount)
+                ->where('is_active', true)
+                ->first()
+            : null;
+        $templatePath = $uploadedTemplate
+            ? Storage::disk('local')->path($uploadedTemplate->file_path)
+            : storage_path('app/templates/form-costing-v9.xlsx');
+        abort_if(
+            $assyCount > 1 && !$uploadedTemplate,
+            422,
+            "Template Export COGM untuk {$assyCount} assy belum tersedia. Upload melalui Database > Template Excel Costing."
+        );
         abort_unless(is_file($templatePath), 500, 'Template Form Costing v9 tidak ditemukan.');
         $spreadsheet = IOFactory::load($templatePath);
-        $sheet = $spreadsheet->getSheetByName('Material Cost');
+        $activeAssyIndex = $a00ExportItem ? max(0, ((int) $a00ExportItem->line_number) - 1) : 0;
+        $activeMaterialSheetName = $activeAssyIndex === 0
+            ? 'Material Cost'
+            : 'Material Cost ('.($activeAssyIndex + 1).')';
+        $sheet = $spreadsheet->getSheetByName($activeMaterialSheetName);
         $lookupSheet = $spreadsheet->getSheetByName('Lembar1');
         $umhSheet = $spreadsheet->getSheetByName('UMH ');
-        abort_unless($sheet && $lookupSheet && $umhSheet, 500, 'Struktur template Form Costing v9 tidak valid.');
+        abort_unless($sheet && $lookupSheet && $umhSheet, 500, "Struktur template tidak valid. Sheet {$activeMaterialSheetName}, Lembar1, atau UMH tidak ditemukan.");
 
         // Template sumber membawa ribuan defined name usang dari workbook eksternal.
         // Excel akan menganggap hasil export rusak jika metadata tersebut ditulis kembali.
@@ -2397,8 +2469,10 @@ class CostingController extends Controller
                 $sheet->setCellValue("{$column}{$excelRow}", null);
             }
         }
-        for ($excelRow = 1; $excelRow <= max(102, $lookupSheet->getHighestRow()); $excelRow++) {
-            for ($column = 2; $column <= 16; $column++) {
+        $lookupClearStartRow = $exportMode === 'editor' ? 3 : 1;
+        for ($excelRow = $lookupClearStartRow; $excelRow <= max(102, $lookupSheet->getHighestRow()); $excelRow++) {
+            $lastLookupColumnToClear = $exportMode === 'editor' ? 9 : 16;
+            for ($column = 2; $column <= $lastLookupColumnToClear; $column++) {
                 $lookupSheet->setCellValue([$column, $excelRow], null);
             }
         }
@@ -2471,7 +2545,7 @@ class CostingController extends Controller
             $excelRow = $index + 18;
             foreach ($baseFormulas as $column => $formula) {
                 if ($formula !== '') {
-                    $sheet->setCellValue("{$column}{$excelRow}", $referenceHelper->updateFormulaReferences($formula, 'A18', 0, $excelRow - 18, 'Material Cost'));
+                    $sheet->setCellValue("{$column}{$excelRow}", $referenceHelper->updateFormulaReferences($formula, 'A18', 0, $excelRow - 18, $activeMaterialSheetName));
                 }
             }
         }
@@ -2480,7 +2554,7 @@ class CostingController extends Controller
             $lookupSheet->setCellValue([$index + 1, 1], $index);
         }
         $seenPartNumbers = [];
-        $lookupRow = 2;
+        $lookupRow = $exportMode === 'editor' ? 3 : 2;
         foreach ($rows as $index => $row) {
             $key = mb_strtolower(trim((string) ($row['part_no'] ?? '')), 'UTF-8');
             if (array_key_exists($key, $seenPartNumbers)) {
@@ -2490,6 +2564,11 @@ class CostingController extends Controller
             $sourceRow = $index + 18;
             for ($offset = 0; $offset < 8; $offset++) {
                 $lookupSheet->setCellValue([$offset + 2, $lookupRow], $sheet->getCell([$offset + 4, $sourceRow])->getValue());
+            }
+            if ($exportMode === 'cogm') {
+                foreach (['amount1', 'unit_price_basis', 'currency', 'qty_moq', 'cn_type', 'supplier', 'import_tax'] as $offset => $field) {
+                    $lookupSheet->setCellValue([$offset + 10, $lookupRow], $row[$field] ?? '');
+                }
             }
             $lookupRow++;
         }
@@ -2522,7 +2601,20 @@ class CostingController extends Controller
             $umhSheet->setCellValue("J{$totalRow}", "=SUM(J9:J{$lastCycleRow})");
         }
 
-        $exportMode = (string) ($validated['export_mode'] ?? 'editor');
+        if ($a00ExportForm && $assyCount > 1) {
+            $this->fillGroupedMaterialSheets(
+                $spreadsheet,
+                $lookupSheet,
+                $a00ExportForm,
+                (int) ($validated['tracking_revision_id'] ?? 0),
+                $exportMode,
+                $importService,
+                $validated,
+                $rows
+            );
+        }
+        $this->applyMaterialSheetFormulas($sheet, count($rows), $exportMode === 'editor');
+
         if ($exportMode === 'cogm') {
             // Hasil COGM harus berisi nilai final tanpa bergantung pada kalkulasi
             // VLOOKUP di Lembar1. PhpSpreadsheet tidak selalu dapat menghitung
@@ -2561,9 +2653,11 @@ class CostingController extends Controller
                     // Formula harus tetap dimuat agar cached result terakhir dari
                     // Excel dapat dibaca melalui getOldCalculatedValue().
                     $importedReader->setReadDataOnly(false);
-                    $importedReader->setLoadSheetsOnly(['Material Cost']);
+                    $importedSheetName = $a00ExportItem?->assy_number ?: $activeMaterialSheetName;
+                    $importedReader->setLoadSheetsOnly(array_values(array_unique([$importedSheetName, $activeMaterialSheetName])));
                     $importedWorkbook = $importedReader->load($importedWorkbookPath);
-                    $importedMaterialSheet = $importedWorkbook->getSheetByName('Material Cost');
+                    $importedMaterialSheet = $importedWorkbook->getSheetByName($importedSheetName)
+                        ?: $importedWorkbook->getSheetByName($activeMaterialSheetName);
                 }
             }
 
@@ -2605,6 +2699,18 @@ class CostingController extends Controller
             $spreadsheet->removeSheetByIndex($lookupIndex);
         }
 
+        if ($a00ExportForm && $assyCount > 1) {
+            foreach ($a00ExportForm->items->sortBy('line_number')->values() as $index => $item) {
+                $sourceName = $index === 0 ? 'Material Cost' : 'Material Cost ('.($index + 1).')';
+                $materialSheet = $spreadsheet->getSheetByName($sourceName);
+                if (!$materialSheet) {
+                    continue;
+                }
+                $safeSheetName = trim((string) preg_replace('~[\\\\/?*\[\]:]+~', '-', (string) $item->assy_number));
+                $materialSheet->setTitle(mb_substr($safeSheetName ?: 'Assy '.($index + 1), 0, 31));
+            }
+        }
+
         $spreadsheet->setActiveSheetIndex($spreadsheet->getIndex($sheet));
         $sheet->setSelectedCell('D18');
         $writer = new Xlsx($spreadsheet);
@@ -2624,10 +2730,197 @@ class CostingController extends Controller
             ? "COGM {$safeAssy} - {$safeCustomerCode}.xlsx"
             : "cogm. {$safeAssy} - {$safeCustomerCode}.xlsx";
 
+        if ($exportMode === 'cogm') {
+            $archiveRevisionIds = $a00ExportForm && $assyCount > 1
+                ? $a00ExportForm->items->pluck('document_revision_id')->filter()->map(fn ($id) => (int) $id)->all()
+                : array_filter([(int) ($validated['tracking_revision_id'] ?? 0)]);
+            $archiveContents = file_get_contents($temporaryPath);
+            abort_if($archiveContents === false, 500, 'File COGM gagal disiapkan untuk arsip.');
+            foreach (DocumentRevision::whereIn('id', $archiveRevisionIds)->get() as $archiveRevision) {
+                $archivePath = 'costing/cogm-exports/'.$archiveRevision->id.'/'.now()->format('YmdHis').'-'.Str::uuid().'.xlsx';
+                Storage::disk('local')->put($archivePath, $archiveContents);
+                if ($archiveRevision->cogm_export_file_path && $archiveRevision->cogm_export_file_path !== $archivePath) {
+                    Storage::disk('local')->delete($archiveRevision->cogm_export_file_path);
+                }
+                $archiveRevision->update([
+                    'cogm_export_original_name' => $filename,
+                    'cogm_export_file_path' => $archivePath,
+                    'cogm_exported_at' => now(),
+                ]);
+            }
+        }
+
         return response()->download($temporaryPath, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Access-Control-Expose-Headers' => 'Content-Disposition'
+            'X-Costing-Assy-Count' => (string) $assyCount,
+            'Access-Control-Expose-Headers' => 'Content-Disposition, X-Costing-Assy-Count'
         ])->deleteFileAfterSend(true);
+    }
+
+    private function fillGroupedMaterialSheets(
+        Spreadsheet $spreadsheet,
+        Worksheet $lookupSheet,
+        ProjectA00Form $a00Form,
+        int $activeRevisionId,
+        string $exportMode,
+        CostingImportService $importService,
+        array $sharedValues,
+        array $activeMaterialRows
+    ): void {
+        $activePricesByPart = [];
+        foreach ($activeMaterialRows as $activeRow) {
+            $partKey = mb_strtolower(trim((string) ($activeRow['part_no'] ?? '')), 'UTF-8');
+            if ($partKey !== '' && !isset($activePricesByPart[$partKey])) {
+                $activePricesByPart[$partKey] = $activeRow;
+            }
+        }
+        $lookupKeys = [];
+        $lookupRow = 2;
+        while ($lookupRow <= max(2, $lookupSheet->getHighestRow()) && filled($lookupSheet->getCell("B{$lookupRow}")->getValue())) {
+            $lookupKeys[mb_strtolower(trim((string) $lookupSheet->getCell("B{$lookupRow}")->getValue()), 'UTF-8')] = true;
+            $lookupRow++;
+        }
+
+        foreach ($a00Form->items->sortBy('line_number')->values() as $index => $item) {
+            $revisionId = (int) $item->document_revision_id;
+            if ($revisionId === $activeRevisionId) {
+                continue;
+            }
+
+            $sheetName = $index === 0 ? 'Material Cost' : 'Material Cost ('.($index + 1).')';
+            $sheet = $spreadsheet->getSheetByName($sheetName);
+            abort_unless($sheet, 422, "Template tidak memiliki sheet {$sheetName} untuk assy ke-".($index + 1).'.');
+
+            $costing = CostingData::with(['materialBreakdowns' => fn ($query) => $query
+                ->orderByRaw('CASE WHEN row_no IS NULL THEN 1 ELSE 0 END')
+                ->orderBy('row_no')
+                ->orderBy('id')])
+                ->where('tracking_revision_id', $revisionId)
+                ->latest('id')
+                ->first();
+            $materials = $costing?->materialBreakdowns ?? collect();
+            if ($materials->isEmpty() && $exportMode === 'editor') {
+                $partlistImport = $importService->preparePartlistImport(
+                    ['tracking_revision_id' => $revisionId],
+                    new Request()
+                );
+                $materials = collect($partlistImport['rows'] ?? [])->map(fn ($row) => (object) $row);
+            }
+            abort_if(
+                $exportMode === 'cogm' && $materials->isEmpty(),
+                422,
+                'Material untuk assy '.($item->assy_number ?: ($index + 1)).' belum tersimpan. Simpan Form Costing assy tersebut terlebih dahulu.'
+            );
+
+            $revision = $item->projectRevision;
+            $project = $item->project;
+            $sheet->setCellValueExplicit('F5', (string) $item->assy_number, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('F6', (string) $item->assy_name, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('F7', (string) ($project?->customer ?? $a00Form->customer), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('F8', (string) ($item->model ?? $project?->model), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            if ($revision?->received_date) {
+                $sheet->setCellValue('F9', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($revision->received_date));
+                $sheet->getStyle('F9')->getNumberFormat()->setFormatCode('dd/mm/yyyy');
+            }
+            if ($a00Form->sop_mp_date) {
+                $sheet->setCellValue('F11', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($a00Form->sop_mp_date));
+                $sheet->getStyle('F11')->getNumberFormat()->setFormatCode('mmm-yy');
+            } else {
+                $sheet->setCellValueExplicit('F11', 'NEW', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+            $sheet->setCellValue('F12', (float) ($costing?->forecast ?? $sharedValues['forecast'] ?? 0));
+            $sheet->setCellValue('F13', (float) ($costing?->project_period ?? $sharedValues['project_period'] ?? 0));
+            $plant = trim((string) preg_replace('/^\s*\d+\s*[\-â€“â€”]\s*/u', '', (string) ($revision?->plant?->name ?? $costing?->line ?? $sharedValues['plant'] ?? '')));
+            $sheet->setCellValueExplicit('F14', strtoupper($plant), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            foreach ([
+                'N8' => $costing?->exchange_rate_usd ?? $sharedValues['rate_usd'] ?? 0,
+                'N9' => $costing?->exchange_rate_jpy ?? $sharedValues['rate_jpy'] ?? 0,
+                'N10' => $sharedValues['rate_idr'] ?? 1,
+                'N11' => $costing?->lme_rate ?? $sharedValues['rate_lme'] ?? 0,
+            ] as $cell => $value) {
+                $sheet->setCellValue($cell, (float) ($value ?? 0));
+            }
+            if (!empty($sharedValues['rate_period'])) {
+                $ratePeriod = strlen($sharedValues['rate_period']) === 7 ? $sharedValues['rate_period'].'-01' : $sharedValues['rate_period'];
+                $sheet->setCellValue('N12', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel(new \DateTimeImmutable($ratePeriod)));
+                $sheet->getStyle('N12')->getNumberFormat()->setFormatCode('mmm-yyyy');
+            }
+
+            $columnsToClear = ['C', 'D', 'F', 'G', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'];
+            foreach ($columnsToClear as $column) {
+                for ($rowNumber = 18; $rowNumber <= 756; $rowNumber++) {
+                    $sheet->setCellValue("{$column}{$rowNumber}", null);
+                }
+            }
+
+            foreach ($materials as $rowIndex => $material) {
+                abort_if($rowIndex >= 739, 422, 'Template Costing maksimal menampung 739 baris material per assy.');
+                $excelRow = $rowIndex + 18;
+                $sheet->setCellValue("C{$excelRow}", $rowIndex + 1);
+                foreach (['D' => $material->part_no, 'F' => $material->id_code, 'G' => $material->part_name, 'J' => $material->unit, 'K' => $material->pro_code] as $column => $value) {
+                    $sheet->setCellValueExplicit("{$column}{$excelRow}", (string) ($value ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                }
+                $sheet->setCellValue("I{$excelRow}", $this->parseQuantityValue($material->qty_req ?? 0));
+                $partKey = mb_strtolower(trim((string) ($material->part_no ?? '')), 'UTF-8');
+                $activePrice = $activePricesByPart[$partKey] ?? [];
+                $preferMaterialValue = static fn ($materialValue, $activeValue) => filled($materialValue)
+                    ? $materialValue
+                    : $activeValue;
+                $price = [
+                    'amount1' => $preferMaterialValue($material->amount1 ?? null, $activePrice['amount1'] ?? null),
+                    'basis' => $preferMaterialValue($material->unit_price_basis_text ?? $material->unit_price_basis ?? null, $activePrice['unit_price_basis'] ?? ''),
+                    'currency' => $preferMaterialValue($material->currency ?? null, $activePrice['currency'] ?? ''),
+                    'qty_moq' => $preferMaterialValue($material->qty_moq ?? null, $activePrice['qty_moq'] ?? null),
+                    'cn_type' => $preferMaterialValue($material->cn_type ?? null, $activePrice['cn_type'] ?? ''),
+                    'supplier' => $preferMaterialValue($material->supplier ?? null, $activePrice['supplier'] ?? ''),
+                    'import_tax' => $preferMaterialValue($material->import_tax_percent ?? $material->import_tax ?? null, $activePrice['import_tax'] ?? null),
+                ];
+                $sheet->setCellValue("L{$excelRow}", $price['amount1'] === null || $price['amount1'] === '' ? null : $this->toFloatValue($price['amount1']));
+                $sheet->setCellValueExplicit("M{$excelRow}", (string) $price['basis'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("N{$excelRow}", (string) $price['currency'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue("O{$excelRow}", $price['qty_moq'] === null || $price['qty_moq'] === '' ? null : $this->toFloatValue($price['qty_moq']));
+                $sheet->setCellValueExplicit("P{$excelRow}", (string) $price['cn_type'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("Q{$excelRow}", (string) $price['supplier'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue("R{$excelRow}", $price['import_tax'] === null || $price['import_tax'] === '' ? null : $this->toFloatValue($price['import_tax']));
+                if ($exportMode === 'editor') {
+                    if (!isset($lookupKeys[$partKey])) {
+                        $lookupKeys[$partKey] = true;
+                        foreach (['part_no', null, 'id_code', 'part_name', null, 'qty_req', 'unit', 'pro_code'] as $offset => $field) {
+                            $lookupSheet->setCellValue(
+                                [$offset + 2, $lookupRow],
+                                $field ? ($material->{$field} ?? '') : ''
+                            );
+                        }
+                        $lookupRow++;
+                    }
+                }
+            }
+            $this->applyMaterialSheetFormulas($sheet, $materials->count(), $exportMode === 'editor');
+        }
+    }
+
+    private function applyMaterialSheetFormulas(Worksheet $sheet, int $materialCount, bool $withPriceLookup): void
+    {
+        $lastRow = min(756, 17 + max(0, $materialCount));
+        for ($excelRow = 18; $excelRow <= $lastRow; $excelRow++) {
+            $sheet->setCellValue(
+                "A{$excelRow}",
+                '=IF(B'.$excelRow.'="","",IF(ISNUMBER(SEARCH("WIRE SEAL",B'.$excelRow.')),"Accessories",IF(ISNUMBER(SEARCH("SW SOLDER",B'.$excelRow.')),"Accessories",IF(ISNUMBER(SEARCH("SOLDER",B'.$excelRow.')),"Accessories",IF(ISNUMBER(SEARCH("Wire",B'.$excelRow.')),"Wire",IF(ISNUMBER(SEARCH("Tube",B'.$excelRow.')),"Tube",IF(ISNUMBER(SEARCH("Term",B'.$excelRow.')),"Terminal",IF(ISNUMBER(SEARCH("Conn",B'.$excelRow.')),"Connector",IF(ISNUMBER(SEARCH("Tape",B'.$excelRow.')),"Tape",IF(ISNUMBER(SEARCH("VTA",B'.$excelRow.')),"Tape",IF(ISNUMBER(SEARCH("Crosscheck",B'.$excelRow.')),"Crosscheck Item","Accessories")))))))))))'
+            );
+            $sheet->setCellValue(
+                "B{$excelRow}",
+                '=IFERROR(IF(D'.$excelRow.'="","",IFERROR(INDEX(MM60!$C:$C,MATCH(TRUE,ISNUMBER(SEARCH(CONCAT(" ",D'.$excelRow.'),MM60!$C:$C)),0)),IFERROR(INDEX(MM60!$C:$C,MATCH(F'.$excelRow.',MM60!$B:$B,0)),G'.$excelRow.'))),G'.$excelRow.')'
+            );
+
+            if ($withPriceLookup) {
+                foreach (['L' => 'J', 'M' => 'K', 'N' => 'L', 'O' => 'M', 'P' => 'N', 'Q' => 'O', 'R' => 'P'] as $column => $lookupHeaderColumn) {
+                    $sheet->setCellValue(
+                        "{$column}{$excelRow}",
+                        '=VLOOKUP($D'.$excelRow.',Lembar1!$B:$P,Lembar1!'.$lookupHeaderColumn.'$1,0)'
+                    );
+                }
+            }
+        }
     }
 
     public function rememberSelectedExchangeRate(Request $request)
@@ -2664,71 +2957,108 @@ class CostingController extends Controller
         ]);
 
         try {
-            $reader = IOFactory::createReaderForFile($validated['material_file']->getRealPath());
-            $reader->setReadDataOnly(true);
-            $reader->setLoadSheetsOnly(['Material Cost']);
-            $workbook = $reader->load($validated['material_file']->getRealPath());
-            $sheet = $workbook->getSheetByName('Material Cost');
-            if (!$sheet) {
-                return response()->json(['success' => false, 'message' => 'Sheet Material Cost tidak ditemukan. Gunakan file hasil Export Excel dari sistem.'], 422);
-            }
-            // File hasil export membawa parameter kalkulasi pada F12/F13. Gunakan
-            // nilainya sebagai sumber utama ketika form aktif masih bernilai nol.
-            $excelForecast = $this->toFloatValue($this->materialEditorCellValue($sheet->getCell('F12')));
-            $excelProjectPeriod = $this->toFloatValue($this->materialEditorCellValue($sheet->getCell('F13')));
-            if ((float) ($validated['forecast'] ?? 0) <= 0 && $excelForecast > 0) {
-                $validated['forecast'] = $excelForecast;
-            }
-            if ((float) ($validated['project_period'] ?? 0) <= 0 && $excelProjectPeriod > 0) {
-                $validated['project_period'] = $excelProjectPeriod;
-            }
-            $rows = [];
-            $errors = [];
-            $seenIds = [];
-            $columnMap = ['part_no' => 'D', 'id_code' => 'F', 'part_name' => 'G', 'qty_req' => 'I', 'unit' => 'J', 'pro_code' => 'K', 'amount1' => 'L', 'unit_price_basis' => 'M', 'currency' => 'N', 'qty_moq' => 'O', 'cn_type' => 'P', 'supplier' => 'Q', 'import_tax' => 'R'];
-
-            for ($excelRow = 18; $excelRow <= $sheet->getHighestRow(); $excelRow++) {
-                $rowId = (int) $this->materialEditorCellValue($sheet->getCell("C{$excelRow}"));
-                if ($rowId <= 0) break;
-                if (isset($seenIds[$rowId])) {
-                    $errors[] = "Baris {$excelRow}: Row ID {$rowId} duplikat.";
-                    continue;
-                }
-                $seenIds[$rowId] = true;
-
-                $row = ['__row_no' => $rowId];
-                foreach ($columnMap as $field => $column) {
-                    $row[$field] = trim((string) $this->materialEditorCellValue($sheet->getCell("{$column}{$excelRow}")));
-                }
-
-                $row['currency'] = strtoupper($row['currency']);
-                $row['cn_type'] = strtoupper($row['cn_type']);
-                if ($row['currency'] !== '' && !in_array($row['currency'], ['IDR', 'USD', 'JPY'], true)) {
-                    $errors[] = "Baris {$excelRow}: Currency harus IDR, USD, atau JPY.";
-                }
-                if ($row['cn_type'] !== '' && !in_array($row['cn_type'], ['N', 'C', 'E'], true)) {
-                    $errors[] = "Baris {$excelRow}: C/N harus N, C, atau E.";
-                }
-                foreach (['qty_req', 'amount1', 'qty_moq', 'import_tax'] as $numericField) {
-                    if ($row[$numericField] === '') {
-                        continue;
-                    }
-                    if (!preg_match('/^-?[\d.,\s]+$/', $row[$numericField])) {
-                        $errors[] = "Baris {$excelRow}: {$numericField} harus berupa angka.";
-                    } else {
-                        $row[$numericField] = (string) $this->toFloatValue($row[$numericField]);
-                    }
-                }
-                $rows[] = $row;
-            }
-
-            if ($errors) {
-                return response()->json(['success' => false, 'message' => 'File belum dapat diterapkan.', 'errors' => $errors], 422);
-            }
-
             $resolvedRevisionId = isset($validated['tracking_revision_id'])
                 ? (int) $validated['tracking_revision_id']
                 : (int) (CostingData::find($validated['costing_data_id'] ?? null)?->tracking_revision_id ?? 0);
+            $a00ImportForm = $resolvedRevisionId > 0
+                ? ProjectA00Form::with('items')->whereHas('items', fn ($query) => $query
+                    ->where('document_revision_id', $resolvedRevisionId))->first()
+                : null;
+            $a00ImportItems = $a00ImportForm?->items->sortBy('line_number')->values() ?? collect();
+            $importMaterialSheetName = 'Material Cost';
+            $legacyImportMaterialSheetName = 'Material Cost';
+            if ($resolvedRevisionId > 0) {
+                $a00Item = \App\Models\ProjectA00Item::where(
+                    'document_revision_id',
+                    $resolvedRevisionId
+                )->first();
+                if ($a00Item && (int) $a00Item->line_number > 1) {
+                    $importMaterialSheetName = (string) $a00Item->assy_number;
+                    $legacyImportMaterialSheetName = 'Material Cost ('.((int) $a00Item->line_number).')';
+                } elseif ($a00Item) {
+                    $importMaterialSheetName = (string) $a00Item->assy_number;
+                }
+            }
+            $reader = IOFactory::createReaderForFile($validated['material_file']->getRealPath());
+            $reader->setReadDataOnly(true);
+            $groupSheetNames = $a00ImportItems->map(fn ($item) => (string) $item->assy_number)
+                ->filter()
+                ->values()
+                ->all();
+            $reader->setLoadSheetsOnly(array_values(array_unique(array_merge(
+                [$importMaterialSheetName, $legacyImportMaterialSheetName],
+                $groupSheetNames
+            ))));
+            $workbook = $reader->load($validated['material_file']->getRealPath());
+            $sheet = $workbook->getSheetByName($importMaterialSheetName)
+                ?: $workbook->getSheetByName($legacyImportMaterialSheetName);
+            if (!$sheet) {
+                return response()->json(['success' => false, 'message' => "Sheet {$importMaterialSheetName} tidak ditemukan. Gunakan file hasil Export Excel dari sistem."], 422);
+            }
+            $parsedActiveSheet = $this->parseMaterialEditorSheet($sheet);
+            if ($parsedActiveSheet['errors']) {
+                return response()->json(['success' => false, 'message' => 'File belum dapat diterapkan.', 'errors' => $parsedActiveSheet['errors']], 422);
+            }
+            $rows = $parsedActiveSheet['rows'];
+            if ((float) ($validated['forecast'] ?? 0) <= 0 && $parsedActiveSheet['forecast'] > 0) {
+                $validated['forecast'] = $parsedActiveSheet['forecast'];
+            }
+            if ((float) ($validated['project_period'] ?? 0) <= 0 && $parsedActiveSheet['project_period'] > 0) {
+                $validated['project_period'] = $parsedActiveSheet['project_period'];
+            }
+            if ($resolvedRevisionId > 0 && $a00ImportItems->count() > 1) {
+                $parsedSheets = [];
+                foreach ($a00ImportItems as $item) {
+                    $sheetName = (string) $item->assy_number;
+                    $groupSheet = $workbook->getSheetByName($sheetName);
+                    if (!$groupSheet) {
+                        return response()->json(['success' => false, 'message' => "Sheet {$sheetName} tidak ditemukan. Gunakan file export grup A00 terbaru."], 422);
+                    }
+                    $parsed = $this->parseMaterialEditorSheet($groupSheet);
+                    if ($parsed['errors']) {
+                        return response()->json(['success' => false, 'message' => "Sheet {$sheetName} belum dapat diterapkan.", 'errors' => $parsed['errors']], 422);
+                    }
+                    $parsedSheets[(int) $item->document_revision_id] = $parsed;
+                }
+
+                $fileContents = file_get_contents($validated['material_file']->getRealPath());
+                abort_if($fileContents === false, 500, 'File hasil edit tidak dapat disimpan.');
+                $extension = strtolower((string) $validated['material_file']->getClientOriginalExtension());
+                $groupUpdates = [];
+                foreach ($a00ImportItems as $item) {
+                    $revisionId = (int) $item->document_revision_id;
+                    $revision = DocumentRevision::findOrFail($revisionId);
+                    $path = 'costing-edits/'.$revision->id.'/'.now()->format('YmdHis').'-'.Str::uuid().'.'.$extension;
+                    Storage::disk('local')->put($path, $fileContents);
+                    if ($revision->costing_edit_file_path && $revision->costing_edit_file_path !== $path) {
+                        Storage::disk('local')->delete($revision->costing_edit_file_path);
+                    }
+                    $revision->update([
+                        'costing_edit_original_name' => $validated['material_file']->getClientOriginalName(),
+                        'costing_edit_file_path' => $path,
+                        'costing_edit_uploaded_at' => now(),
+                    ]);
+                    $parsed = $parsedSheets[$revisionId];
+                    $context = $validated;
+                    if ((float) ($context['forecast'] ?? 0) <= 0 && $parsed['forecast'] > 0) $context['forecast'] = $parsed['forecast'];
+                    if ((float) ($context['project_period'] ?? 0) <= 0 && $parsed['project_period'] > 0) $context['project_period'] = $parsed['project_period'];
+                    $saved = $this->persistMaterialEditorRows(
+                        $revisionId, $parsed['rows'],
+                        $revisionId === $resolvedRevisionId ? (int) ($validated['costing_data_id'] ?? 0) : null,
+                        $context
+                    );
+                    $groupUpdates[] = ['revision_id' => $revisionId, 'assy_no' => (string) $item->assy_number, 'rows' => count($parsed['rows']), 'costing_data_id' => $saved->id];
+                }
+                $activeSaved = collect($groupUpdates)->firstWhere('revision_id', $resolvedRevisionId);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Hasil edit '.count($groupUpdates).' assy dalam grup A00 berhasil diterapkan.',
+                    'rows' => $rows,
+                    'costing_data_id' => $activeSaved['costing_data_id'] ?? ($validated['costing_data_id'] ?? null),
+                    'group_imported' => true,
+                    'group_updates' => $groupUpdates,
+                ]);
+            }
             if ($resolvedRevisionId > 0) {
                 $revision = DocumentRevision::findOrFail($resolvedRevisionId);
                 $extension = strtolower((string) $validated['material_file']->getClientOriginalExtension());
@@ -2776,6 +3106,60 @@ class CostingController extends Controller
         }
 
         return $cell->getValue();
+    }
+
+    private function parseMaterialEditorSheet(Worksheet $sheet): array
+    {
+        $rows = [];
+        $errors = [];
+        $seenIds = [];
+        $columnMap = [
+            'part_no' => 'D', 'id_code' => 'F', 'part_name' => 'G', 'qty_req' => 'I',
+            'unit' => 'J', 'pro_code' => 'K', 'amount1' => 'L', 'unit_price_basis' => 'M',
+            'currency' => 'N', 'qty_moq' => 'O', 'cn_type' => 'P', 'supplier' => 'Q', 'import_tax' => 'R',
+        ];
+
+        for ($excelRow = 18; $excelRow <= $sheet->getHighestRow(); $excelRow++) {
+            $rowId = (int) $this->materialEditorCellValue($sheet->getCell("C{$excelRow}"));
+            if ($rowId <= 0) {
+                break;
+            }
+            if (isset($seenIds[$rowId])) {
+                $errors[] = "Baris {$excelRow}: Row ID {$rowId} duplikat.";
+                continue;
+            }
+            $seenIds[$rowId] = true;
+            $row = ['__row_no' => $rowId];
+            foreach ($columnMap as $field => $column) {
+                $row[$field] = trim((string) $this->materialEditorCellValue($sheet->getCell("{$column}{$excelRow}")));
+            }
+            $row['currency'] = strtoupper($row['currency']);
+            $row['cn_type'] = strtoupper($row['cn_type']);
+            if ($row['currency'] !== '' && !in_array($row['currency'], ['IDR', 'USD', 'JPY'], true)) {
+                $errors[] = "Baris {$excelRow}: Currency harus IDR, USD, atau JPY.";
+            }
+            if ($row['cn_type'] !== '' && !in_array($row['cn_type'], ['N', 'C', 'E'], true)) {
+                $errors[] = "Baris {$excelRow}: C/N harus N, C, atau E.";
+            }
+            foreach (['qty_req', 'amount1', 'qty_moq', 'import_tax'] as $numericField) {
+                if ($row[$numericField] === '') {
+                    continue;
+                }
+                if (!preg_match('/^-?[\d.,\s]+$/', $row[$numericField])) {
+                    $errors[] = "Baris {$excelRow}: {$numericField} harus berupa angka.";
+                } else {
+                    $row[$numericField] = (string) $this->toFloatValue($row[$numericField]);
+                }
+            }
+            $rows[] = $row;
+        }
+
+        return [
+            'rows' => $rows,
+            'errors' => $errors,
+            'forecast' => $this->toFloatValue($this->materialEditorCellValue($sheet->getCell('F12'))),
+            'project_period' => $this->toFloatValue($this->materialEditorCellValue($sheet->getCell('F13'))),
+        ];
     }
 
     private function persistMaterialEditorRows(int $trackingRevisionId, array $rows, ?int $costingDataId = null, array $context = []): CostingData

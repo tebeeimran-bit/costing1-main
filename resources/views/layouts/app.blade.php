@@ -326,6 +326,11 @@
                                 </svg>
                                 <span>Cycle Time</span>
                             </a>
+                            <a href="{{ route('database.costing-excel-templates.index', absolute: false) }}"
+                                class="sidebar-nav-item sidebar-submenu-item {{ request()->routeIs('database.costing-excel-templates*') ? 'active' : '' }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8M8 17h8"/></svg>
+                                <span>Template Excel</span>
+                            </a>
 <a href="{{ route('rate-kurs', absolute: false) }}"
                                 class="sidebar-nav-item sidebar-submenu-item {{ request()->routeIs('rate-kurs*') ? 'active' : '' }}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

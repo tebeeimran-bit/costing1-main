@@ -10,6 +10,7 @@ use App\Models\MaterialBreakdown;
 use App\Models\ProjectWorkflowTask;
 use App\Models\ProjectDocumentRevision;
 use App\Models\CogmSubmission;
+use App\Models\ProjectA00Item;
 use App\Models\User;
 use App\Notifications\CostingGroupChanged;
 use App\Services\TrackingDocument\TrackingDocumentFileService;
@@ -75,8 +76,24 @@ class ProjectGroupController extends Controller
             ],
             'history' => [DocumentRevision::STATUS_SUBMITTED_TO_MARKETING],
         ];
+        $groupRevisionIds = collect();
         if (isset($statusMap[$status])) {
-            $query->whereHas('trackingRevision', fn ($revision) => $revision->whereIn('status', $statusMap[$status]));
+            $matchingRevisionIds = DocumentRevision::query()
+                ->whereIn('status', $statusMap[$status])
+                ->pluck('id');
+            $groupFormIds = ProjectA00Item::query()
+                ->whereIn('document_revision_id', $matchingRevisionIds)
+                ->pluck('project_a00_form_id');
+            $groupRevisionIds = ProjectA00Item::query()
+                ->whereIn('project_a00_form_id', $groupFormIds)
+                ->pluck('document_revision_id');
+
+            $query->where(function ($builder) use ($statusMap, $status, $groupRevisionIds) {
+                $builder->whereHas('trackingRevision', fn ($revision) => $revision->whereIn('status', $statusMap[$status]));
+                if ($groupRevisionIds->isNotEmpty()) {
+                    $builder->orWhereIn('tracking_revision_id', $groupRevisionIds);
+                }
+            });
         }
 
         $pendingCostingTasks = collect();
@@ -100,6 +117,24 @@ class ProjectGroupController extends Controller
             }
 
             $pendingCostingTasks = $pendingQuery->get();
+            // Jika satu assy dalam A00 gabungan sudah masuk proses costing/approval,
+            // assy lain yang belum mempunyai CostingData juga tetap harus terlihat.
+            // Ambil task terakhirnya agar pengguna dapat membuka Form Costing dari baris itu.
+            if ($groupRevisionIds->isNotEmpty()) {
+                $groupTasks = ProjectWorkflowTask::query()
+                    ->with(['revision.latestCostingRevision', 'project.product'])
+                    ->whereIn('document_revision_id', $groupRevisionIds)
+                    ->whereDoesntHave('revision.costingData')
+                    ->whereHas('revision')
+                    ->orderByDesc('updated_at');
+                BusinessCategoryContext::apply($groupTasks, 'project');
+                $groupTasks = $groupTasks->get();
+                $pendingCostingTasks = $pendingCostingTasks
+                    ->merge($groupTasks)
+                    ->sortByDesc('updated_at')
+                    ->unique('document_revision_id')
+                    ->values();
+            }
         }
 
         $items = $query->paginate(20)->withQueryString();
@@ -138,6 +173,28 @@ class ProjectGroupController extends Controller
 
             return $costing;
         });
+
+        // Satu A00 gabungan ditampilkan sebagai satu baris. Setiap anggota tetap
+        // disimpan sebagai member agar progress, status, dan aksi per assy tidak hilang.
+        $revisionIds = $items->getCollection()->pluck('tracking_revision_id')->filter()->unique();
+        $a00FormByRevision = ProjectA00Item::query()
+            ->whereIn('document_revision_id', $revisionIds)
+            ->pluck('project_a00_form_id', 'document_revision_id');
+        $items->setCollection(
+            $items->getCollection()
+                ->groupBy(function (CostingData $costing) use ($a00FormByRevision) {
+                    $formId = $a00FormByRevision->get($costing->tracking_revision_id);
+                    return $formId ? 'a00-'.$formId : 'revision-'.$costing->tracking_revision_id;
+                })
+                ->map(function (Collection $members) {
+                    $primary = $members->sortByDesc('updated_at')->first();
+                    $primary->group_members = $members->sortBy(function (CostingData $member) {
+                        return (string) ($member->assy_no ?: $member->trackingRevision?->project?->part_number);
+                    })->values();
+                    return $primary;
+                })
+                ->values()
+        );
 
         return view('costing.inbox', compact('items', 'pendingCostingTasks', 'search', 'status'));
     }

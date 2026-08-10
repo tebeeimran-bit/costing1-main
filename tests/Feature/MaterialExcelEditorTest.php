@@ -3,6 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\BusinessCategory;
+use App\Models\CostingData;
+use App\Models\Customer;
+use App\Models\DocumentRevision;
+use App\Models\Pic;
+use App\Models\Plant;
+use App\Models\ProjectA00Form;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -68,11 +75,20 @@ class MaterialExcelEditorTest extends TestCase
         $workbook = $reader->load($path);
         $materialCost = $workbook->getSheetByName('Material Cost');
         $this->assertSame('W40294', $materialCost->getCell('F5')->getValue());
+        $this->assertSame('NEW', $materialCost->getCell('F11')->getValue());
         $this->assertSame(1, $materialCost->getCell('C18')->getValue());
         $this->assertSame('AVSS 0.5 W-B', $materialCost->getCell('D18')->getValue());
         $this->assertSame(3500, $materialCost->getCell('I18')->getValue());
         $this->assertSame(17923.0, $materialCost->getCell('N8')->getValue());
-        $this->assertSame('AVSS 0.5 W-B', $workbook->getSheetByName('Lembar1')->getCell('B2')->getValue());
+        $this->assertStringStartsWith('=IF(B18=', $materialCost->getCell('A18')->getValue());
+        $this->assertStringStartsWith('=IFERROR(IF(D18=', $materialCost->getCell('B18')->getValue());
+        foreach (['L' => 'J', 'M' => 'K', 'N' => 'L', 'O' => 'M', 'P' => 'N', 'Q' => 'O', 'R' => 'P'] as $column => $headerColumn) {
+            $this->assertSame("=VLOOKUP(\$D18,Lembar1!\$B:\$P,Lembar1!{$headerColumn}\$1,0)", $materialCost->getCell("{$column}18")->getValue());
+        }
+        $this->assertSame('AVSS 0.5 W-B', $workbook->getSheetByName('Lembar1')->getCell('B3')->getValue());
+        foreach (range('J', 'P') as $column) {
+            $this->assertNull($workbook->getSheetByName('Lembar1')->getCell($column.'3')->getValue());
+        }
         $umh = $workbook->getSheetByName('UMH ');
         $this->assertSame('Cutting', $umh->getCell('B9')->getValue());
         $this->assertSame(232.0, $umh->getCell('E9')->getValue());
@@ -182,6 +198,68 @@ class MaterialExcelEditorTest extends TestCase
             if (is_file($path)) {
                 unlink($path);
             }
+        }
+    }
+
+    public function test_group_a00_import_updates_every_assy_sheet_from_any_tab(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = BusinessCategory::create(['code' => 'WH', 'name' => 'Wiring Harness']);
+        $customer = Customer::create(['code' => 'TEST', 'name' => 'Test Customer']);
+        $plant = Plant::create(['code' => 'CKR', 'name' => 'Cikarang']);
+        Pic::create(['name' => 'Engineer Test', 'type' => 'engineering']);
+        Pic::create(['name' => 'Marketing Test', 'type' => 'marketing']);
+
+        $this->actingAs($admin)->post(route('control-project.a00.store'), [
+            'business_category_id' => $category->id, 'customer_id' => $customer->id,
+            'plant_id' => $plant->id, 'period' => '2026-08',
+            'pic_engineering' => 'Engineer Test', 'pic_marketing' => 'Marketing Test',
+            'document_number' => 'A00-GROUP-IMPORT', 'document_date' => '2026-08-10',
+            'revision' => '00', 'from_department' => 'MKT', 'to_department' => 'TEAM PROJECT',
+            'quantity_uom' => 'Pcs', 'quantity_basis' => 'per Year', 'issue_location' => 'Cikarang',
+            'items' => [
+                ['model' => 'K4MA', 'assy_name' => 'ASSY ONE', 'assy_number' => 'ASSY-01', 'quantity' => 100, 'quantity_uom' => 'Pcs', 'quantity_basis' => 'per Year'],
+                ['model' => 'K4MA', 'assy_name' => 'ASSY TWO', 'assy_number' => 'ASSY-02', 'quantity' => 200, 'quantity_uom' => 'Pcs', 'quantity_basis' => 'per Year'],
+            ],
+        ])->assertRedirect();
+
+        $form = ProjectA00Form::with('items')->firstOrFail();
+        $firstRevisionId = (int) $form->items->firstWhere('assy_number', 'ASSY-01')->document_revision_id;
+        $spreadsheet = new Spreadsheet();
+        $firstSheet = $spreadsheet->getActiveSheet();
+        $firstSheet->setTitle('ASSY-01');
+        $secondSheet = $spreadsheet->createSheet();
+        $secondSheet->setTitle('ASSY-02');
+        foreach ([[$firstSheet, 'SUPPLIER-ONE'], [$secondSheet, 'SUPPLIER-TWO']] as [$sheet, $supplier]) {
+            $sheet->setCellValue('C18', 1);
+            foreach (['D' => 'PART-'.$supplier, 'F' => 'CODE', 'G' => 'WIRE', 'I' => 10, 'J' => 'PCS', 'K' => 'CUTTING', 'L' => 99, 'M' => 'PCE', 'N' => 'IDR', 'O' => 1, 'P' => 'N', 'Q' => $supplier, 'R' => 0] as $column => $value) {
+                $sheet->setCellValue("{$column}18", $value);
+            }
+        }
+        $path = tempnam(sys_get_temp_dir(), 'a00-group-import-').'.xlsx';
+        (new Xlsx($spreadsheet))->save($path);
+
+        try {
+            $response = $this->actingAs($admin)->post(route('costing.material-excel.import'), [
+                'tracking_revision_id' => $firstRevisionId,
+                'material_file' => new UploadedFile($path, 'a00-group.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+            ]);
+            $response->assertOk()->assertJsonPath('group_imported', true)->assertJsonCount(2, 'group_updates');
+            $this->assertDatabaseHas('material_breakdowns', ['supplier' => 'SUPPLIER-ONE']);
+            $this->assertDatabaseHas('material_breakdowns', ['supplier' => 'SUPPLIER-TWO']);
+            $this->assertSame(2, DocumentRevision::whereNotNull('costing_edit_file_path')->count());
+
+            $secondRevisionId = (int) $form->items->firstWhere('assy_number', 'ASSY-02')->document_revision_id;
+            CostingData::where('tracking_revision_id', $firstRevisionId)->delete();
+            DocumentRevision::findOrFail($secondRevisionId)->update([
+                'status' => DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
+            ]);
+            $this->actingAs($admin)->get(route('costing.inbox', ['status' => 'active']))
+                ->assertOk()
+                ->assertSee('ASSY-01')
+                ->assertSee('ASSY-02');
+        } finally {
+            if (is_file($path)) unlink($path);
         }
     }
 }

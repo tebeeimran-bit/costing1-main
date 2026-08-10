@@ -45,7 +45,11 @@ class BreakdownInboxController extends Controller
                 ->orWhere('model', 'like', "%{$search}%")
                 ->orWhere('part_number', 'like', "%{$search}%")
                 ->orWhere('part_name', 'like', "%{$search}%")))
-            ->oldest('available_at')->oldest('id');
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM project_a00_items pai WHERE pai.document_project_id = project_workflow_tasks.document_project_id) THEN 0 ELSE 1 END')
+            ->orderByRaw('(SELECT pai.project_a00_form_id FROM project_a00_items pai WHERE pai.document_project_id = project_workflow_tasks.document_project_id LIMIT 1)')
+            ->orderByRaw('(SELECT pai.line_number FROM project_a00_items pai WHERE pai.document_project_id = project_workflow_tasks.document_project_id LIMIT 1)')
+            ->oldest('available_at')
+            ->oldest('id');
         BusinessCategoryContext::apply($tasks);
         $tasks=$tasks->paginate(20)->withQueryString();
 

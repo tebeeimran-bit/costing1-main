@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CostingController;
+use App\Http\Controllers\CostingExcelTemplateController;
 use App\Http\Controllers\CostingGroupController;
 use App\Http\Controllers\CostingApprovalController;
 use App\Http\Controllers\CostingAssistantController;
@@ -82,6 +83,7 @@ Route::middleware('auth')->group(function () {
     });
     Route::middleware('permission:inbox_costing')->group(function () {
         Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
+        Route::get('/costing/documents/{revision}/download-cogm', [CostingController::class, 'downloadExportedCogm'])->name('costing.cogm.download');
         Route::post('/costing/revisions/{revision}', [ProjectGroupController::class, 'uploadCostingRevision'])->name('costing.revisions.store');
         Route::get('/costing-groups/{group}',[CostingGroupController::class,'workspace'])->name('costing-groups.workspace');
         Route::post('/costing-groups/{group}/draft',[CostingGroupController::class,'draft'])->name('control-project.costing-groups.draft');
@@ -221,6 +223,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/database/document-recap', [DocumentRecapController::class, 'index'])->name('database.document-recap');
         Route::put('/database/project-documents/{id}', [DatabaseController::class, 'updateProjectDocument'])->name('database.project-documents.update');
         Route::delete('/database/project-documents/{id}', [DatabaseController::class, 'destroyProjectDocument'])->name('database.project-documents.destroy');
+        Route::get('/database/costing-excel-templates', [CostingExcelTemplateController::class, 'index'])->name('database.costing-excel-templates.index');
+        Route::post('/database/costing-excel-templates', [CostingExcelTemplateController::class, 'store'])->name('database.costing-excel-templates.store');
+        Route::get('/database/costing-excel-templates/{template}/download', [CostingExcelTemplateController::class, 'download'])->name('database.costing-excel-templates.download');
+        Route::delete('/database/costing-excel-templates/{template}', [CostingExcelTemplateController::class, 'destroy'])->name('database.costing-excel-templates.destroy');
     });
 
     // ── INPUT DATA ────────────────────────────────────────────────────────────
