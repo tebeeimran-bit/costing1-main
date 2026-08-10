@@ -24,7 +24,7 @@
         @keyframes sr{to{transform:rotate(360deg)}}
         @keyframes lcPopIn{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
     </style>
-    <link rel="stylesheet" href="{{ asset('css/app-layout.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/app-layout.css') }}?v={{ filemtime(public_path('css/app-layout.css')) }}">
     <style>
         .project-selection-button {
             display: inline-flex;

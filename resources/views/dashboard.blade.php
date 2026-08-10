@@ -179,7 +179,7 @@
 
         <div class="kpi-card" style="background: #3b82f6;">
             <div class="kpi-label" style="color: white;">A00 (RFQ/RFI)</div>
-            <div class="kpi-value" style="color: white;">{{ number_format($a00ProjectCount, 0, ',', '.') }}</div>
+            <div class="kpi-value" style="color: white;">{{ number_format($a00ProjectEntryCount, 0, ',', '.') }}</div>
             <div class="kpi-icon" style="color: white;">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
                     <path d="M4 4h16v12H4z"/>

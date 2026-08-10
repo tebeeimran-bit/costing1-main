@@ -9,10 +9,13 @@ use App\Models\DocumentRevision;
 use App\Models\UnpricedPart;
 use App\Models\ProjectA00Item;
 use App\Models\CostingGroupVersion;
+use App\Models\User;
+use App\Notifications\CostingGroupChanged;
 use App\Services\Costing\CostingGroupService;
 use Illuminate\Http\Request;
 use App\Support\BusinessCategoryContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class CostingApprovalController extends Controller
 {
@@ -145,13 +148,18 @@ class CostingApprovalController extends Controller
         }
 
         DB::transaction(function () use ($request, $revision, $costing, $validated, $picMarketing) {
-            CogmSubmission::create([
+            $submission=CogmSubmission::create([
                 'document_revision_id' => $revision->id,
                 'submitted_at' => now(),
                 'pic_marketing' => $picMarketing,
                 'cogm_value' => $this->cogmValue($costing),
                 'submitted_by' => $request->user()->name,
                 'notes' => $validated['notes'] ?? null,
+            ]);
+            $submission->events()->create([
+                'user_id'=>$request->user()->id,'event_type'=>'submitted','source'=>'costing',
+                'title'=>'COGM dikirim ke Marketing','description'=>$validated['notes'] ?? null,
+                'cogm_value'=>$submission->cogm_value,
             ]);
 
             $approval = $this->approvalForRevision($revision);
@@ -174,7 +182,7 @@ class CostingApprovalController extends Controller
         $this->authorizeRole($request, ['admin', 'admin_costing', 'marketing', 'coordinator_costing']);
         $search = trim((string) $request->query('search'));
 
-        $submissions = CogmSubmission::with(['revision.project.product','revision.latestCostingRevision'])
+        $submissions = CogmSubmission::with(['revision.project.product','revision.latestCostingRevision','comments.user','events.user'])
             ->when(
                 (string) $request->user()->role === 'marketing',
                 fn ($query) => $query->whereRaw('LOWER(TRIM(pic_marketing)) = ?', [
@@ -236,7 +244,70 @@ class CostingApprovalController extends Controller
             'comment' => trim($validated['comment']),
         ]);
 
+        $projectNumber=$submission->revision?->project?->part_number ?: 'Project';
+        $submission->events()->create([
+            'user_id'=>$request->user()->id,'event_type'=>'comment','source'=>'marketing',
+            'title'=>'Komentar dari Marketing','description'=>trim($validated['comment']),
+        ]);
+        $this->notifyProjectTeam('marketing_comment','Komentar Baru dari Marketing',
+            $projectNumber.' — '.trim($validated['comment']),route('costing.inbox',absolute:false));
+
         return back()->with('success', 'Komentar berhasil dikirim ke Team Costing.');
+    }
+
+    public function downloadLatestUpdate(Request $request, CogmSubmission $submission)
+    {
+        $this->authorizeRole($request,['admin','admin_costing','marketing','coordinator_costing']);
+        $this->authorizeMarketingSubmission($request,$submission);
+        $update=$submission->revision?->latestCostingRevision;
+        abort_unless($update&&filled($update->file_path)&&Storage::exists($update->file_path),404,'File update COGM tidak ditemukan.');
+        return Storage::download($update->file_path,$update->original_name ?: basename($update->file_path));
+    }
+
+    public function updateMarketingStatus(Request $request, CogmSubmission $submission)
+    {
+        $this->authorizeRole($request,['admin','marketing']);
+        $this->authorizeMarketingSubmission($request,$submission);
+        $validated=$request->validate([
+            'marketing_status'=>['required','in:waiting,cancel,die_go'],
+            'reason'=>['nullable','string','max:2000'],
+        ]);
+        $reason=trim((string)($validated['reason']??''));
+        if($validated['marketing_status']==='cancel'&&$reason==='') return back()->withErrors(['reason'=>'Alasan wajib diisi jika project Cancel.']);
+        $waitingOverdue=$submission->marketing_status==='waiting'&&$submission->waiting_since?->lte(now()->subMonth());
+        if($validated['marketing_status']==='waiting'&&$waitingOverdue&&$reason==='') return back()->withErrors(['reason'=>'Project sudah waiting lebih dari 1 bulan. Jelaskan alasan atau perkembangan terakhir.']);
+
+        $oldStatus=$submission->marketing_status;
+        $submission->update([
+            'marketing_status'=>$validated['marketing_status'],
+            'marketing_status_reason'=>$reason!==''?$reason:null,
+            'marketing_status_at'=>now(),
+            'waiting_since'=>$validated['marketing_status']==='waiting'?($submission->waiting_since?:now()):null,
+        ]);
+        $submission->revision?->update(match($validated['marketing_status']){
+            'die_go'=>['a05'=>'ada','a05_received_date'=>now()->toDateString(),'a04'=>'belum_ada','a04_received_date'=>null,'a04_reason'=>null],
+            'cancel'=>['a04'=>'ada','a04_received_date'=>now()->toDateString(),'a04_reason'=>$reason,'a05'=>'belum_ada','a05_received_date'=>null],
+            default=>['a04'=>'belum_ada','a04_received_date'=>null,'a04_reason'=>null,'a05'=>'belum_ada','a05_received_date'=>null],
+        });
+        $labels=['waiting'=>'Waiting','cancel'=>'Cancel','die_go'=>'Die Go (Berhasil)'];
+        $submission->events()->create([
+            'user_id'=>$request->user()->id,'event_type'=>'status','source'=>'marketing',
+            'title'=>'Status project: '.$labels[$validated['marketing_status']],
+            'description'=>$reason!==''?$reason:'Status diperbarui dari '.($oldStatus?:'belum ditentukan').'.',
+            'cogm_value'=>$submission->cogm_value,
+        ]);
+        $projectNumber=$submission->revision?->project?->part_number ?: 'Project';
+        $notificationTitle=$validated['marketing_status']==='die_go'?'Project Die Go (Berhasil)':'Status Project Marketing';
+        $this->notifyProjectTeam('marketing_status',$notificationTitle,
+            $projectNumber.' menjadi '.$labels[$validated['marketing_status']].($reason!==''?' — '.$reason:''),route('costing.inbox',absolute:false));
+        return back()->with('success','Status kelanjutan project berhasil diperbarui.');
+    }
+
+    private function notifyProjectTeam(string $event,string $title,string $message,string $url): void
+    {
+        $recipients=User::whereIn('role',['admin','admin_control_project','admin_costing','coordinator_costing','document_control','engineering','marketing'])->get();
+        $payload=compact('event','title','message','url');
+        $recipients->each->notify(new CostingGroupChanged($payload));
     }
 
     private function authorizeRole(Request $request, array $allowedRoles): void

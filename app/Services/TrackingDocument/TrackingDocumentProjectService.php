@@ -8,6 +8,8 @@ use App\Models\Customer;
 use App\Models\DocumentProject;
 use App\Models\DocumentRevision;
 use App\Models\Product;
+use App\Models\ProjectWorkflowTask;
+use App\Models\DocumentControlRegistration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -73,7 +75,7 @@ class TrackingDocumentProjectService
                 ? $this->fileService->storeUploadedFile($request->file('umh_file'), 'umh')
                 : ['path' => '', 'name' => ''];
 
-            return DocumentRevision::create([
+            $revision = DocumentRevision::create([
                 'document_project_id' => $project->id,
                 'version_number' => $nextVersion,
                 'received_date' => $validated['received_date'] ?? now()->toDateString(),
@@ -105,6 +107,22 @@ class TrackingDocumentProjectService
                     ? 'Dokumen awal diterima (baseline V0).'
                     : ($validated['change_remark'] ?? 'Revisi Engineering diterima. Detail perubahan belum diisi.'),
             ]);
+
+            ProjectWorkflowTask::create([
+                'document_project_id'=>$project->id,'document_revision_id'=>$revision->id,
+                'stage'=>ProjectWorkflowTask::STAGE_BREAKDOWN,'assigned_role'=>'admin_costing',
+                'status'=>ProjectWorkflowTask::STATUS_PENDING,'available_at'=>now(),
+                'metadata'=>['source'=>'new_project_draft','without_a00'=>true],
+            ]);
+            DocumentControlRegistration::create([
+                'document_project_id'=>$project->id,'document_revision_id'=>$revision->id,
+                'customer'=>$customerName,'project'=>$validated['model'],'part_number'=>$validated['assy_no'],
+                'part_name'=>$validated['assy_name'],'revision_number'=>$revision->version_label,
+                'a00'=>'belum_ada','drawing_status'=>'Belum Diproses','business_category'=>$resolvedProduct->name,
+                'created_by'=>$request->user()->id,'row_order'=>((int)DocumentControlRegistration::max('row_order'))+1000,
+            ]);
+
+            return $revision;
         });
     }
 

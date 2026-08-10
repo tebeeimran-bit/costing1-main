@@ -339,7 +339,7 @@ class CostingController extends Controller
         $maxMonthlySubmitCount = $monthlySubmitCounts->max('count') ?: 1;
 
         // Get costing data for selected period.
-        $query = CostingData::with(['product', 'customer', 'trackingRevision']);
+        $query = CostingData::with(['product', 'customer', 'trackingRevision.latestSubmission']);
 
         if ($period !== 'all') {
             $query->where('period', $period);
@@ -391,6 +391,8 @@ class CostingController extends Controller
         }
 
         $a00ProjectCount = (int) ($statusProjectCountsByLabel['A00 (RFQ/RFI)'] ?? 0);
+        $a00ProjectEntryCount = $costingData->filter(fn ($item) => ($item->trackingRevision?->a00 ?? null) === 'ada'
+            || $item->trackingRevision?->latestSubmission !== null)->count();
         $a04ProjectCount = (int) ($statusProjectCountsByLabel['A04 (Canceled/Failed)'] ?? 0);
         $a05ProjectCount = (int) ($statusProjectCountsByLabel['A05 (Die Go)'] ?? 0);
         $costingProjectCount = (int) $costingData->count();
@@ -887,6 +889,7 @@ class CostingController extends Controller
             'pendingFormCostingCount',
             'totalProjectCount',
             'a00ProjectCount',
+            'a00ProjectEntryCount',
             'a04ProjectCount',
             'a05ProjectCount',
             'statusProjectData',
@@ -1490,10 +1493,7 @@ class CostingController extends Controller
                     $periods = $periods->push($trackingRevision->period)->filter()->unique()->sortDesc()->values();
                 }
                 $openUnpricedParts = UnpricedPart::where('document_revision_id', $trackingRevision->id)
-                    ->where(function ($query) {
-                        $query->whereNull('resolved_at')
-                            ->orWhereNotNull('new_part_price_imported_at');
-                    })
+                    ->whereNull('resolved_at')
                     ->orderBy('part_number')
                     ->get()
                     ->unique('part_number');
@@ -1781,6 +1781,18 @@ class CostingController extends Controller
                 $partlistAutoImportMessage = $importResult['error'] ?? $importResult['warning'] ?? 'Partlist tidak dapat dimuat otomatis.';
             }
         }
+
+        // A revision can receive New Part Request prices before the first
+        // CostingData/MaterialBreakdown records are saved. Re-apply those
+        // resolved prices to the in-memory partlist rows so a page refresh
+        // never turns successfully priced Material rows back to zero.
+        if ($trackingRevisionId && $materialBreakdowns->isNotEmpty()) {
+            $materialBreakdowns = $this->applyResolvedUnpricedPricesToRows(
+                $materialBreakdowns,
+                (int) $trackingRevisionId
+            );
+        }
+
         $initialCycleTimes = $request->old('cycle_times', $costingData->cycle_times ?? []);
         if (!is_array($initialCycleTimes)) {
             $initialCycleTimes = [];
@@ -1834,6 +1846,49 @@ class CostingController extends Controller
             'editSubmittedMode',
             'cogmSubmission'
         ));
+    }
+
+    private function applyResolvedUnpricedPricesToRows(
+        \Illuminate\Support\Collection $rows,
+        int $trackingRevisionId
+    ): \Illuminate\Support\Collection {
+        $resolvedPrices = UnpricedPart::query()
+            ->where('document_revision_id', $trackingRevisionId)
+            ->whereNotNull('resolved_at')
+            ->where('manual_price', '>', 0)
+            ->orderByDesc('resolved_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique(fn (UnpricedPart $part) => Str::lower(trim((string) $part->part_number)))
+            ->keyBy(fn (UnpricedPart $part) => Str::lower(trim((string) $part->part_number)));
+
+        $masterPrices = Material::query()
+            ->whereIn('material_code', $resolvedPrices->pluck('part_number')->filter()->values())
+            ->get()
+            ->keyBy(fn (Material $material) => Str::lower(trim((string) $material->material_code)));
+
+        return $rows->each(function (MaterialBreakdown $row) use ($resolvedPrices, $masterPrices) {
+            if ((float) ($row->amount1 ?? 0) > 0) {
+                return;
+            }
+
+            $partKey = Str::lower(trim((string) ($row->part_no ?? '')));
+            $price = $resolvedPrices->get($partKey);
+            if (!$price) {
+                return;
+            }
+
+            $master = $masterPrices->get($partKey);
+
+            $row->setAttribute('amount1', (float) $price->manual_price);
+            $row->setAttribute('unit_price_basis', null);
+            $row->setAttribute('unit_price_basis_text', $price->purchase_unit ?: $master?->purchase_unit);
+            $row->setAttribute('currency', $price->currency ?: ($master?->currency ?: 'IDR'));
+            $row->setAttribute('qty_moq', $price->moq ?? $master?->moq);
+            $row->setAttribute('cn_type', $price->cn_type ?: $master?->cn);
+            $row->setAttribute('supplier', $price->maker ?: $master?->maker);
+            $row->setAttribute('import_tax_percent', $price->add_cost_percent ?? $master?->add_cost_import_tax);
+        });
     }
 
     public function store(
@@ -1997,6 +2052,12 @@ class CostingController extends Controller
                         'last_updated_by' => $request->user()->name,
                         'last_updated_at' => now(),
                     ]);
+                    $submission->events()->create([
+                        'user_id'=>$request->user()->id,'event_type'=>'cogm_updated','source'=>'costing',
+                        'title'=>'COGM diperbarui dari Inbox Costing',
+                        'description'=>'Nilai COGM diperbarui dan dikirim ulang ke Marketing.',
+                        'cogm_value'=>$updatedCogmValue,
+                    ]);
 
                     $approval = \App\Models\CostingApproval::where('document_revision_id', $trackingRevisionId)
                         ->latest('id')
@@ -2059,6 +2120,7 @@ class CostingController extends Controller
                     'redirect' => $redirectUrl,
                     'meta' => [
                         'part_aggregation_count' => count($partAggregation),
+                        'costing_data_id' => (int) $costingData->id,
                     ],
                 ]);
             }
@@ -2263,6 +2325,7 @@ class CostingController extends Controller
             'materials_json' => ['required', 'string'],
             'cycle_times_json' => ['nullable', 'string'],
             'tracking_revision_id' => ['nullable', 'integer', 'exists:document_revisions,id'],
+            'costing_data_id' => ['nullable', 'integer', 'exists:costing_data,id'],
             'assy_no' => ['nullable', 'string', 'max:255'],
             'assy_name' => ['nullable', 'string', 'max:255'],
             'customer' => ['nullable', 'string', 'max:255'],
@@ -2278,6 +2341,7 @@ class CostingController extends Controller
             'rate_idr' => ['nullable', 'numeric'],
             'rate_lme' => ['nullable', 'numeric'],
             'rate_period' => ['nullable', 'date_format:Y-m-d,Y-m'],
+            'export_mode' => ['nullable', 'in:editor,cogm'],
         ]);
         $rows = json_decode($validated['materials_json'], true);
         abort_unless(is_array($rows), 422, 'Data material tidak valid.');
@@ -2446,6 +2510,89 @@ class CostingController extends Controller
             $umhSheet->setCellValue("J{$totalRow}", "=SUM(J9:J{$lastCycleRow})");
         }
 
+        $exportMode = (string) ($validated['export_mode'] ?? 'editor');
+        if ($exportMode === 'cogm') {
+            // Hasil COGM harus berisi nilai final tanpa bergantung pada kalkulasi
+            // VLOOKUP di Lembar1. PhpSpreadsheet tidak selalu dapat menghitung
+            // formula lokal template, sehingga getCalculatedValue() dapat kosong.
+            // Samakan juga perilakunya dengan VLOOKUP: part number yang berulang
+            // selalu memakai data dari kemunculan pertamanya di daftar material.
+            $firstRowByPartNumber = [];
+            foreach ($rows as $row) {
+                $partNumberKey = mb_strtolower(trim((string) ($row['part_no'] ?? '')), 'UTF-8');
+                if (!array_key_exists($partNumberKey, $firstRowByPartNumber)) {
+                    $firstRowByPartNumber[$partNumberKey] = $row;
+                }
+            }
+
+            // Jika pengguna sudah menjalankan "Import Hasil Edit", workbook itu
+            // adalah sumber kebenaran untuk nilai hasil formula L:R. Ambil cached
+            // value yang disimpan Excel agar hasil COGM benar-benar identik dengan
+            // file cogm. yang di-import, lalu bekukan sebagai nilai biasa.
+            $importedMaterialSheet = null;
+            $exportRevisionId = isset($validated['tracking_revision_id'])
+                ? (int) $validated['tracking_revision_id']
+                : (int) (CostingData::find($validated['costing_data_id'] ?? null)?->tracking_revision_id ?? 0);
+            if ($exportRevisionId <= 0 && !empty($validated['assy_no'])) {
+                $exportRevisionId = (int) (CostingData::where('assy_no', $validated['assy_no'])
+                    ->latest('id')
+                    ->value('tracking_revision_id') ?? 0);
+            }
+            if ($exportRevisionId > 0) {
+                $importedRevision = DocumentRevision::find($exportRevisionId);
+                $importedWorkbookPath = $importedRevision?->costing_edit_file_path
+                    ? Storage::disk('local')->path($importedRevision->costing_edit_file_path)
+                    : null;
+
+                if ($importedWorkbookPath && is_file($importedWorkbookPath)) {
+                    $importedReader = IOFactory::createReaderForFile($importedWorkbookPath);
+                    // Formula harus tetap dimuat agar cached result terakhir dari
+                    // Excel dapat dibaca melalui getOldCalculatedValue().
+                    $importedReader->setReadDataOnly(false);
+                    $importedReader->setLoadSheetsOnly(['Material Cost']);
+                    $importedWorkbook = $importedReader->load($importedWorkbookPath);
+                    $importedMaterialSheet = $importedWorkbook->getSheetByName('Material Cost');
+                }
+            }
+
+            foreach ($rows as $index => $row) {
+                $excelRow = $index + 18;
+                $partNumberKey = mb_strtolower(trim((string) ($row['part_no'] ?? '')), 'UTF-8');
+                $lookupRowData = $firstRowByPartNumber[$partNumberKey] ?? $row;
+
+                if ($importedMaterialSheet) {
+                    foreach (range('L', 'R') as $column) {
+                        $sheet->setCellValue(
+                            "{$column}{$excelRow}",
+                            $this->materialEditorCellValue(
+                                $importedMaterialSheet->getCell("{$column}{$excelRow}")
+                            )
+                        );
+                    }
+                    continue;
+                }
+
+                foreach (['L' => 'amount1', 'O' => 'qty_moq', 'R' => 'import_tax'] as $column => $field) {
+                    $rawValue = trim((string) ($lookupRowData[$field] ?? ''));
+                    $sheet->setCellValue(
+                        "{$column}{$excelRow}",
+                        $rawValue === '' ? null : $this->toFloatValue($rawValue)
+                    );
+                }
+
+                foreach (['M' => 'unit_price_basis', 'N' => 'currency', 'P' => 'cn_type', 'Q' => 'supplier'] as $column => $field) {
+                    $sheet->setCellValueExplicit(
+                        "{$column}{$excelRow}",
+                        trim((string) ($lookupRowData[$field] ?? '')),
+                        \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                    );
+                }
+            }
+
+            $lookupIndex = $spreadsheet->getIndex($lookupSheet);
+            $spreadsheet->removeSheetByIndex($lookupIndex);
+        }
+
         $spreadsheet->setActiveSheetIndex($spreadsheet->getIndex($sheet));
         $sheet->setSelectedCell('D18');
         $writer = new Xlsx($spreadsheet);
@@ -2461,7 +2608,9 @@ class CostingController extends Controller
         };
         $safeAssy = $safeFilenamePart($validated['assy_no'] ?? null, 'NO-ASSY');
         $safeCustomerCode = $safeFilenamePart($validated['customer_code'] ?? null, 'CUSTOMER');
-        $filename = "cogm. {$safeAssy} - {$safeCustomerCode}.xlsx";
+        $filename = $exportMode === 'cogm'
+            ? "COGM {$safeAssy} - {$safeCustomerCode}.xlsx"
+            : "cogm. {$safeAssy} - {$safeCustomerCode}.xlsx";
 
         return response()->download($temporaryPath, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -2565,8 +2714,11 @@ class CostingController extends Controller
                 return response()->json(['success' => false, 'message' => 'File belum dapat diterapkan.', 'errors' => $errors], 422);
             }
 
-            if (!empty($validated['tracking_revision_id'])) {
-                $revision = DocumentRevision::findOrFail((int) $validated['tracking_revision_id']);
+            $resolvedRevisionId = isset($validated['tracking_revision_id'])
+                ? (int) $validated['tracking_revision_id']
+                : (int) (CostingData::find($validated['costing_data_id'] ?? null)?->tracking_revision_id ?? 0);
+            if ($resolvedRevisionId > 0) {
+                $revision = DocumentRevision::findOrFail($resolvedRevisionId);
                 $extension = strtolower((string) $validated['material_file']->getClientOriginalExtension());
                 $path = $validated['material_file']->storeAs(
                     'costing-edits/' . $revision->id,

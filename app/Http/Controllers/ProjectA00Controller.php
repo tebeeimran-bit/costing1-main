@@ -34,7 +34,8 @@ class ProjectA00Controller extends Controller
             ->whereDoesntHave('a00Form')->whereDoesntHave('a00Item')
             ->whereHas('workflowTasks',fn($q)=>$q->where(function($sourceQuery){
                 $sourceQuery->where('metadata->source','manual_drawing_registration')
-                    ->orWhere('metadata->source','manual_breakdown');
+                    ->orWhere('metadata->source','manual_breakdown')
+                    ->orWhere('metadata->source','new_project_draft');
             }))
             ->when($search!=='',fn($q)=>$q->where(fn($projectQuery)=>$projectQuery
                 ->where('customer','like',"%{$search}%")->orWhere('model','like',"%{$search}%")

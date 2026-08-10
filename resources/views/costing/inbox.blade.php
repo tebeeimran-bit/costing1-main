@@ -6,7 +6,8 @@
 @section('content')
 <style>
 .ci-card{background:#fff;border:1px solid #d8e2ef;border-radius:12px;padding:16px}.ci-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:13px}.ci-head h3{margin:0 0 4px;color:#0f172a;font-size:15px}.ci-head p{margin:0;color:#64748b;font-size:11px}.ci-search{display:flex;gap:7px}.ci-search input,.ci-search select{height:34px;border:1px solid #cbd8ea;border-radius:7px;padding:0 10px;font-size:11px;background:#fff}.ci-search input{width:260px}.ci-btn{display:inline-flex;align-items:center;justify-content:center;min-height:31px;border:0;border-radius:7px;padding:0 12px;background:#2864e8;color:#fff;font-size:10px;font-weight:800;text-decoration:none;cursor:pointer}.ci-btn.secondary{border:1px solid #b9c9df;background:#fff;color:#17458e}.ci-btn.success{background:#16a34a}.ci-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.ci-tab{padding:6px 10px;border:1px solid #d6e0ed;border-radius:999px;color:#52647c;text-decoration:none;font-size:10px;font-weight:700}.ci-tab.active{border-color:#2864e8;background:#eaf1ff;color:#1d4ed8}.ci-wrap{overflow:auto;border:1px solid #d8e2ef;border-radius:9px}.ci-table{width:100%;min-width:1100px;border-collapse:collapse;font-size:10px}.ci-table th{padding:9px 10px;background:#f5f8fc;color:#52647c;text-align:left;text-transform:uppercase;font-size:8px}.ci-table td{padding:10px;border-top:1px solid #e1e8f1;color:#334155;vertical-align:middle}.ci-table strong{color:#0f172a}.ci-table small{display:block;margin-top:3px;color:#718198}.ci-status{display:inline-flex;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:800}.ci-status.info{background:#eaf1ff;color:#1d4ed8}.ci-status.warning{background:#fff4dc;color:#b45309}.ci-status.danger{background:#fee8e8;color:#b91c1c}.ci-status.success{background:#e2f8e8;color:#15803d}.ci-actions{display:flex;gap:5px;flex-wrap:wrap}.ci-empty{text-align:center;padding:30px!important;color:#718198!important}.ci-pagination{margin-top:12px}.ci-note{margin-top:4px;color:#b45309;font-size:9px;font-weight:700}@media(max-width:800px){.ci-head{display:block}.ci-search{margin-top:10px}.ci-search input{width:100%}}
-.ci-btn.revision{background:#7c3aed}.ci-flash{margin-bottom:12px;padding:9px 12px;border:1px solid #86efac;border-radius:8px;background:#f0fdf4;color:#166534;font-size:11px;font-weight:700}.ci-revision-modal{width:min(560px,calc(100vw - 28px));padding:0;border:0;border-radius:14px;overflow:hidden}.ci-revision-modal::backdrop{background:rgba(15,23,42,.55)}.ci-revision-head{display:flex;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,#0b3478,#7c3aed);color:#fff}.ci-revision-head button{border:0;background:transparent;color:#fff;font-size:20px;cursor:pointer}.ci-revision-body{display:grid;gap:12px;padding:16px}.ci-revision-field label{display:block;margin-bottom:5px;color:#475569;font-size:11px;font-weight:800}.ci-revision-field select,.ci-revision-field input,.ci-revision-field textarea{box-sizing:border-box;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:11px}.ci-revision-field textarea{min-height:75px}.ci-revision-foot{display:flex;justify-content:flex-end;gap:7px;padding:12px 16px;border-top:1px solid #e2e8f0;background:#f8fafc}
+.ci-btn.revision{background:#7c3aed}.ci-flash{margin-bottom:12px;padding:9px 12px;border:1px solid #86efac;border-radius:8px;background:#f0fdf4;color:#166534;font-size:11px;font-weight:700}.ci-revision-modal{position:fixed;inset:0;width:min(560px,calc(100vw - 28px));max-height:calc(100vh - 28px);margin:auto;padding:0;border:0;border-radius:14px;overflow:auto;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.34)}.ci-revision-modal::backdrop{background:rgba(15,23,42,.55);backdrop-filter:blur(2px)}.ci-revision-head{display:flex;align-items:flex-start;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,#0b3478,#7c3aed);color:#fff}.ci-revision-head button{border:0;background:transparent;color:#fff;font-size:20px;cursor:pointer}.ci-revision-body{display:grid;gap:12px;padding:16px}.ci-revision-field label{display:block;margin-bottom:5px;color:#475569;font-size:11px;font-weight:800}.ci-revision-field select,.ci-revision-field input,.ci-revision-field textarea{box-sizing:border-box;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:11px}.ci-revision-field textarea{min-height:75px}.ci-revision-foot{display:flex;justify-content:flex-end;gap:7px;padding:12px 16px;border-top:1px solid #e2e8f0;background:#f8fafc}
+.ci-comment{margin-top:5px;padding:6px 7px;border-left:3px solid #8b5cf6;border-radius:5px;background:#f5f3ff;color:#5b21b6;font-size:9px}.ci-comment strong{display:block;color:#4c1d95}
 </style>
 
 @if(session('success'))<div class="ci-flash">{{ session('success') }}</div>@endif
@@ -22,7 +23,7 @@
         @endforeach
     </div>
 
-    <div class="ci-wrap"><table class="ci-table"><thead><tr><th>Project</th><th>Customer</th><th>Model</th><th>No. Assy</th><th>Rev.</th><th>Status</th><th>COGM</th><th>Update</th><th>Aksi</th></tr></thead><tbody>
+    <div class="ci-wrap"><table class="ci-table"><thead><tr><th>Project</th><th>Customer</th><th>Model</th><th>No. Assy</th><th>Rev.</th><th>Progress</th><th>Status</th><th>COGM</th><th>Update</th><th>Aksi</th></tr></thead><tbody>
         @foreach($pendingCostingTasks as $task)
             @php($revision=$task->revision)
             @php($project=$task->project)
@@ -32,6 +33,7 @@
                 <td>{{ $project?->model ?: '-' }}</td>
                 <td><strong>{{ $project?->part_number ?: '-' }}</strong></td>
                 <td>{{ $revision?->version_label ?: '-' }}</td>
+                <td><x-project-progress :revision="$revision" /></td>
                 <td><span class="ci-status info">Menunggu Form Costing</span><small>Dokumen Breakdown telah disimpan.</small>@if($revision?->latestCostingRevision?->revision_type==='price')<div class="ci-note" style="color:#7c3aed">Update Harga · {{ $revision->latestCostingRevision->created_at?->format('d/m/Y H:i') }}</div>@endif</td>
                 <td><strong>-</strong></td>
                 <td>{{ optional($task->updated_at)->format('d/m/Y') }}<small>{{ optional($task->updated_at)->format('H:i') }}</small></td>
@@ -46,7 +48,8 @@
                 <td>{{ $item->model ?: $revision?->project?->model ?: '-' }}</td>
                 <td><strong>{{ $item->assy_no ?: $revision?->project?->part_number ?: '-' }}</strong></td>
                 <td>{{ $revision?->version_label ?: '-' }}</td>
-                <td><span class="ci-status {{ $item->workflow_class }}">{{ $item->workflow_label }}</span>@if($item->open_unpriced_count)<div class="ci-note">{{ $item->open_unpriced_count }} part belum memiliki harga</div>@endif @if($revision?->latestCostingRevision?->revision_type==='price')<div class="ci-note" style="color:#7c3aed">Update Harga · {{ $revision->latestCostingRevision->created_at?->format('d/m/Y H:i') }}</div>@endif @if($revision?->status===\App\Models\DocumentRevision::STATUS_REJECTED_BY_COORDINATOR && $item->approval?->rejection_notes)<small>Catatan: {{ $item->approval->rejection_notes }}</small>@endif</td>
+                <td><x-project-progress :revision="$revision" /></td>
+                <td><span class="ci-status {{ $item->workflow_class }}">{{ $item->workflow_label }}</span>@if($item->open_unpriced_count)<div class="ci-note">{{ $item->open_unpriced_count }} part belum memiliki harga</div>@endif @if($revision?->latestCostingRevision?->revision_type==='price')<div class="ci-note" style="color:#7c3aed">Update Harga · {{ $revision->latestCostingRevision->created_at?->format('d/m/Y H:i') }}</div>@endif @if($revision?->status===\App\Models\DocumentRevision::STATUS_REJECTED_BY_COORDINATOR && $item->approval?->rejection_notes)<small>Catatan: {{ $item->approval->rejection_notes }}</small>@endif @if($revision?->latestSubmission?->comments?->isNotEmpty())@php($latestMarketingComment=$revision->latestSubmission->comments->first())<div class="ci-comment"><strong>Komentar Marketing · {{ $latestMarketingComment->user?->name }}</strong>{{ $latestMarketingComment->comment }}<small>{{ $latestMarketingComment->created_at->format('d/m/Y H:i') }}</small></div>@endif</td>
                 <td><strong>Rp {{ number_format($item->cogm_value,0,',','.') }}</strong></td>
                 <td>{{ optional($item->updated_at)->format('d/m/Y') }}<small>{{ optional($item->updated_at)->format('H:i') }}</small></td>
                 <td><div class="ci-actions">
@@ -58,7 +61,7 @@
                 </div></td>
             </tr>
         @empty
-            @if($pendingCostingTasks->isEmpty())<tr><td colspan="9" class="ci-empty">Tidak ada progress costing pada filter ini.</td></tr>@endif
+            @if($pendingCostingTasks->isEmpty())<tr><td colspan="10" class="ci-empty">Tidak ada progress costing pada filter ini.</td></tr>@endif
         @endforelse
     </tbody></table></div>
     <div class="ci-pagination">{{ $items->links() }}</div>

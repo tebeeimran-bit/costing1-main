@@ -35,6 +35,7 @@ class DocumentRevision extends Model
         'a00_document_file_path',
         'a04',
         'a04_received_date',
+        'a04_reason',
         'a04_document_original_name',
         'a04_document_file_path',
         'a05',

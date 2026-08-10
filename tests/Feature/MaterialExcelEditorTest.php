@@ -115,6 +115,39 @@ class MaterialExcelEditorTest extends TestCase
         }
     }
 
+    public function test_cogm_export_freezes_material_columns_and_removes_lookup_sheet(): void
+    {
+        $admin=User::factory()->create(['role'=>'admin']);
+        $response=$this->actingAs($admin)->postJson(route('costing.material-excel.export'),[
+            'export_mode'=>'cogm','materials_json'=>json_encode([
+                ['__row_no'=>1,'part_no'=>'AVSS 0.5 W-B','id_code'=>'1116-005WB','part_name'=>'WIRE','qty_req'=>10,'unit'=>'MM','pro_code'=>'CUTTING','amount1'=>'1.138,15','unit_price_basis'=>'MTR','currency'=>'IDR','qty_moq'=>12,'cn_type'=>'C','supplier'=>'EWINDO/JLAP/W','import_tax'=>5],
+                ['__row_no'=>2,'part_no'=>'avss 0.5 w-b','id_code'=>'OTHER','part_name'=>'DUPLICATE','qty_req'=>20,'unit'=>'PCS','pro_code'=>'ASSEMBLING','amount1'=>'999,99','unit_price_basis'=>'PCE','currency'=>'USD','qty_moq'=>99,'cn_type'=>'E','supplier'=>'Supplier Berbeda','import_tax'=>8],
+            ]),
+            'cycle_times_json'=>'[]','assy_no'=>'W40294','customer_code'=>'SMSG','rate_idr'=>1,
+        ]);
+        $response->assertOk();
+        $this->assertStringContainsString('COGM W40294 - SMSG.xlsx',(string)$response->headers->get('Content-Disposition'));
+        $path=$response->baseResponse->getFile()->getPathname();
+        $workbook=(new \PhpOffice\PhpSpreadsheet\Reader\Xlsx())->load($path);
+        $this->assertNull($workbook->getSheetByName('Lembar1'));
+        $sheet=$workbook->getSheetByName('Material Cost');
+        foreach(range('L','R') as $column)$this->assertFalse($sheet->getCell($column.'18')->isFormula(),$column.'18 harus berupa nilai, bukan formula.');
+        $this->assertSame(1138.15, $sheet->getCell('L18')->getValue());
+        $this->assertSame('MTR', $sheet->getCell('M18')->getValue());
+        $this->assertSame('IDR', $sheet->getCell('N18')->getValue());
+        $this->assertSame(12.0, $sheet->getCell('O18')->getValue());
+        $this->assertSame('C', $sheet->getCell('P18')->getValue());
+        $this->assertSame('EWINDO/JLAP/W', $sheet->getCell('Q18')->getValue());
+        $this->assertSame(5.0, $sheet->getCell('R18')->getValue());
+        foreach (range('L', 'R') as $column) {
+            $this->assertSame(
+                $sheet->getCell($column.'18')->getValue(),
+                $sheet->getCell($column.'19')->getValue(),
+                $column.'19 harus mengikuti nilai kemunculan pertama part number yang sama.'
+            );
+        }
+    }
+
     public function test_empty_edited_excel_cells_remain_empty(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

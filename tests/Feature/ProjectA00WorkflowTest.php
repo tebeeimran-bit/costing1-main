@@ -182,6 +182,8 @@ class ProjectA00WorkflowTest extends TestCase
             ->assertOk()->assertSee('WH-ASSY')->assertDontSee('AEP-ASSY');
         $this->actingAs($user)->withSession($session)->get(route('breakdown.inbox'))
             ->assertOk()->assertSee('WH-ASSY')->assertDontSee('AEP-ASSY');
+        $this->actingAs($user)->withSession($session)->get(route('project'))
+            ->assertOk()->assertSee('WH-ASSY')->assertDontSee('AEP-ASSY');
 
         $this->actingAs($user)->from(route('control-project.a00.index'))->post(route('business-category-context.update'),[
             'business_category_id'=>$aep->id,
@@ -203,7 +205,7 @@ class ProjectA00WorkflowTest extends TestCase
         $project=\App\Models\DocumentProject::where('part_number','DBD-001')->firstOrFail();
         $revision=$project->revisions()->firstOrFail();
         $this->actingAs($user)->get(route('document-control.inbox'))
-            ->assertOk()->assertSee('Project Breakdown Menunggu Registrasi Drawing')
+            ->assertOk()->assertSee('Project Menunggu Registrasi Drawing')
             ->assertSee('DBD-001')->assertSee('Buat Registrasi Drawing');
 
         $this->actingAs($user)->post(route('document-control.store'),[

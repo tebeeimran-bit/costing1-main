@@ -67,6 +67,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/tasks/{task}/complete', [BreakdownInboxController::class, 'complete'])->name('tasks.complete');
         Route::post('/tasks/{task}/start-costing', [BreakdownInboxController::class, 'startCosting'])->name('tasks.start-costing');
         Route::post('/tasks/{task}/revision', [BreakdownInboxController::class, 'uploadRevision'])->name('tasks.revision');
+        Route::delete('/tasks/{task}', [BreakdownInboxController::class, 'destroyTask'])->name('tasks.destroy');
     });
     Route::get('/project-selection', [AuthController::class, 'projectSelection'])->name('project-selection');
     Route::get('/costing-product-performance', [AuthController::class, 'productPerformance'])->name('costing-product-performance');
@@ -103,7 +104,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/marketing/cogm-inbox/{submission}/costing', [CostingController::class, 'marketingCostingView'])->name('marketing.cogm-costing.show');
         Route::get('/marketing/cogm-inbox/{submission}/download', [CostingController::class, 'downloadImportedCogm'])->name('marketing.cogm-import.download');
         Route::get('/marketing/costing-documents/{revision}/download', [CostingController::class, 'downloadCostingEdit'])->name('marketing.costing-edit.download');
+        Route::get('/marketing/cogm-inbox/{submission}/latest-update/download', [CostingApprovalController::class, 'downloadLatestUpdate'])->name('marketing.cogm-update.download');
         Route::post('/marketing/cogm-inbox/{submission}/comments', [CostingApprovalController::class, 'storeMarketingComment'])->name('marketing.cogm-comments.store');
+        Route::post('/marketing/cogm-inbox/{submission}/status', [CostingApprovalController::class, 'updateMarketingStatus'])->name('marketing.cogm-status.update');
         Route::get('/marketing/bulky-cogm/{version}/download',[CostingGroupController::class,'download'])->name('marketing.bulky-cogm.download');
     });
 

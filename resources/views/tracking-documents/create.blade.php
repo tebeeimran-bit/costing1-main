@@ -13,9 +13,17 @@
 
 @section('content')
     @if(request()->boolean('embedded'))
-    <style>html,body{margin:0!important;width:100%!important;min-width:0!important;background:#f8fafc!important}.sidebar,.sidebar-overlay,.header,.breadcrumb,.footer,.costing-assistant{display:none!important}.app-wrapper,.main-wrapper,.main-content{display:block!important;width:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important}.new-project-page{padding:1rem}.card{margin:0!important;box-shadow:none!important}</style>
+    <style>html,body{margin:0!important;width:100%!important;min-width:0!important;background:#f8fafc!important}.sidebar,.sidebar-overlay,.header,.breadcrumb,.footer,.costing-assistant,.demo-mode-banner{display:none!important}.app-wrapper,.main-wrapper,.main-content{display:block!important;width:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important}.new-project-page{padding:.75rem}.new-project-page>.card{margin:0!important;padding:1rem!important;border:0!important;box-shadow:none!important}.new-project-page .page-head{margin-bottom:.8rem!important}.new-project-page .receipt-grid{gap:.7rem!important}.new-project-page .form-actions{padding-top:.75rem!important}</style>
     @endif
+    @if(request()->boolean('embedded'))<style>html,body{height:auto!important;min-height:0!important}.new-project-page .page-head{margin:-1rem -1rem .9rem!important;padding:.75rem 1rem!important;background:linear-gradient(135deg,#123f86,#1d4ed8)!important;color:#fff!important}.new-project-page .page-head .card-title{color:#fff!important}.new-project-page .page-head .btn-secondary{border-color:rgba(255,255,255,.65)!important;background:rgba(255,255,255,.12)!important;color:#fff!important}.new-project-page .page-head .btn-secondary:hover{background:#fff!important;color:#17458e!important}</style>@endif
     <style>
+        .form-group:has(input[name="a00_status"]),
+        .form-group:has(input[name="a04_status"]),
+        .form-group:has(input[name="a05_status"]),
+        .receipt-grid-2:has(input[name="partlist_file"]),
+        .receipt-grid-2:has(input[name="umh_file"]) {
+            display: none !important;
+        }
         .new-project-page {
             display: flex;
             flex-direction: column;

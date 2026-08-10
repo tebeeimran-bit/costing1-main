@@ -90,12 +90,20 @@ class TrackingDocumentUnpricedPartService
             'applied_maker' => trim((string) ($validated['maker'] ?? '')),
             'applied_add_cost_import_tax' => array_key_exists('add_cost_percent', $validated) ? $validated['add_cost_percent'] : null,
             'resolution_source' => 'realtime_manual_input',
+            'costing_edit_updated' => false,
         ];
 
         $backupPath = null;
         if (!empty($validated['update_costing_edit'])) {
-            $backupPath = $this->updateCostingEditWorkbook($revision, $partNumber, $state);
-            $state['resolution_source'] = 'new_part_request_import';
+            $costingEditPath = trim((string) $revision->costing_edit_file_path);
+            $hasCostingEditWorkbook = $costingEditPath !== ''
+                && Storage::disk('local')->exists($costingEditPath);
+
+            if ($hasCostingEditWorkbook) {
+                $backupPath = $this->updateCostingEditWorkbook($revision, $partNumber, $state);
+                $state['resolution_source'] = 'new_part_request_import';
+                $state['costing_edit_updated'] = true;
+            }
         }
 
         try {

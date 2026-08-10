@@ -70,6 +70,15 @@ php artisan serve --host=0.0.0.0 --port=8000
 npm run dev
 ```
 
+Di Windows, gunakan router lokal berikut jika `artisan serve` mengembalikan
+HTML untuk request CSS/JavaScript:
+
+```powershell
+php -S 127.0.0.1:8000 -t public server-local.php
+```
+
+Pastikan hanya satu proses server menggunakan port 8000.
+
 Aplikasi dapat dibuka melalui `http://localhost:8000`.
 
 ## Struktur Folder Penting

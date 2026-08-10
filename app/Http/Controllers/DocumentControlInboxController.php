@@ -26,7 +26,7 @@ class DocumentControlInboxController extends Controller
         BusinessCategoryContext::apply($query);
         $breakdownProjectsQuery=DocumentProject::with(['product','revisions'=>fn($q)=>$q->latest('version_number')])
             ->whereHas('workflowTasks',fn($q)=>$q->where('stage',ProjectWorkflowTask::STAGE_BREAKDOWN)
-                ->where('metadata->source','manual_breakdown'))
+                ->whereIn('metadata->source',['manual_breakdown','new_project_draft']))
             ->whereDoesntHave('workflowTasks',fn($q)=>$q->where('stage',ProjectWorkflowTask::STAGE_DRAWING))
             ->when($search!=='',fn($q)=>$q->where(fn($project)=>$project
                 ->where('customer','like',"%{$search}%")->orWhere('model','like',"%{$search}%")

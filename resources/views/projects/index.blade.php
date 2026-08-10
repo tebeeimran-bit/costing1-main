@@ -97,7 +97,7 @@
 
     .project-table {
         width: 100%;
-        min-width: 1280px;
+        min-width: 1450px;
         border-collapse: separate;
         border-spacing: 0;
     }
@@ -460,9 +460,11 @@
     .assy-number-list { margin: 0; padding-left: 1.15rem; color: #0f172a; font-weight: 750; line-height: 1.65; }
     .assy-number-list li { padding-left: .12rem; }
     .pic-compact { display: grid; gap: .24rem; min-width: 155px; }
-    .pic-compact div { display: grid; grid-template-columns: 66px 1fr; gap: .35rem; line-height: 1.25; }
+    .pic-compact > div { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: .35rem; align-items: start; line-height: 1.25; }
     .pic-compact span { color: #64748b; font-size: .62rem; font-weight: 700; }
     .pic-compact strong { color: #334155; font-size: .68rem; font-weight: 750; }
+    .pic-compact .pic-list { display: flex; flex-direction: column; align-items: flex-start; gap: .12rem; }
+    .pic-compact .pic-list > div { display: block; width: 100%; }
     .group-row .status-stack { display: flex; flex-wrap: wrap; gap: .25rem; }
     .group-row .status-pill { padding: .25rem .48rem; font-size: .62rem; }
     .updated-compact { color: #475569; white-space: nowrap; line-height: 1.35; }
@@ -495,7 +497,7 @@
         margin: auto !important;
         overflow: auto;
     }
-    .new-project-dialog{position:fixed;inset:0;width:min(1180px,calc(100vw - 30px));height:min(820px,calc(100vh - 30px));margin:auto;padding:0;border:0;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.3)}
+    .new-project-dialog{position:fixed;inset:0;width:min(980px,calc(100vw - 30px));height:min(540px,calc(100vh - 30px));margin:auto;padding:0;border:0;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.3)}
     .new-project-dialog::backdrop{background:rgba(15,23,42,.55)}.new-project-frame{display:block;width:100%;height:100%;border:0;background:#f8fafc}
 
 </style>
@@ -521,7 +523,7 @@
         <table class="project-table">
             <thead>
                 <tr>
-                    <th>Project</th><th style="width:130px;">Customer</th><th style="width:100px;">Model</th><th style="width:140px;">No. Assy</th><th style="width:210px;">PIC</th><th style="width:340px;">Progress</th><th style="width:125px;">Update</th><th style="width:64px;text-align:center;">Aksi</th>
+                    <th style="width:105px;">Tanggal</th><th style="width:145px;">Customer</th><th style="width:90px;">Model</th><th style="width:175px;">No. Assy</th><th style="width:210px;">Assy Name</th><th style="width:210px;">PIC</th><th style="width:340px;">Progress</th><th style="width:110px;">Update</th><th style="width:64px;text-align:center;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -530,7 +532,7 @@
                         $rowId = 'groupRow' . md5($group->key);
                     @endphp
                     <tr class="group-row" id="{{ $rowId }}Main">
-                        <td><div class="project-main"><strong>{{ $group->project_name }}</strong><small>{{ $group->business_category }}</small>@foreach($group->shared_a00_labels as $sharedA00)<div class="shared-a00-note" title="Digunakan bersama oleh {{ $sharedA00->project_count }} project"><span class="shared-a00-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><span class="shared-a00-copy"><span>A00 Bersama</span><strong>{{ $sharedA00->number }}</strong></span><span class="shared-a00-count"><b>{{ $sharedA00->project_count }}</b><small>Project</small></span></div>@endforeach</div></td>
+                        <td class="updated-compact">@if($group->created_at){{ \Carbon\Carbon::parse($group->created_at)->format('d/m/Y') }}@else - @endif</td>
                         <td>{{ $group->customer }}</td><td>{{ $group->model }}</td>
                         <td class="part-summary">
                             @php
@@ -542,6 +544,7 @@
                                 <strong>{{ $assyNumberList->first() ?: '-' }}</strong>
                             @endif
                         </td>
+                        <td><div class="project-main"><strong>{{ $group->project_name }}</strong><small>{{ $group->business_category }}</small>@foreach($group->shared_a00_labels as $sharedA00)<div class="shared-a00-note" title="Digunakan bersama oleh {{ $sharedA00->project_count }} project"><span class="shared-a00-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><span class="shared-a00-copy"><span>A00 Gabung</span><strong>{{ $sharedA00->number }}</strong></span><span class="shared-a00-count"><b>{{ $sharedA00->project_count }}</b><small>Project</small></span></div>@endforeach</div></td>
                         <td><div class="pic-compact"><div><span>Engineering</span><strong>
                             @php
                                 $picEngineeringList = collect(explode(',', (string) $group->pic_engineering))
@@ -623,7 +626,7 @@
                     </tr>
 
                     <tr class="child-row" id="{{ $rowId }}Child">
-                        <td colspan="8" class="child-cell">
+                        <td colspan="9" class="child-cell">
                             <div class="child-panel">
                                 <div class="child-panel-head">
                                     <span>ⓘ</span>
@@ -785,8 +788,9 @@
         document.getElementById('projectProgressDialog')?.close();
     }
 
-    function openNewProjectModal(){const dialog=document.getElementById('newProjectDialog'),frame=document.getElementById('newProjectFrame');frame.src=@json(route('tracking-documents.create',['embedded'=>1],false));dialog.showModal()}
+    function openNewProjectModal(){const dialog=document.getElementById('newProjectDialog'),frame=document.getElementById('newProjectFrame');dialog.style.height='min(540px, calc(100vh - 30px))';frame.src=@json(route('tracking-documents.create',['embedded'=>1],false));dialog.showModal()}
     function closeNewProjectModal(reload=false){const dialog=document.getElementById('newProjectDialog'),frame=document.getElementById('newProjectFrame');dialog.close();frame.src='';if(reload)location.reload()}
+    document.getElementById('newProjectFrame')?.addEventListener('load',function(){try{const dialog=document.getElementById('newProjectDialog'),contentHeight=this.contentDocument?.documentElement?.scrollHeight||540;dialog.style.height=Math.max(430,Math.min(contentHeight,window.innerHeight-30))+'px'}catch(error){}});
     window.addEventListener('message',event=>{if(event.origin!==location.origin)return;if(event.data?.type==='new-project-cancel')closeNewProjectModal(false);if(event.data?.type==='new-project-created')closeNewProjectModal(true)});
 
     document.getElementById('projectProgressDialog')?.addEventListener('click', function (event) {

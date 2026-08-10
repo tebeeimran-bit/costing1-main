@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\DocumentRevision;
 use App\Models\Customer;
+use App\Models\CogmSubmission;
+use App\Models\User;
+use App\Notifications\CostingGroupChanged;
 use App\Services\TrackingDocument\TrackingDocumentUnpricedPartService;
 use Illuminate\Http\Request;
 use App\Support\BusinessCategoryContext;
@@ -97,6 +100,13 @@ class NewPartRequestInboxController extends Controller
 
         try {
             $result = $service->submitImportedPrices($revision, (int) $request->user()->id);
+            $submission=CogmSubmission::where('document_revision_id',$revision->id)->latest('submitted_at')->first();
+            if($submission){
+                $submission->update(['update_count'=>((int)$submission->update_count)+1,'last_updated_by'=>$request->user()->name,'last_updated_at'=>now()]);
+                $submission->events()->create(['user_id'=>$request->user()->id,'event_type'=>'price_updated','source'=>'new_part_request','title'=>'Harga diperbarui dari Inbox New Part','description'=>$result['message'],'cogm_value'=>$submission->cogm_value]);
+                $pic=mb_strtolower(trim((string)$submission->pic_marketing));
+                User::where('role','marketing')->when($pic!=='',fn($q)=>$q->whereRaw('LOWER(TRIM(name)) = ?',[$pic]))->get()->each->notify(new CostingGroupChanged(['event'=>'price_updated','title'=>'Update Harga New Part','message'=>($revision->project?->part_number?:'Project').' telah menerima update harga.','url'=>route('marketing.cogm-inbox',absolute:false)]));
+            }
             return back()->with('success', $result['message']);
         } catch (\Throwable $exception) {
             return back()->with('error', $exception->getMessage());

@@ -457,6 +457,12 @@ class TrackingDocumentController extends Controller
                     'last_updated_by' => $request->user()->name,
                     'last_updated_at' => now(),
                 ]);
+                $submission->events()->create([
+                    'user_id'=>$request->user()->id,'event_type'=>'price_updated','source'=>'new_part_request',
+                    'title'=>'Harga New Part diperbarui',
+                    'description'=>$submitResult['submitted'].' harga part diperbarui melalui Inbox New Part Request.',
+                    'cogm_value'=>$submission->cogm_value,
+                ]);
             }
 
             $revision->loadMissing('project');

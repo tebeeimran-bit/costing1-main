@@ -194,6 +194,12 @@ class ProjectGroupController extends Controller
                     'last_updated_by' => $request->user()->name,
                     'last_updated_at' => now(),
                 ]);
+                $submission->events()->create([
+                    'user_id'=>$request->user()->id,'event_type'=>$data['revision_type'].'_updated','source'=>'costing',
+                    'title'=>$data['revision_type']==='price'?'Harga diperbarui dari Costing':'Dokumen Costing diperbarui',
+                    'description'=>$data['description'] ?? ('File '.$file->getClientOriginalName().' diunggah.'),
+                    'cogm_value'=>$submission->cogm_value,
+                ]);
             }
 
             return $submission;
@@ -250,20 +256,23 @@ class ProjectGroupController extends Controller
             $perPage = 10;
         }
 
-        $revisions = DocumentRevision::with([
+        $revisionsQuery = DocumentRevision::with([
             'project.product',
             'project.a00Form.creator',
             'project.a00Item.form',
             'latestApproval.submitter',
             'latestApproval.approver',
             'latestApproval.rejecter',
-            'latestSubmission',
+            'latestSubmission.comments.user',
+            'latestSubmission.events.user',
             'workflowTasks.completedBy',
             'workflowTasks.assignedUser',
         ])
             ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get();
+            ->orderByDesc('id');
+
+        BusinessCategoryContext::apply($revisionsQuery);
+        $revisions = $revisionsQuery->get();
 
         $costingByRevisionId = CostingData::with(['customer', 'product', 'materialBreakdowns'])
             ->whereNotNull('tracking_revision_id')
@@ -540,6 +549,14 @@ class ProjectGroupController extends Controller
             ->first()?->resolvedBy?->name;
         $hasPartlist = filled($revision->partlist_file_path);
         $hasUmh = filled($revision->umh_file_path);
+        $isNewProjectDraft = data_get($breakdownTask?->metadata,'source') === 'new_project_draft'
+            && $breakdownTask?->status === ProjectWorkflowTask::STATUS_PENDING
+            && !filled($revision->partlist_file_path)
+            && !filled($revision->umh_file_path)
+            && !$costing
+            && !$submission
+            && $revision->a00 !== 'ada'
+            && !$revision->a00_received_date;
         $breakdownStatus = $hasBreakdown
             ? 'Selesai'
             : ($hasPartlist
@@ -558,8 +575,9 @@ class ProjectGroupController extends Controller
         $lastDone = collect($definitions)->search(fn ($step) => !$step['done']);
         $activeIndex = $lastDone === false ? null : $lastDone;
 
-        return collect($definitions)->map(function ($step, $index) use ($activeIndex, $isManualBreakdown) {
+        return collect($definitions)->map(function ($step, $index) use ($activeIndex, $isManualBreakdown, $isNewProjectDraft) {
             $state = $step['done'] ? 'done' : (($step['active'] ?? false) || $index === $activeIndex ? 'active' : 'pending');
+            if ($isNewProjectDraft) $state = 'pending';
             if ($isManualBreakdown) {
                 if (in_array($step['key'], ['a00','drawing'], true)) $state = 'pending';
                 if ($step['key'] === 'breakdown' && !$step['done']) $state = 'active';

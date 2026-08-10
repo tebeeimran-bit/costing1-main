@@ -19,12 +19,18 @@ class CogmSubmission extends Model
         'update_count',
         'last_updated_by',
         'last_updated_at',
+        'marketing_status',
+        'marketing_status_reason',
+        'marketing_status_at',
+        'waiting_since',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
         'cogm_value' => 'decimal:2',
         'last_updated_at' => 'datetime',
+        'marketing_status_at' => 'datetime',
+        'waiting_since' => 'datetime',
     ];
 
     public function revision()
@@ -35,5 +41,10 @@ class CogmSubmission extends Model
     public function comments()
     {
         return $this->hasMany(CogmSubmissionComment::class)->latest();
+    }
+
+    public function events()
+    {
+        return $this->hasMany(CogmSubmissionEvent::class)->latest();
     }
 }

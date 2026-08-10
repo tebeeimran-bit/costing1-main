@@ -18,7 +18,7 @@
         @foreach(['active'=>'Aktif','history'=>'History','all'=>'Semua'] as $key=>$label)<a class="npr-tab {{ $status===$key?'active':'' }}" href="{{ route('new-part-request.inbox',['status'=>$key,'search'=>$search],false) }}">{{ $label }}</a>@endforeach
     </div>
 
-    <div class="npr-wrap"><table class="npr-table"><thead><tr><th>Project</th><th>Customer</th><th>Model</th><th>No. Assy</th><th>Rev.</th><th>Part Kosong</th><th>Update</th><th>Aksi</th></tr></thead><tbody>
+    <div class="npr-wrap"><table class="npr-table"><thead><tr><th>Project</th><th>Customer</th><th>Model</th><th>No. Assy</th><th>Rev.</th><th>Progress</th><th>Part Kosong</th><th>Update</th><th>Aksi</th></tr></thead><tbody>
         @forelse($projects as $revision)
             @php
                 $project = $revision->project;
@@ -29,6 +29,7 @@
                 <td>{{ $project?->model ?: $revision->costingData?->model ?: '-' }}</td>
                 <td><strong>{{ $project?->part_number ?: $revision->costingData?->assy_no ?: '-' }}</strong></td>
                 <td>{{ $revision->version_label }}</td>
+                <td><x-project-progress :revision="$revision" /></td>
                 <td>@if($revision->open_unpriced_count > 0)<span class="npr-count">{{ $revision->open_unpriced_count }}</span>@if($revision->ready_to_submit_count > 0)<span class="npr-ready">{{ $revision->ready_to_submit_count }} siap submit</span>@endif @elseif($revision->completed_npr_count > 0)<span class="npr-count done">Selesai</span><span class="npr-ready">{{ $revision->completed_npr_count }} part diproses</span>@else <span class="npr-count">0</span><span class="npr-ready" style="color:#b45309">Menunggu upload harga</span>@endif</td>
                 <td>{{ optional($revision->unpriced_parts_max_updated_at ? \Carbon\Carbon::parse($revision->unpriced_parts_max_updated_at) : $revision->updated_at)->format('d/m/Y') }}<small>{{ optional($revision->unpriced_parts_max_updated_at ? \Carbon\Carbon::parse($revision->unpriced_parts_max_updated_at) : $revision->updated_at)->format('H:i') }}</small></td>
                 <td><div class="npr-actions">

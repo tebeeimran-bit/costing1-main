@@ -17,15 +17,19 @@
 <div class="a00-head"><button type="button" class="a00-btn secondary" onclick="openA00Modal()">+ Buat A00</button>@if($tab==='pending')<button type="button" class="a00-btn" id="createCombinedA00" disabled>Buat A00 Gabungan</button><span class="a00-selection-info" id="a00SelectionInfo">0 project dipilih</span>@endif<form class="a00-search"><input type="hidden" name="tab" value="{{ $tab }}"><input class="a00-input" name="q" value="{{ request('q') }}" placeholder="Cari nomor, customer, model..."><button class="a00-btn">Cari</button>@if(request('q'))<a class="a00-btn secondary" href="{{ route('control-project.a00.index',['tab'=>$tab],false) }}">Reset</a>@endif</form></div>
 @if($tab==='pending')
 <h3 class="a00-section-title first">Project Menunggu Pembuatan A00</h3>
-<div class="a00-card"><table class="a00-table"><thead><tr><th style="width:34px"><input class="a00-select" id="selectAllPending" type="checkbox" aria-label="Pilih semua project"></th><th>Sumber</th><th>Diterima</th><th>Customer</th><th>Model</th><th>Assembly</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+<div class="a00-card"><table class="a00-table"><thead><tr><th style="width:34px"><input class="a00-select" id="selectAllPending" type="checkbox" aria-label="Pilih semua project"></th><th>Sumber</th><th>Diterima</th><th>Customer</th><th>Model</th><th>Assembly</th><th>Progress</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
 @forelse($pendingProjects as $project)
 @php
     $revision=$project->revisions->first();
-    $sourceTask=$project->workflowTasks->first(fn($task)=>in_array(data_get($task->metadata,'source'),['manual_drawing_registration','manual_breakdown'],true));
-    $source=data_get($sourceTask?->metadata,'source')==='manual_breakdown' ? '+ Breakdown' : '+ Registrasi Drawing';
+    $sourceTask=$project->workflowTasks->first(fn($task)=>in_array(data_get($task->metadata,'source'),['manual_drawing_registration','manual_breakdown','new_project_draft'],true));
+    $source=match(data_get($sourceTask?->metadata,'source')) {
+        'manual_breakdown' => '+ Breakdown',
+        'new_project_draft' => '+ Project Baru',
+        default => '+ Registrasi Drawing',
+    };
 @endphp
-<tr><td><input class="a00-select pending-project-select" type="checkbox" value="{{ $project->id }}" data-customer="{{ mb_strtolower(trim($project->customer)) }}" data-category="{{ $project->product?->code }}" aria-label="Pilih {{ $project->part_number }}"></td><td><strong>{{ $source }}</strong><span class="source-label">{{ $project->product?->name ?: '-' }}</span></td><td>{{ optional($revision?->received_date)->format('d M Y') ?: optional($project->created_at)->format('d M Y') }}</td><td>{{ $project->customer }}</td><td>{{ $project->model }}</td><td><strong>{{ $project->part_number }}</strong><span class="source-label">{{ $project->part_name }}</span></td><td><span class="badge waiting">Menunggu A00</span></td><td><button type="button" class="a00-action-btn" data-url="{{ route('control-project.a00.create',['embedded'=>1,'project_id'=>$project->id],false) }}" onclick="openA00Modal(this.dataset.url)">Buat A00</button></td></tr>
-@empty<tr><td colspan="8" style="text-align:center;padding:1.4rem;color:#64748b">Belum ada project dari Registrasi Drawing atau Breakdown yang menunggu A00.</td></tr>@endforelse
+<tr><td><input class="a00-select pending-project-select" type="checkbox" value="{{ $project->id }}" data-customer="{{ mb_strtolower(trim($project->customer)) }}" data-category="{{ $project->product?->code }}" aria-label="Pilih {{ $project->part_number }}"></td><td><strong>{{ $source }}</strong><span class="source-label">{{ $project->product?->name ?: '-' }}</span></td><td>{{ optional($revision?->received_date)->format('d M Y') ?: optional($project->created_at)->format('d M Y') }}</td><td>{{ $project->customer }}</td><td>{{ $project->model }}</td><td><strong>{{ $project->part_number }}</strong><span class="source-label">{{ $project->part_name }}</span></td><td><x-project-progress :revision="$revision" /></td><td><span class="badge waiting">Menunggu A00</span></td><td><button type="button" class="a00-action-btn" data-url="{{ route('control-project.a00.create',['embedded'=>1,'project_id'=>$project->id],false) }}" onclick="openA00Modal(this.dataset.url)">Buat A00</button></td></tr>
+@empty<tr><td colspan="9" style="text-align:center;padding:1.4rem;color:#64748b">Belum ada project dari Registrasi Drawing atau Breakdown yang menunggu A00.</td></tr>@endforelse
 </tbody></table></div><div class="a00-pagination" style="margin-top:1rem">{{ $pendingProjects->links() }}</div>
 @else
 <h3 class="a00-section-title">A00 yang Sudah Diterbitkan</h3>

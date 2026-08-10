@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\BusinessCategory;
 use App\Models\Customer;
 use App\Models\DocumentProject;
+use App\Models\DocumentControlRegistration;
 use App\Models\DocumentRevision;
 use App\Models\Product;
 use App\Models\Pic;
 use App\Models\ProjectWorkflowTask;
 use App\Models\ProjectDocumentRevision;
+use App\Models\ProjectA00Item;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,7 +27,12 @@ class BreakdownInboxController extends Controller
             $filter = 'active';
         }
 
-        $tasks = ProjectWorkflowTask::with(['project.product', 'revision', 'assignedUser'])
+        $tasks = ProjectWorkflowTask::with([
+            'project.product',
+            'project.a00Item.form' => fn ($query) => $query->withCount('items'),
+            'revision',
+            'assignedUser',
+        ])
             ->where('stage', ProjectWorkflowTask::STAGE_BREAKDOWN)
             ->where('assigned_role', 'admin_costing')
             ->when($filter === 'active', fn ($query) => $query->whereIn('status', [
@@ -47,7 +54,36 @@ class BreakdownInboxController extends Controller
         $picsEngineering=Pic::where('type','engineering')->orderBy('name')->get();
         $picsMarketing=Pic::where('type','marketing')->orderBy('name')->get();
         $activeBusinessCategory=BusinessCategoryContext::selected();
-        return view('breakdown.inbox', compact('tasks', 'search', 'filter', 'customers', 'categories', 'picsEngineering', 'picsMarketing', 'activeBusinessCategory'));
+        $categoryByCode=$categories->keyBy(fn($category)=>mb_strtolower(trim((string)$category->code)));
+        $customerByName=$customers->keyBy(fn($customer)=>mb_strtolower(trim((string)$customer->name)));
+        $sourcePayload=function(string $source, DocumentProject $project, ?DocumentRevision $revision)use($categoryByCode,$customerByName){
+            $category=$categoryByCode->get(mb_strtolower(trim((string)$project->product?->code)));
+            $customer=$customerByName->get(mb_strtolower(trim((string)$project->customer)));
+            return [
+                'source'=>$source,'project_id'=>$project->id,
+                'label'=>trim($project->part_number.' — '.$project->part_name),
+                'business_category_id'=>$category?->id,'customer_id'=>$customer?->id,
+                'model'=>$project->model,'assy_name'=>$project->part_name,'assy_number'=>$project->part_number,
+                'received_date'=>$revision?->received_date?->format('Y-m-d'),
+                'pic_engineering'=>$revision?->pic_engineering,'pic_marketing'=>$revision?->pic_marketing,
+            ];
+        };
+        $documentControlRows=DocumentControlRegistration::with('revision')
+            ->whereNotNull('document_project_id')->latest('id')->get()->unique('document_project_id');
+        $documentControlProjects=DocumentProject::with('product')->whereIn('id',$documentControlRows->pluck('document_project_id'))->get()->keyBy('id');
+        $documentControlSources=$documentControlRows
+            ->map(fn($registration)=>$documentControlProjects->has($registration->document_project_id)
+                ? $sourcePayload('document_control',$documentControlProjects->get($registration->document_project_id),$registration->revision)
+                : null)->filter()->values();
+        $a00Items=ProjectA00Item::with(['projectRevision','form'])
+            ->whereNotNull('document_project_id')->latest('id')->get()->unique('document_project_id');
+        $a00Projects=DocumentProject::with('product')->whereIn('id',$a00Items->pluck('document_project_id'))->get()->keyBy('id');
+        $controlProjectSources=$a00Items
+            ->map(fn($item)=>$a00Projects->has($item->document_project_id)
+                ? $sourcePayload('control_project',$a00Projects->get($item->document_project_id),$item->projectRevision)
+                : null)->filter()->values();
+        $breakdownSources=$documentControlSources->concat($controlProjectSources)->values();
+        return view('breakdown.inbox', compact('tasks', 'search', 'filter', 'customers', 'categories', 'picsEngineering', 'picsMarketing', 'activeBusinessCategory', 'breakdownSources'));
     }
 
     public function storeManual(Request $request)
@@ -93,6 +129,15 @@ class BreakdownInboxController extends Controller
         });
 
         return redirect()->route('breakdown.inbox')->with('success','Breakdown manual berhasil dibuat dan sudah masuk ke halaman Project.');
+    }
+
+    public function destroyTask(ProjectWorkflowTask $task)
+    {
+        abort_unless($task->stage === ProjectWorkflowTask::STAGE_BREAKDOWN && $task->assigned_role === 'admin_costing', 404);
+        $partNumber=$task->project?->part_number ?: 'Project';
+        $task->delete();
+
+        return redirect()->route('breakdown.inbox')->with('success', $partNumber.' berhasil dihapus dari Inbox Breakdown. Data di Document Control dan Control Project tetap tersimpan.');
     }
 
     public function complete(Request $request, ProjectWorkflowTask $task)
