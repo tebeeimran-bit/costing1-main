@@ -692,7 +692,7 @@
             <!-- Footer -->
             <footer class="footer">
                 <div class="footer-content">
-                    <span>&copy; 2025 Dharma Electrindo Mfg. All rights reserved.</span>
+                    <span>&copy; 2026 Dharma Electrindo Mfg. All rights reserved.</span>
                     <span>Sistem Costing Manufaktur v1.0</span>
                 </div>
             </footer>
