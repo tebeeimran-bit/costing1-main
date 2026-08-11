@@ -260,6 +260,34 @@ class TrackingDocumentProjectService
                 ];
 
                 $costingData->update(array_intersect_key($costingPayload, $costingColumns));
+
+                $a00Item = \App\Models\ProjectA00Item::query()
+                    ->where('document_revision_id', $latestRevision->id)
+                    ->first();
+
+                if ($a00Item) {
+                    $a00Quantity = $costingPayload['forecast'];
+                    $a00Uom = strtoupper((string) $costingPayload['forecast_uom']) === 'PCE'
+                        ? 'Pcs'
+                        : (string) $costingPayload['forecast_uom'];
+                    $a00Basis = $costingPayload['forecast_basis'] === 'per_year'
+                        ? 'per Year'
+                        : 'per Month';
+
+                    $a00Item->update([
+                        'quantity' => $a00Quantity,
+                        'quantity_uom' => $a00Uom,
+                        'quantity_basis' => $a00Basis,
+                    ]);
+
+                    if ((int) $a00Item->line_number === 1) {
+                        $a00Item->form()->update([
+                            'quantity' => $a00Quantity,
+                            'quantity_uom' => $a00Uom,
+                            'quantity_basis' => $a00Basis,
+                        ]);
+                    }
+                }
             }
         });
 

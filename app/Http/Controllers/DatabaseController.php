@@ -38,6 +38,7 @@ use App\Services\Database\DatabaseMasterDataService;
 use App\Services\Database\DatabaseMaterialService;
 use App\Services\Database\DatabaseProjectDocumentService;
 use App\Services\Database\DatabaseSpreadsheetImportService;
+use Illuminate\Support\Facades\Storage;
 use App\Services\Database\DatabaseWireService;
 use Illuminate\Http\Request;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -244,7 +245,10 @@ class DatabaseController extends Controller
 
     public function pics()
     {
-        $pics = Pic::orderBy('type')->orderBy('name')->get();
+        $pics = Pic::query()
+            ->orderByRaw("CASE type WHEN 'engineering' THEN 1 WHEN 'marketing' THEN 2 WHEN 'director' THEN 3 WHEN 'div_marketing' THEN 4 ELSE 5 END")
+            ->orderBy('name')
+            ->get();
         return view('database.pics', compact('pics'));
     }
 
@@ -312,7 +316,9 @@ class DatabaseController extends Controller
 
     public function storePic(StorePicRequest $request, DatabaseMasterDataService $service)
     {
-        $service->create(Pic::class, $request->validated(), ['name']);
+        $data=$request->validated();$file=$request->file('signature');unset($data['signature']);
+        if($file)$data['signature_path']=$file->store('database/pic-signatures','public');
+        $service->create(Pic::class, $data, ['name']);
 
         return back()->with('success', 'PIC berhasil ditambahkan.');
     }
@@ -320,8 +326,11 @@ class DatabaseController extends Controller
     public function updatePic(UpdatePicRequest $request, $id, DatabaseMasterDataService $service)
     {
         $pic = Pic::findOrFail($id);
-
-        $service->update($pic, $request->validated(), ['name']);
+        $data=$request->validated();$file=$request->file('signature');unset($data['signature']);
+        $oldPath=$pic->signature_path;
+        if($file)$data['signature_path']=$file->store('database/pic-signatures','public');
+        $service->update($pic, $data, ['name']);
+        if($file&&$oldPath)Storage::disk('public')->delete($oldPath);
 
         return back()->with('success', 'PIC berhasil diperbarui.');
     }
@@ -329,7 +338,9 @@ class DatabaseController extends Controller
     public function destroyPic($id)
     {
         $pic = Pic::findOrFail($id);
+        $signaturePath=$pic->signature_path;
         $pic->delete();
+        if($signaturePath)Storage::disk('public')->delete($signaturePath);
 
         return back()->with('success', 'PIC berhasil dihapus.');
     }

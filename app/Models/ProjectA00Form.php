@@ -8,8 +8,65 @@ class ProjectA00Form extends Model
         'document_date'=>'date','request_received_date'=>'date','due_part_list'=>'date','due_umh'=>'date',
         'due_new_part_price'=>'date','due_costing'=>'date','due_submit_quotation'=>'date','pp1_date'=>'date',
         'pp2_date'=>'date','pp3_date'=>'date','sop_mp_date'=>'date','spot_order'=>'boolean','sop_mp_tba'=>'boolean',
+        'customer_events'=>'array',
         'issued_at'=>'datetime',
     ]; }
+
+    public function resolvedCustomerEvents(): array
+    {
+        $events = collect($this->customer_events ?? [])
+            ->map(fn ($event) => [
+                'name' => trim((string) ($event['name'] ?? '')),
+                'date' => filled($event['date'] ?? null) ? (string) $event['date'] : null,
+                'tba' => (bool) ($event['tba'] ?? false),
+            ])
+            ->filter(fn ($event) => $event['name'] !== '')
+            ->values()
+            ->all();
+
+        if ($events !== []) {
+            return $events;
+        }
+
+        return collect([
+            ['name' => 'PP1', 'date' => $this->pp1_date?->format('Y-m-d'), 'tba' => false],
+            ['name' => 'PP2', 'date' => $this->pp2_date?->format('Y-m-d'), 'tba' => false],
+            ['name' => 'PP3', 'date' => $this->pp3_date?->format('Y-m-d'), 'tba' => false],
+            ['name' => 'SOP/MP', 'date' => $this->sop_mp_date?->format('Y-m-d'), 'tba' => (bool) $this->sop_mp_tba],
+        ])->filter(fn ($event) => $event['date'] || $event['tba'])->values()->all();
+    }
+
+    public function resolvedMassProductionEvent(): ?array
+    {
+        $events = collect($this->resolvedCustomerEvents());
+
+        return $events->first(fn ($event) => preg_match('/\b(SOP|MP|MASS\s*PRO)\b/i', $event['name']) === 1)
+            ?? $events->last();
+    }
+
+    public function resolvedMassProductionDate(): ?\Carbon\Carbon
+    {
+        $event = $this->resolvedMassProductionEvent();
+
+        return filled($event['date'] ?? null) ? \Carbon\Carbon::parse($event['date']) : null;
+    }
+
+    public function resolvedSignaturePath(string $role): ?string
+    {
+        [$type,$nameColumn,$legacyColumn]=match($role){
+            'approved'=>['director','approved_by','approved_signature_path'],
+            'acknowledged'=>['div_marketing','acknowledged_by','acknowledged_signature_path'],
+            'prepared'=>['marketing','prepared_by','prepared_signature_path'],
+            default=>[null,null,null],
+        };
+        if(!$type)return null;
+        $name=(string)$this->{$nameColumn};
+        $normalized=preg_replace('/[^\pL\pN]+/u','',mb_strtolower(trim($name)));
+        $master=$normalized===''?null:Pic::query()->where('type',$type)->whereNotNull('signature_path')->get()
+            ->first(fn($pic)=>preg_replace('/[^\pL\pN]+/u','',mb_strtolower(trim($pic->name)))===$normalized)
+            ?->signature_path;
+        return $master?:$this->{$legacyColumn};
+    }
     public function project(){return $this->belongsTo(DocumentProject::class,'document_project_id');}
     public function projectRevision(){return $this->belongsTo(DocumentRevision::class,'document_revision_id');}
     public function items(){return $this->hasMany(ProjectA00Item::class)->orderBy('line_number');}

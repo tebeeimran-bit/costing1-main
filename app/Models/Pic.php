@@ -9,5 +9,5 @@ class Pic extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'type'];
+    protected $fillable = ['name', 'type', 'signature_path'];
 }

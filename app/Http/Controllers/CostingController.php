@@ -2822,8 +2822,8 @@ class CostingController extends Controller
                 $sheet->setCellValue('F9', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($revision->received_date));
                 $sheet->getStyle('F9')->getNumberFormat()->setFormatCode('dd/mm/yyyy');
             }
-            if ($a00Form->sop_mp_date) {
-                $sheet->setCellValue('F11', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($a00Form->sop_mp_date));
+            if ($massProductionDate = $a00Form->resolvedMassProductionDate()) {
+                $sheet->setCellValue('F11', \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($massProductionDate));
                 $sheet->getStyle('F11')->getNumberFormat()->setFormatCode('mmm-yy');
             } else {
                 $sheet->setCellValueExplicit('F11', 'NEW', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);

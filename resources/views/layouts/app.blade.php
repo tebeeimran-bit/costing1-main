@@ -102,16 +102,6 @@
             padding-bottom: 7rem;
         }
 
-        .demo-mode-banner {
-            background: #fff7ed;
-            border-bottom: 1px solid #fed7aa;
-            color: #9a3412;
-            padding: .45rem 1rem;
-            text-align: center;
-            font-size: .76rem;
-            font-weight: 800;
-            letter-spacing: .02em;
-        }
     </style>
 </head>
 
@@ -193,7 +183,7 @@
                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                              <path d="M9 3H5a2 2 0 0 0-2 2v16h16a2 2 0 0 0 2-2v-4"/><path d="M9 3v6h6"/><path d="M9 3h6l6 6v2"/><path d="M7 14h8M7 18h8"/>
                          </svg>
-                         <span>Document Control</span>
+                         <span>Inbox Distribusi Drawing</span>
                      </a>
                      @endif
                      @if($canInboxBreakdown)
@@ -589,12 +579,6 @@
 
         <!-- Main Content Wrapper -->
         <div class="main-wrapper">
-            @if (config('deployment.mode') === 'demo')
-                <div class="demo-mode-banner" role="status">
-                    MODE DEMO (SQLite) — data di komputer ini terpisah dari data production VPS.
-                </div>
-            @endif
-
             <!-- Header -->
             <header class="header">
                 <div class="header-content">

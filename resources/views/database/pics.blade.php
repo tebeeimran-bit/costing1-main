@@ -35,17 +35,23 @@
                     </svg>
                 </button>
             </div>
-            <form action="{{ route('database.pics.store', absolute: false) }}" method="POST" class="pic-form">
+            <form action="{{ route('database.pics.store', absolute: false) }}" method="POST" enctype="multipart/form-data" class="pic-form">
                 @csrf
                 <div class="form-group">
                     <label class="form-label">Nama PIC <span style="color: #dc2626;">*</span></label>
                     <input type="text" name="name" class="form-input" required>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Tanda Tangan PNG <small>(untuk penandatangan A00)</small></label>
+                    <input type="file" name="signature" class="form-input" accept="image/png,.png">
+                </div>
+                <div class="form-group">
                     <label class="form-label">Tipe PIC <span style="color: #dc2626;">*</span></label>
                     <select name="type" class="form-input" required>
                         <option value="engineering">Engineering</option>
                         <option value="marketing">Marketing</option>
+                        <option value="director">Director</option>
+                        <option value="div_marketing">Div. Marketing</option>
                     </select>
                 </div>
                 <div class="pic-form-actions">
@@ -67,7 +73,7 @@
                     </svg>
                 </button>
             </div>
-            <form id="edit-pic-form" method="POST" class="pic-form">
+            <form id="edit-pic-form" method="POST" enctype="multipart/form-data" class="pic-form">
                 @csrf
                 @method('PUT')
                 <div class="form-group">
@@ -75,10 +81,17 @@
                     <input type="text" id="edit-pic-name" name="name" class="form-input" required>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Ganti Tanda Tangan PNG</label>
+                    <input type="file" name="signature" class="form-input" accept="image/png,.png">
+                    <small id="edit-pic-signature-status" style="display:block;margin-top:.35rem;color:#64748b"></small>
+                </div>
+                <div class="form-group">
                     <label class="form-label">Tipe PIC <span style="color: #dc2626;">*</span></label>
                     <select id="edit-pic-type" name="type" class="form-input" required>
                         <option value="engineering">Engineering</option>
                         <option value="marketing">Marketing</option>
+                        <option value="director">Director</option>
+                        <option value="div_marketing">Div. Marketing</option>
                     </select>
                 </div>
                 <div class="pic-form-actions">
@@ -108,6 +121,7 @@
                         <th style="width: 70px;">No.</th>
                         <th>Nama PIC</th>
                         <th style="width: 220px;">Tipe PIC</th>
+                        <th style="width: 140px; text-align:center">Tanda Tangan</th>
                         <th style="width: 140px; text-align: center;">Aksi</th>
                     </tr>
                 </thead>
@@ -116,10 +130,11 @@
                         <tr>
                             <td>{{ $index + 1 }}</td>
                             <td>{{ $pic->name }}</td>
-                            <td>{{ ucfirst($pic->type) }}</td>
+                            <td>{{ ['engineering'=>'Engineering','marketing'=>'Marketing','director'=>'Director','div_marketing'=>'Div. Marketing'][$pic->type] ?? ucfirst($pic->type) }}</td>
+                            <td style="text-align:center">@if($pic->signature_path)<img src="{{ Storage::disk('public')->url($pic->signature_path) }}" alt="TTD {{ $pic->name }}" style="display:inline-block;max-width:90px;max-height:42px;object-fit:contain">@else<span style="color:#94a3b8">Belum ada</span>@endif</td>
                             <td style="text-align: center;">
                                 <button type="button" class="btn-action btn-edit" title="Edit"
-                                    onclick="openEditPicModal({{ $pic->id }}, @js($pic->name), @js($pic->type))">
+                                    onclick="openEditPicModal({{ $pic->id }}, @js($pic->name), @js($pic->type), {{ $pic->signature_path ? 'true' : 'false' }})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                         style="width: 16px; height: 16px;">
                                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -140,7 +155,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4" style="text-align: center;">Belum ada data PIC.</td>
+                            <td colspan="5" style="text-align: center;">Belum ada data PIC.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -274,7 +289,7 @@
             }
         }
 
-        function openEditPicModal(id, name, type) {
+        function openEditPicModal(id, name, type, hasSignature) {
             const modal = document.getElementById('edit-pic-modal');
             const form = document.getElementById('edit-pic-form');
             const nameInput = document.getElementById('edit-pic-name');
@@ -283,6 +298,7 @@
             form.action = `{{ route('database.pics', absolute: false) }}/${id}`;
             nameInput.value = name;
             typeInput.value = type;
+            document.getElementById('edit-pic-signature-status').textContent = hasSignature ? 'Tanda tangan sudah tersimpan. Pilih file hanya jika ingin mengganti.' : 'Belum ada tanda tangan.';
             modal.classList.remove('is-hidden');
             document.body.style.overflow = 'hidden';
         }

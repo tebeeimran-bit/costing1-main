@@ -302,6 +302,13 @@ class ProjectA00WorkflowTest extends TestCase
             'document_number'=>'0100/MKT-PROJECT/A00/VII/2026','document_date'=>'2026-07-29','revision'=>'00',
             'from_department'=>'MKT','to_department'=>'TEAM PROJECT','quantity_uom'=>'Pcs',
             'quantity_basis'=>'per Year','issue_location'=>'Cikarang',
+            'customer_events'=>[
+                ['name'=>'DP','date'=>'2026-08-10'],
+                ['name'=>'PP','date'=>'2026-09-15'],
+                ['name'=>'MPP','tba'=>1],
+                ['name'=>'PILOT','date'=>'2026-10-20'],
+                ['name'=>'SOP','date'=>'2027-01-10'],
+            ],
         ]);
 
         $response->assertRedirect();
@@ -315,10 +322,25 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseHas('costing_group_items',['sequence'=>1,'status'=>'pending','quantity'=>810000]);
 
         $a00=\App\Models\ProjectA00Form::firstOrFail();
+        $this->assertSame(['DP','PP','MPP','PILOT','SOP'],collect($a00->customer_events)->pluck('name')->all());
+        $this->assertTrue((bool)$a00->customer_events[2]['tba']);
         $this->actingAs($user)->get(route('control-project.a00.show', $a00))
             ->assertOk()
             ->assertSee('Download PDF')
+            ->assertSeeInOrder(['DP','PP','MPP','PILOT','SOP'])
             ->assertDontSee('Buat Snapshot Draft');
+        $excelResponse=$this->actingAs($user)->get(route('control-project.a00.excel',$a00));
+        $excelResponse->assertOk()->assertHeader('content-type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringContainsString('.xlsx',strtolower((string)$excelResponse->headers->get('content-disposition')));
+        $excelPath=app(\App\Services\ControlProject\A00ExcelPdfService::class)->generateExcel($a00);
+        $excelBook=\PhpOffice\PhpSpreadsheet\IOFactory::load($excelPath);
+        $excelSheet=$excelBook->getSheetByName('A00');
+        $this->assertSame('Cikarang, 29 Juli 2026',$excelSheet->getCell('S43')->getValue());
+        $this->assertNull($excelSheet->getCell('M43')->getValue());
+        $this->assertSame('☑',$excelSheet->getCell('K16')->getValue());
+        $this->assertSame('1.',$excelSheet->getCell('D29')->getValue());
+        $this->assertSame($excelSheet->getStyle('D21')->getAlignment()->getHorizontal(),$excelSheet->getStyle('D29')->getAlignment()->getHorizontal());
+        @unlink($excelPath);
         $pdfResponse=$this->actingAs($user)->get(route('control-project.a00.pdf',$a00));
         $pdfResponse->assertOk()->assertHeader('content-type','application/pdf');
         $this->assertStringStartsWith('%PDF-', (string)$pdfResponse->getContent());
@@ -472,7 +494,7 @@ class ProjectA00WorkflowTest extends TestCase
         $pdfA00=\App\Models\ProjectA00Form::with('items')->findOrFail($group->project_a00_form_id);
         $a00PdfHtml=view('control-project.a00.pdf',['a00'=>$pdfA00,'logoData'=>null])->render();
         $this->assertStringContainsString('Terlampir',$a00PdfHtml);
-        $this->assertStringContainsString('MASSPRO',$a00PdfHtml);
+        $this->assertStringContainsString('VOLUME / MONTH',$a00PdfHtml);
         $this->assertStringContainsString('B001',$a00PdfHtml);
         $this->assertStringContainsString('B002',$a00PdfHtml);
         $bulkyPdf=$this->actingAs($user)->get(route('control-project.a00.pdf',$pdfA00));
@@ -540,7 +562,7 @@ class ProjectA00WorkflowTest extends TestCase
         $this->actingAs($recipient)->get(route('marketing.bulky-cogm.download',$finalVersion))->assertStatus(409);
         $this->actingAs($user)->get(route('costing-groups.workspace',$group))
             ->assertOk()->assertSee('Bulky COGM')->assertSee('Marketing Item Bulky')->assertSee('Riwayat:')
-            ->assertSee('Terlampir')->assertSee('MASSPRO')->assertSee('Lampiran Item');
+            ->assertSee('Terlampir')->assertSee('VOLUME / MONTH')->assertSee('LAMPIRAN ASSY');
         $a00=$group->a00Form;
         $projectIds=$a00->items()->pluck('document_project_id')->all();
         $this->actingAs($user)->delete(route('control-project.a00.destroy',$a00))

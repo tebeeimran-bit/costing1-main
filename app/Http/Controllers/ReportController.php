@@ -12,6 +12,7 @@ use App\Models\DocumentProject;
 use App\Models\ExchangeRate;
 use App\Models\MaterialBreakdown;
 use App\Models\Product;
+use App\Models\ProjectDocumentRevision;
 use App\Models\WireRate;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -623,12 +624,21 @@ class ReportController extends Controller
 
     private function buildEngineeringDocumentRows($revisions)
     {
+        $revisionHistoryCounts = ProjectDocumentRevision::query()
+            ->whereIn('document_revision_id', $revisions->pluck('id')->filter()->values())
+            ->whereIn('revision_type', ['partlist', 'umh'])
+            ->selectRaw('document_revision_id, revision_type, COUNT(*) as revision_count')
+            ->groupBy('document_revision_id', 'revision_type')
+            ->get()
+            ->groupBy('document_revision_id')
+            ->map(fn ($counts) => $counts->pluck('revision_count', 'revision_type'));
+
         $costingsByRevision = CostingData::query()
             ->whereIn('tracking_revision_id', $revisions->pluck('id')->filter()->values())
             ->get()
             ->keyBy('tracking_revision_id');
 
-        return $revisions->map(function (DocumentRevision $revision) use ($costingsByRevision) {
+        return $revisions->map(function (DocumentRevision $revision) use ($costingsByRevision, $revisionHistoryCounts) {
             $project = $revision->project;
             $costing = $costingsByRevision->get($revision->id);
 
@@ -641,8 +651,11 @@ class ReportController extends Controller
             $hasUmh = filled($revision->umh_file_path) || filled($revision->umh_original_name);
             $hasCosting = (bool) $costing || ($revision->status === DocumentRevision::STATUS_SUDAH_COSTING);
 
-            $partlistRevisionCount = max(0, (int) ($revision->partlist_update_count ?? 0));
-            $umhRevisionCount = max(0, (int) ($revision->umh_update_count ?? 0));
+            // An initial Partlist/UMH upload is document receipt, not a revision.
+            // Only explicit entries in project_document_revisions are revisions.
+            $documentRevisionCounts = $revisionHistoryCounts->get($revision->id, collect());
+            $partlistRevisionCount = max(0, (int) $documentRevisionCounts->get('partlist', 0));
+            $umhRevisionCount = max(0, (int) $documentRevisionCounts->get('umh', 0));
 
             $lastUpdateCandidates = collect([
                 $revision->partlist_updated_at,

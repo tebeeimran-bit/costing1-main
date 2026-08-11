@@ -17,7 +17,7 @@
     .th-blue { background: #2563eb; color: #fff; }
     .th-teal { background: #0f766e; color: #fff; }
     .cost-bar { height: 6px; border-radius: 3px; margin-top: 0.25rem; }
-    .lap-toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;padding:1rem 1.1rem;border:1px solid #dbe5f2;border-radius:11px;background:#fff}.lap-toolbar h3{margin:0;color:#0f172a;font-size:.95rem}.lap-toolbar p{margin:.2rem 0 0;color:#64748b;font-size:.7rem}.lap-export{display:inline-flex;align-items:center;gap:.4rem;padding:.6rem .85rem;border-radius:8px;background:#2563eb;color:#fff;font-size:.7rem;font-weight:850;text-decoration:none}.lap-empty{text-align:center!important;padding:1.5rem!important;color:#64748b}.lap-detail{margin-bottom:1.5rem;overflow:auto}.lap-detail .lap-table{min-width:1100px}.lap-status{display:inline-flex;padding:.25rem .45rem;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:.62rem;font-weight:800}@media(max-width:1100px){.lap-grid{grid-template-columns:1fr}}
+    .lap-toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;padding:1rem 1.1rem;border:1px solid #dbe5f2;border-radius:11px;background:#fff}.lap-toolbar h3{margin:0;color:#0f172a;font-size:.95rem}.lap-toolbar p{margin:.2rem 0 0;color:#64748b;font-size:.7rem}.lap-export{display:inline-flex;align-items:center;gap:.4rem;padding:.6rem .85rem;border-radius:8px;background:#2563eb;color:#fff;font-size:.7rem;font-weight:850;text-decoration:none}.lap-empty{text-align:center!important;padding:1.5rem!important;color:#64748b}.lap-detail{margin-bottom:1.5rem;overflow:auto}.lap-detail .lap-table{min-width:1100px}.lap-detail-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}.lap-project-search{width:min(340px,100%);padding:.55rem .75rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:.75rem;outline:none}.lap-project-search:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}.lap-status{display:inline-flex;padding:.25rem .45rem;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:.62rem;font-weight:800}@media(max-width:1100px){.lap-grid{grid-template-columns:1fr}}@media(max-width:640px){.lap-detail-header{align-items:stretch;flex-direction:column}.lap-project-search{width:100%}}
 </style>
 
 <div class="lap-toolbar"><div><h3>Laporan Berdasarkan Project Aktual</h3><p>{{ $projectRows->count() }} project terdaftar. Biaya menggunakan CostingData pada revisi terbaru masing-masing project.</p></div><a class="lap-export" href="{{ route('laporan.export', absolute:false) }}">Export Laporan Excel</a></div>
@@ -94,9 +94,10 @@
 </div>
 
 <div class="card lap-detail">
-    <div class="card-header"><h3 class="card-title">Detail Project</h3></div>
-    <table class="lap-table"><thead><tr><th>Project</th><th>Customer</th><th>Model</th><th>No. Assy</th><th>Rev.</th><th>Business Category</th><th>Status</th><th style="text-align:right">Material</th><th style="text-align:right">Labor</th><th style="text-align:right">Overhead</th><th style="text-align:right">Total COGM</th></tr></thead><tbody>
-    @forelse($projectRows as $item)<tr><td><strong>{{ $item->project }}</strong></td><td>{{ $item->customer }}</td><td>{{ $item->model }}</td><td><strong>{{ $item->assy_no }}</strong></td><td>{{ $item->revision }}</td><td>{{ $item->category }}</td><td><span class="lap-status">{{ $item->status }}</span></td><td style="text-align:right">Rp {{ number_format($item->material,0,',','.') }}</td><td style="text-align:right">Rp {{ number_format($item->labor,0,',','.') }}</td><td style="text-align:right">Rp {{ number_format($item->overhead,0,',','.') }}</td><td style="text-align:right;font-weight:800">Rp {{ number_format($item->cogm,0,',','.') }}</td></tr>@empty<tr><td colspan="11" class="lap-empty">Belum ada project yang dapat ditampilkan.</td></tr>@endforelse
+    <div class="card-header lap-detail-header"><h3 class="card-title">Detail Project</h3><input id="lapProjectSearch" class="lap-project-search" type="search" placeholder="Cari project, customer, model, No. Assy, kategori, atau status..." aria-label="Cari Detail Project"></div>
+    <table class="lap-table" id="lapProjectTable"><thead><tr><th>Project</th><th>Customer</th><th>Model</th><th>No. Assy</th><th>Rev.</th><th>Business Category</th><th>Status</th><th style="text-align:right">Material</th><th style="text-align:right">Labor</th><th style="text-align:right">Overhead</th><th style="text-align:right">Total COGM</th></tr></thead><tbody>
+    @forelse($projectRows as $item)<tr data-project-row><td><strong>{{ $item->project }}</strong></td><td>{{ $item->customer }}</td><td>{{ $item->model }}</td><td><strong>{{ $item->assy_no }}</strong></td><td>{{ $item->revision }}</td><td>{{ $item->category }}</td><td><span class="lap-status">{{ $item->status }}</span></td><td style="text-align:right">Rp {{ number_format($item->material,0,',','.') }}</td><td style="text-align:right">Rp {{ number_format($item->labor,0,',','.') }}</td><td style="text-align:right">Rp {{ number_format($item->overhead,0,',','.') }}</td><td style="text-align:right;font-weight:800">Rp {{ number_format($item->cogm,0,',','.') }}</td></tr>@empty<tr><td colspan="11" class="lap-empty">Belum ada project yang dapat ditampilkan.</td></tr>@endforelse
+    <tr id="lapProjectNoResults" hidden><td colspan="11" class="lap-empty">Tidak ada project yang cocok dengan pencarian.</td></tr>
     </tbody></table>
 </div>
 
@@ -126,4 +127,25 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('scripts')
+<script>
+    document.getElementById('lapProjectSearch')?.addEventListener('input', function () {
+        const query = this.value.toLocaleLowerCase('id').trim();
+        const rows = Array.from(document.querySelectorAll('#lapProjectTable [data-project-row]'));
+        let visibleRows = 0;
+
+        rows.forEach(function (row) {
+            const matches = row.textContent.toLocaleLowerCase('id').includes(query);
+            row.hidden = !matches;
+            visibleRows += matches ? 1 : 0;
+        });
+
+        const noResults = document.getElementById('lapProjectNoResults');
+        if (noResults) {
+            noResults.hidden = query === '' || visibleRows > 0;
+        }
+    });
+</script>
 @endsection

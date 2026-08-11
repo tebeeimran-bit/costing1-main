@@ -96,7 +96,7 @@
             value="{{ route('costing.material-quick-update', absolute: false) }}">
         <input type="hidden" id="materialExcelExportUrl" value="{{ route('costing.material-excel.export', absolute: false) }}">
         <input type="hidden" id="materialExcelImportUrl" value="{{ route('costing.material-excel.import', absolute: false) }}">
-        <input type="hidden" id="exportSopMpDate" value="{{ $trackingRevision?->project?->a00Form?->sop_mp_date?->format('Y-m-d') ?? '' }}">
+        <input type="hidden" id="exportSopMpDate" value="{{ $trackingRevision?->project?->a00Form?->resolvedMassProductionDate()?->format('Y-m-d') ?? '' }}">
         <input type="hidden" id="exportProjectDate" value="{{ $trackingRevision?->received_date?->format('Y-m-d') ?? now()->format('Y-m-d') }}">
         <input type="hidden" id="serverMaterialCost" value="{{ $costingData?->material_cost ?? 0 }}">
 

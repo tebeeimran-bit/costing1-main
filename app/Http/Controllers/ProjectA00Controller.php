@@ -13,12 +13,12 @@ use App\Models\ProjectA00Form;
 use App\Models\ProjectA00Item;
 use App\Models\ProjectWorkflowTask;
 use App\Services\Costing\CostingGroupService;
+use App\Services\ControlProject\A00ExcelPdfService;
 use App\Support\BusinessCategoryContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class ProjectA00Controller extends Controller
 {
@@ -71,6 +71,8 @@ class ProjectA00Controller extends Controller
             'plants'=>Plant::orderBy('code')->get(),
             'picsEngineering'=>Pic::where('type','engineering')->orderBy('name')->get(),
             'picsMarketing'=>Pic::where('type','marketing')->orderBy('name')->get(),
+            'picsDirector'=>Pic::where('type','director')->orderBy('name')->get(),
+            'picsDivMarketing'=>Pic::where('type','div_marketing')->orderBy('name')->get(),
             'nextNumber'=>null,
             'sourceProject'=>$sourceProject,
             'sourceProjects'=>$sourceProjects,
@@ -96,15 +98,21 @@ class ProjectA00Controller extends Controller
             'source_file'=>['nullable','file','mimes:pdf,xls,xlsx,doc,docx','max:10240'],'due_part_list'=>['nullable','date'],'due_umh'=>['nullable','date'],'due_new_part_price'=>['nullable','date'],
             'due_costing'=>['nullable','date'],'due_submit_quotation'=>['nullable','date'],'pp1_date'=>['nullable','date'],'pp2_date'=>['nullable','date'],
             'pp3_date'=>['nullable','date'],'sop_mp_date'=>['nullable','date'],'sop_mp_tba'=>['nullable','boolean'],'issue_location'=>['required','string','max:100'],
+            'customer_events'=>['nullable','array','min:1','max:20'],'customer_events.*.name'=>['required','string','max:100'],
+            'customer_events.*.date'=>['nullable','date'],'customer_events.*.tba'=>['nullable','boolean'],
             'prepared_by'=>['nullable','string','max:255'],'acknowledged_by'=>['nullable','string','max:255'],'approved_by'=>['nullable','string','max:255'],'notes'=>['nullable','string','max:2000'],
-            'prepared_signature'=>['nullable','string','max:150000'],'acknowledged_signature'=>['nullable','string','max:150000'],'approved_signature'=>['nullable','string','max:150000'],
+            'prepared_signature'=>['nullable','file','mimes:png','max:2048'],'acknowledged_signature'=>['nullable','file','mimes:png','max:2048'],'approved_signature'=>['nullable','file','mimes:png','max:2048'],
         ]);
+        $data['customer_events']=$this->normalizeCustomerEvents($data['customer_events'] ?? []);
+        $data['prepared_by']=trim((string)($data['prepared_by']??'')) ?: $data['pic_marketing'];
+        $data['acknowledged_by']=trim((string)($data['acknowledged_by']??'')) ?: 'L. Andri H';
+        $data['approved_by']=trim((string)($data['approved_by']??'')) ?: 'Y. Susanto';
         $customer=Customer::findOrFail($data['customer_id']); $category=BusinessCategory::findOrFail($data['business_category_id']);
         abort_if(BusinessCategoryContext::selectedId() && BusinessCategoryContext::selectedId() !== $category->id,422,'Business Category form harus sama dengan kategori aktif.');
         $file=$request->file('source_file'); $stored=$file?['name'=>$file->getClientOriginalName(),'path'=>$file->store('control-project/a00-sources')]:['name'=>null,'path'=>null];
         $signaturePaths=[];
         foreach (['prepared','acknowledged','approved'] as $signatureType) {
-            $signaturePaths[$signatureType.'_signature_path']=$this->storeSignature($data[$signatureType.'_signature']??null,$signatureType);
+            $signaturePaths[$signatureType.'_signature_path']=$this->storeSignature($request->file($signatureType.'_signature'),$signatureType);
             unset($data[$signatureType.'_signature']);
         }
         $form=DB::transaction(function() use($data,$customer,$category,$stored,$signaturePaths,$request){
@@ -185,21 +193,33 @@ class ProjectA00Controller extends Controller
     }
 
     public function show(ProjectA00Form $a00){
-        app(CostingGroupService::class)->syncFromA00($a00, auth()->id());
+        // Detail A00 bersifat read-only. Hindari sinkronisasi costing (beserta
+        // seluruh query/update turunannya) pada setiap kunjungan halaman.
+        // Sinkronisasi tetap dijalankan sekali untuk data lama yang belum
+        // mempunyai costing group.
+        if (!$a00->costingGroup()->exists()) {
+            app(CostingGroupService::class)->syncFromA00($a00, auth()->id());
+        }
+
         $a00->load('project','projectRevision','items.project','costingGroup.items.a00Item','costingGroup.items.project','costingGroup.items.costingData','costingGroup.items.revision');
-        return view('control-project.a00.show',['a00'=>$a00,'picsEngineering'=>Pic::where('type','engineering')->orderBy('name')->get(),'picsMarketing'=>Pic::where('type','marketing')->orderBy('name')->get()]);
+        return view('control-project.a00.show',['a00'=>$a00]);
     }
 
-    public function downloadPdf(ProjectA00Form $a00)
+    public function downloadPdf(ProjectA00Form $a00, A00ExcelPdfService $pdfService)
     {
-        $a00->load(['items','projectRevision']);
-        $logoPath=public_path('images/logo-dharma-mark.png');
-        $logoData=null;
-        if(is_file($logoPath)){
-            $logoData='data:image/png;base64,'.base64_encode((string)file_get_contents($logoPath));
-        }
         $filename='A00 - '.str_replace(['<','>',':','"','/','\\','|','?','*'],'-',$a00->document_number).'.pdf';
-        return Pdf::loadView('control-project.a00.pdf',compact('a00','logoData'))->setPaper('a4','portrait')->download($filename);
+        $path=$pdfService->generate($a00);$content=(string)file_get_contents($path);@unlink($path);
+        return response($content,200,['Content-Type'=>'application/pdf','Content-Disposition'=>'attachment; filename="'.$filename.'"']);
+    }
+
+    public function downloadExcel(ProjectA00Form $a00, A00ExcelPdfService $excelService)
+    {
+        $filename='A00 - '.str_replace(['<','>',':','"','/','\\','|','?','*'],'-',$a00->document_number).'.xlsx';
+        $path=$excelService->generateExcel($a00);
+
+        return response()->download($path,$filename,[
+            'Content-Type'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
     }
 
     public function edit(ProjectA00Form $a00)
@@ -210,6 +230,8 @@ class ProjectA00Controller extends Controller
             'categories'=>BusinessCategory::orderBy('name')->get(),'plants'=>Plant::orderBy('code')->get(),
             'picsEngineering'=>Pic::where('type','engineering')->orderBy('name')->get(),
             'picsMarketing'=>Pic::where('type','marketing')->orderBy('name')->get(),
+            'picsDirector'=>Pic::where('type','director')->orderBy('name')->get(),
+            'picsDivMarketing'=>Pic::where('type','div_marketing')->orderBy('name')->get(),
         ]);
     }
 
@@ -233,14 +255,32 @@ class ProjectA00Controller extends Controller
             'due_costing'=>['nullable','date'],'due_submit_quotation'=>['nullable','date'],'pp1_date'=>['nullable','date'],
             'pp2_date'=>['nullable','date'],'pp3_date'=>['nullable','date'],'sop_mp_date'=>['nullable','date'],
             'sop_mp_tba'=>['nullable','boolean'],'issue_location'=>['required','string','max:100'],
+            'customer_events'=>['nullable','array','min:1','max:20'],'customer_events.*.name'=>['required','string','max:100'],
+            'customer_events.*.date'=>['nullable','date'],'customer_events.*.tba'=>['nullable','boolean'],
             'prepared_by'=>['nullable','string','max:255'],'acknowledged_by'=>['nullable','string','max:255'],
             'approved_by'=>['nullable','string','max:255'],'notes'=>['nullable','string','max:2000'],
+            'prepared_signature'=>['nullable','file','mimes:png','max:2048'],
+            'acknowledged_signature'=>['nullable','file','mimes:png','max:2048'],
+            'approved_signature'=>['nullable','file','mimes:png','max:2048'],
         ]);
 
+        $data['customer_events']=$this->normalizeCustomerEvents($data['customer_events'] ?? $a00->customer_events ?? []);
+        $data['prepared_by']=trim((string)($data['prepared_by']??'')) ?: $data['pic_marketing'];
+        $data['acknowledged_by']=trim((string)($data['acknowledged_by']??'')) ?: 'L. Andri H';
+        $data['approved_by']=trim((string)($data['approved_by']??'')) ?: 'Y. Susanto';
         $customer=Customer::findOrFail($data['customer_id']);
         $category=BusinessCategory::findOrFail($data['business_category_id']);
         $storedFile=$request->file('source_file');
-        DB::transaction(function() use($data,$a00,$customer,$category,$storedFile){
+        $newSignaturePaths=[];
+        foreach (['prepared','acknowledged','approved'] as $signatureType) {
+            if ($request->hasFile($signatureType.'_signature')) {
+                $newSignaturePaths[$signatureType.'_signature_path']=$this->storeSignature($request->file($signatureType.'_signature'),$signatureType);
+            }
+            unset($data[$signatureType.'_signature']);
+        }
+        $oldSignaturePaths=collect(array_keys($newSignaturePaths))->map(fn($column)=>$a00->{$column})->filter();
+
+        DB::transaction(function() use($data,$a00,$customer,$category,$storedFile,$newSignaturePaths){
             $product=Product::firstOrCreate(['code'=>$category->code ?: strtoupper(Str::slug($category->name,'-'))],['name'=>$category->name,'line'=>'']);
             $a00->load('items.project','items.projectRevision');
             foreach($data['items'] as $itemData){
@@ -253,12 +293,13 @@ class ProjectA00Controller extends Controller
             }
             $first=$a00->items->firstWhere('id',(int)$data['items'][0]['id']);
             $formData=collect($data)->except(['items','business_category_id','customer_id','plant_id','period','pic_engineering','pic_marketing','source_file'])->all();
-            $formData += ['customer'=>$customer->name,'model'=>$data['items'][0]['model'],'assy_number'=>$data['items'][0]['assy_number'],'assy_name'=>$data['items'][0]['assy_name'],'quantity'=>$data['items'][0]['quantity']??null,'quantity_uom'=>$data['items'][0]['quantity_uom'],'quantity_basis'=>$data['items'][0]['quantity_basis'],'product_life_years'=>$data['items'][0]['product_life_years']??null,'spot_order'=>!empty($data['items'][0]['spot_order'])];
+            $formData += $newSignaturePaths+['customer'=>$customer->name,'model'=>$data['items'][0]['model'],'assy_number'=>$data['items'][0]['assy_number'],'assy_name'=>$data['items'][0]['assy_name'],'quantity'=>$data['items'][0]['quantity']??null,'quantity_uom'=>$data['items'][0]['quantity_uom'],'quantity_basis'=>$data['items'][0]['quantity_basis'],'product_life_years'=>$data['items'][0]['product_life_years']??null,'spot_order'=>!empty($data['items'][0]['spot_order'])];
             if($storedFile){$formData['source_file_name']=$storedFile->getClientOriginalName();$formData['source_file_path']=$storedFile->store('control-project/a00-sources');}
             $a00->update($formData);
             ProjectWorkflowTask::whereIn('document_revision_id',$a00->items->pluck('document_revision_id'))->where('stage',ProjectWorkflowTask::STAGE_DRAWING)->get()->each(function($task) use($a00){$task->update(['metadata'=>array_merge($task->metadata??[],['a00_number'=>$a00->document_number])]);});
             app(CostingGroupService::class)->syncFromA00($a00, auth()->id());
         });
+        $oldSignaturePaths->each(fn($path)=>Storage::disk('public')->delete($path));
 
         if($request->boolean('embedded')) return response('<!doctype html><script>parent.postMessage({type:"a00-updated"},location.origin)</script>');
         return redirect()->route('control-project.a00.index')->with('success','New Project Declaration berhasil diperbarui.');
@@ -333,15 +374,23 @@ class ProjectA00Controller extends Controller
             ->with('success', "A00 {$number} beserta workflow terkait berhasil dihapus.");
     }
 
-    private function storeSignature(?string $dataUrl, string $type): ?string
+    private function normalizeCustomerEvents(array $events): array
     {
-        if (!$dataUrl) return null;
-        if (!preg_match('/^data:image\/png;base64,([A-Za-z0-9+\/=]+)$/', $dataUrl, $matches)) abort(422, 'Format tanda tangan tidak valid.');
-        $binary=base64_decode($matches[1], true);
-        if ($binary===false || strlen($binary)>100000) abort(422, 'Ukuran tanda tangan terlalu besar.');
-        $path='control-project/a00-signatures/'.now()->format('Y/m').'/'.Str::uuid().'-'.$type.'.png';
-        Storage::disk('public')->put($path,$binary);
-        return $path;
+        return collect($events)->map(fn (array $event) => [
+            'name' => trim((string) ($event['name'] ?? '')),
+            'date' => filled($event['date'] ?? null) ? (string) $event['date'] : null,
+            'tba' => (bool) ($event['tba'] ?? false),
+        ])->values()->all();
+    }
+
+    private function storeSignature(?\Illuminate\Http\UploadedFile $file, string $type): ?string
+    {
+        if (!$file) return null;
+        return $file->storeAs(
+            'control-project/a00-signatures/'.now()->format('Y/m'),
+            Str::uuid().'-'.$type.'.png',
+            'public'
+        );
     }
 
 }

@@ -27,6 +27,8 @@ class CostingData extends Model
         'lme_rate',
         'rate_periode',
         'forecast',
+        'forecast_uom',
+        'forecast_basis',
         'project_period',
         'material_cost',
         'labor_cost',

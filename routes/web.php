@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/a00',[ProjectA00Controller::class,'store'])->name('a00.store');
         Route::get('/a00/{a00}',[ProjectA00Controller::class,'show'])->name('a00.show');
         Route::get('/a00/{a00}/pdf',[ProjectA00Controller::class,'downloadPdf'])->name('a00.pdf');
+        Route::get('/a00/{a00}/excel',[ProjectA00Controller::class,'downloadExcel'])->name('a00.excel');
         Route::get('/a00/{a00}/edit',[ProjectA00Controller::class,'edit'])->name('a00.edit');
         Route::put('/a00/{a00}',[ProjectA00Controller::class,'update'])->name('a00.update');
         Route::delete('/a00/{a00}',[ProjectA00Controller::class,'destroy'])->name('a00.destroy');

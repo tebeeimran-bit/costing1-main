@@ -292,7 +292,7 @@ class TrackingDocumentController extends Controller
         }
         $customerCode = strtoupper(trim((string) ($customer?->code ?: $project?->customer ?: 'CUSTOMER')));
         $customerName = (string) ($customer?->name ?: $project?->customer ?: '');
-        $sop = $project?->a00Form?->sop_mp_date?->format('d/m/Y') ?: 'TBA';
+        $sop = $project?->a00Form?->resolvedMassProductionDate()?->format('d/m/Y') ?: 'TBA';
         $templatePath = storage_path('app/templates/new-part-request-template.xlsx');
         if (!is_file($templatePath)) {
             abort(500, 'Template New Part Request tidak ditemukan: ' . $templatePath);
