@@ -614,6 +614,7 @@
                     </div>
                     <div class="header-right">
                         @yield('header-filters')
+                        @unless(View::hasSection('hide-business-category-context'))
                         <form class="business-category-context" method="POST" action="{{ route('business-category-context.update', absolute:false) }}">
                             @csrf
                             <label for="globalBusinessCategory">Business Category</label>
@@ -624,6 +625,7 @@
                                 @endforeach
                             </select>
                         </form>
+                        @endunless
                         <a href="{{ route('project-selection', absolute: false) }}" class="project-selection-button" title="Kembali ke Pilih Menu Utama">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15">
                                 <rect x="3" y="3" width="7" height="7" rx="1.5" />

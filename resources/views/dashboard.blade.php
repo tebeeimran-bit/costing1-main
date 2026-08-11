@@ -10,6 +10,8 @@
 @section('header-filters')
 @endsection
 
+@section('hide-business-category-context', 'true')
+
 @section('content')
     <style>
         .dashboard-filter-card {
