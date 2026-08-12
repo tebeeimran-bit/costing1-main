@@ -5,7 +5,6 @@ use App\Http\Controllers\CostingController;
 use App\Http\Controllers\CostingExcelTemplateController;
 use App\Http\Controllers\CostingGroupController;
 use App\Http\Controllers\CostingApprovalController;
-use App\Http\Controllers\CostingAssistantController;
 use App\Http\Controllers\Database\DocumentRecapController;
 use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\DocumentReceiptController;
@@ -116,15 +115,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', function () {
         return view('profile.show');
     })->name('profile.show');
-
-    Route::prefix('assistant')->name('assistant.')->group(function () {
-        Route::post('/bootstrap', [CostingAssistantController::class, 'bootstrap'])->name('bootstrap');
-        Route::post('/chat', [CostingAssistantController::class, 'chat'])->name('chat');
-        Route::post('/inspect-file', [CostingAssistantController::class, 'inspectFile'])->name('inspect-file');
-        Route::post('/partlist-project/preview', [CostingAssistantController::class, 'previewPartlistProject'])->name('partlist-project.preview');
-        Route::post('/partlist-project/create', [CostingAssistantController::class, 'createPartlistProject'])->name('partlist-project.create');
-    });
-
 
     // ── DASHBOARD ─────────────────────────────────────────────────────────────
     // Dashboard is the authenticated landing page for every role. Its contents
@@ -293,15 +283,5 @@ Route::middleware('auth')->group(function () {
         Route::put('/permissions/{id}', [AuthController::class, 'updateUser'])->name('permissions.update');
         Route::delete('/permissions/{id}', [AuthController::class, 'destroyUser'])->name('permissions.destroy');
 
-        Route::get('/assistant-training', [CostingAssistantController::class, 'index'])->name('assistant.training');
-        Route::post('/assistant-training/topics', [CostingAssistantController::class, 'storeTopic'])->name('assistant.topics.store');
-        Route::put('/assistant-training/topics/{topic}', [CostingAssistantController::class, 'updateTopic'])->name('assistant.topics.update');
-        Route::delete('/assistant-training/topics/{topic}', [CostingAssistantController::class, 'destroyTopic'])->name('assistant.topics.destroy');
-        Route::post('/assistant-training/rules', [CostingAssistantController::class, 'storeRule'])->name('assistant.rules.store');
-        Route::put('/assistant-training/rules/{rule}', [CostingAssistantController::class, 'updateRule'])->name('assistant.rules.update');
-        Route::delete('/assistant-training/rules/{rule}', [CostingAssistantController::class, 'destroyRule'])->name('assistant.rules.destroy');
-        Route::post('/assistant-training/templates', [CostingAssistantController::class, 'storeTemplate'])->name('assistant.templates.store');
-        Route::put('/assistant-training/templates/{template}', [CostingAssistantController::class, 'updateTemplate'])->name('assistant.templates.update');
-        Route::delete('/assistant-training/templates/{template}', [CostingAssistantController::class, 'destroyTemplate'])->name('assistant.templates.destroy');
     });
 });

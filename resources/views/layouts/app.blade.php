@@ -382,15 +382,6 @@
                         </svg>
                         <span>Permission</span>
                     </a>
-                    <a href="{{ route('assistant.training', absolute: false) }}"
-                        class="sidebar-nav-item {{ request()->routeIs('assistant.training') ? 'active' : '' }}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 3v18" />
-                            <path d="M5 8h14" />
-                            <path d="M7 16h10" />
-                        </svg>
-                        <span>Assistant Training</span>
-                    </a>
                 </div>
                 @endif
             </nav>
@@ -742,8 +733,6 @@
     </div>
 
     
-
-    @include('partials.costing-assistant')
 
     <script>
         let appConfirmCurrentOnConfirm = null;
