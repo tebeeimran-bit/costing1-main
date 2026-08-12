@@ -362,6 +362,45 @@ class CostingController extends Controller
 
         $costingData = $query->get();
 
+        /*
+         * Satu project dapat memiliki lebih dari satu baris costing ketika statusnya
+         * bergerak dari A00 ke A04/A05 (atau ketika dibuat revisi baru). Dashboard
+         * adalah ringkasan project aktif, bukan histori baris costing, sehingga satu
+         * customer + model + assy hanya boleh dihitung sekali. Ambil baris dengan
+         * keputusan paling akhir; A05/A04 mengalahkan baris A00 lama.
+         */
+        $costingData = $costingData
+            ->groupBy(function ($item) {
+                $customerId = (string) ($item->customer_id ?? '');
+                $model = Str::lower(trim((string) ($item->model ?? '')));
+                $assyNo = Str::lower(trim((string) ($item->assy_no ?? '')));
+
+                if ($assyNo !== '') {
+                    return implode('|', [$customerId, $model, $assyNo]);
+                }
+
+                $projectId = $item->trackingRevision?->document_project_id;
+                return $projectId
+                    ? 'project|' . $projectId
+                    : 'costing|' . $item->id;
+            })
+            ->map(function ($projectRows) {
+                return $projectRows->sortByDesc(function ($row) {
+                    $revision = $row->trackingRevision;
+                    $statusRank = ($revision?->a05 ?? null) === 'ada'
+                        ? 3
+                        : ((($revision?->a04 ?? null) === 'ada')
+                            ? 2
+                            : ((($revision?->a00 ?? null) === 'ada') ? 1 : 0));
+
+                    return ($statusRank * 1000000000000)
+                        + (((int) ($revision?->version_number ?? 0)) * 1000000)
+                        + (int) $row->id;
+                })->first();
+            })
+            ->filter()
+            ->values();
+
         // Calculate KPIs
         $totalCost = $costingData->sum('total_cost');
         $totalQty = $costingData->sum(function ($item) use ($resolveUnitQty) {
@@ -404,8 +443,8 @@ class CostingController extends Controller
         }
 
         $a00ProjectCount = (int) ($statusProjectCountsByLabel['A00 (RFQ/RFI)'] ?? 0);
-        $a00ProjectEntryCount = $costingData->filter(fn ($item) => ($item->trackingRevision?->a00 ?? null) === 'ada'
-            || $item->trackingRevision?->latestSubmission !== null)->count();
+        // KPI A00 menunjukkan status saat ini, bukan jumlah project yang pernah melewati A00.
+        $a00ProjectEntryCount = $a00ProjectCount;
         $a04ProjectCount = (int) ($statusProjectCountsByLabel['A04 (Canceled/Failed)'] ?? 0);
         $a05ProjectCount = (int) ($statusProjectCountsByLabel['A05 (Die Go)'] ?? 0);
         $costingProjectCount = (int) $costingData->count();
@@ -602,6 +641,51 @@ class CostingController extends Controller
                 $overheadCost = $items->sum(function ($row) {
                     return (float) $row->overhead_cost + (float) $row->scrap_cost;
                 });
+                $statusSummary = [
+                    'a00_count' => 0, 'a00_potential' => 0.0,
+                    'a04_count' => 0, 'a04_potential' => 0.0,
+                    'a05_count' => 0, 'a05_potential' => 0.0,
+                ];
+                $potentialSources = [
+                    'a00_sources' => [],
+                    'a04_sources' => [],
+                    'a05_sources' => [],
+                    'all_sources' => [],
+                ];
+                foreach ($items as $row) {
+                    $revision = $row->trackingRevision;
+                    $potential = $resolvePotentialSales($row);
+                    $cogm = (float) ($row->material_cost ?? 0)
+                        + (float) ($row->labor_cost ?? 0)
+                        + (float) ($row->overhead_cost ?? 0)
+                        + (float) ($row->scrap_cost ?? 0);
+                    $source = [
+                        'customer' => $row->customer->name ?? ('Customer #' . $row->customer_id),
+                        'project' => trim((string) ($row->assy_no ?? '')) ?: trim((string) ($row->assy_name ?? '')),
+                        'model' => trim((string) ($row->model ?? '')),
+                        'forecast' => (float) ($row->forecast ?? 0),
+                        'product_life' => (float) ($row->project_period ?? 0),
+                        'cogm' => $cogm,
+                        'potential' => $potential,
+                    ];
+                    if (($revision?->a05 ?? null) === 'ada') {
+                        $statusSummary['a05_count']++;
+                        $statusSummary['a05_potential'] += $potential;
+                        $source['status'] = 'A05';
+                        $potentialSources['a05_sources'][] = $source;
+                    } elseif (($revision?->a04 ?? null) === 'ada') {
+                        $statusSummary['a04_count']++;
+                        $statusSummary['a04_potential'] += $potential;
+                        $source['status'] = 'A04';
+                        $potentialSources['a04_sources'][] = $source;
+                    } elseif (($revision?->a00 ?? null) === 'ada') {
+                        $statusSummary['a00_count']++;
+                        $statusSummary['a00_potential'] += $potential;
+                        $source['status'] = 'A00';
+                        $potentialSources['a00_sources'][] = $source;
+                    }
+                    $potentialSources['all_sources'][] = $source;
+                }
 
                 return [
                     'name' => $label,
@@ -612,6 +696,8 @@ class CostingController extends Controller
                     'material_cost' => $materialCost,
                     'labor_cost' => $laborCost,
                     'overhead_cost' => $overheadCost,
+                    ...$statusSummary,
+                    ...$potentialSources,
                 ];
             })
             ->sortByDesc('potential_sales')
@@ -726,9 +812,79 @@ class CostingController extends Controller
                             'material_cost' => (float) ($item['material_cost'] ?? 0),
                             'labor_cost' => (float) ($item['labor_cost'] ?? 0),
                             'overhead_cost' => (float) ($item['overhead_cost'] ?? 0),
+                            'a00_count' => (int) ($item['a00_count'] ?? 0),
+                            'a00_potential' => (float) ($item['a00_potential'] ?? 0),
+                            'a04_count' => (int) ($item['a04_count'] ?? 0),
+                            'a04_potential' => (float) ($item['a04_potential'] ?? 0),
+                            'a05_count' => (int) ($item['a05_count'] ?? 0),
+                            'a05_potential' => (float) ($item['a05_potential'] ?? 0),
+                            'a00_sources' => $item['a00_sources'] ?? [],
+                            'a04_sources' => $item['a04_sources'] ?? [],
+                            'a05_sources' => $item['a05_sources'] ?? [],
+                            'all_sources' => $item['all_sources'] ?? [],
                         ];
                     })
                     ->values()));
+
+        // Lengkapi breakdown status untuk seluruh mode analisis (business category,
+        // customer, model, dan assy). Sebelumnya field ini hanya tersedia pada mode
+        // business category sehingga kolom A00/A04/A05 tampil nol saat filter aktif.
+        $analysisSalesRows = $analysisSalesRows->map(function ($dimensionRow) use (
+            $costingData,
+            $analysisMode,
+            $resolveBusinessCategoryLabel,
+            $resolvePotentialSales
+        ) {
+            $dimensionKey = (string) ($dimensionRow['dimension_key'] ?? '');
+            $dimensionItems = $costingData->filter(function ($item) use ($analysisMode, $dimensionKey, $resolveBusinessCategoryLabel) {
+                if ($analysisMode === 'assy_no') {
+                    $assyNo = trim((string) ($item->assy_no ?? ''));
+                    return ($assyNo !== '' ? $assyNo : '-') === $dimensionKey;
+                }
+                if ($analysisMode === 'model') {
+                    $modelName = trim((string) ($item->model ?? ''));
+                    return ($modelName !== '' ? $modelName : '-') === $dimensionKey;
+                }
+                if ($analysisMode === 'customer') {
+                    return (string) ($item->customer_id ?? '') === $dimensionKey;
+                }
+
+                return $resolveBusinessCategoryLabel($item) === $dimensionKey;
+            });
+
+            $summary = [
+                'a00_count' => 0, 'a00_potential' => 0.0, 'a00_sources' => [],
+                'a04_count' => 0, 'a04_potential' => 0.0, 'a04_sources' => [],
+                'a05_count' => 0, 'a05_potential' => 0.0, 'a05_sources' => [],
+                'all_sources' => [],
+            ];
+            foreach ($dimensionItems as $item) {
+                $revision = $item->trackingRevision;
+                $statusKey = ($revision?->a05 ?? null) === 'ada' ? 'a05'
+                    : ((($revision?->a04 ?? null) === 'ada') ? 'a04'
+                        : ((($revision?->a00 ?? null) === 'ada') ? 'a00' : null));
+                $potential = $resolvePotentialSales($item);
+                $source = [
+                    'customer' => $item->customer->name ?? ('Customer #' . $item->customer_id),
+                    'project' => trim((string) ($item->assy_no ?? '')) ?: trim((string) ($item->assy_name ?? '')),
+                    'model' => trim((string) ($item->model ?? '')),
+                    'forecast' => (float) ($item->forecast ?? 0),
+                    'product_life' => (float) ($item->project_period ?? 0),
+                    'cogm' => (float) ($item->material_cost ?? 0) + (float) ($item->labor_cost ?? 0)
+                        + (float) ($item->overhead_cost ?? 0) + (float) ($item->scrap_cost ?? 0),
+                    'potential' => $potential,
+                    'status' => $statusKey ? strtoupper($statusKey) : '-',
+                ];
+                if ($statusKey) {
+                    $summary[$statusKey.'_count']++;
+                    $summary[$statusKey.'_potential'] += $potential;
+                    $summary[$statusKey.'_sources'][] = $source;
+                }
+                $summary['all_sources'][] = $source;
+            }
+
+            return array_merge($dimensionRow, $summary);
+        })->values();
 
         $topCustomerPotentialSales = $costingData
             ->groupBy('customer_id')
@@ -777,12 +933,43 @@ class CostingController extends Controller
 
                 $dominantCategory = $categoryBreakdown->first();
 
+                $statusCounts = [
+                    'a00_count' => 0,
+                    'a04_count' => 0,
+                    'a05_count' => 0,
+                ];
+                $statusPotential = [
+                    'a00_potential' => 0.0,
+                    'a04_potential' => 0.0,
+                    'a05_potential' => 0.0,
+                ];
+                foreach ($items as $item) {
+                    $revision = $item->trackingRevision;
+                    $itemPotential = $resolvePotentialSales($item);
+                    if (($revision?->a05 ?? null) === 'ada') {
+                        $statusCounts['a05_count']++;
+                        $statusPotential['a05_potential'] += $itemPotential;
+                    } elseif (($revision?->a04 ?? null) === 'ada') {
+                        $statusCounts['a04_count']++;
+                        $statusPotential['a04_potential'] += $itemPotential;
+                    } elseif (($revision?->a00 ?? null) === 'ada') {
+                        $statusCounts['a00_count']++;
+                        $statusPotential['a00_potential'] += $itemPotential;
+                    }
+                }
+
                 return [
                     'customer_name' => $customerName,
                     'business_category' => $dominantCategory['category'] ?? '-',
                     'potential_sales' => $items->sum(function ($row) use ($resolvePotentialSales) {
                         return $resolvePotentialSales($row);
                     }),
+                    'a00_count' => $statusCounts['a00_count'],
+                    'a04_count' => $statusCounts['a04_count'],
+                    'a05_count' => $statusCounts['a05_count'],
+                    'a00_potential' => $statusPotential['a00_potential'],
+                    'a04_potential' => $statusPotential['a04_potential'],
+                    'a05_potential' => $statusPotential['a05_potential'],
                 ];
             })
             ->sortByDesc('potential_sales')

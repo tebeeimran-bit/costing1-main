@@ -3,8 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\CostingData;
+use App\Models\Customer;
 use App\Models\DocumentProject;
 use App\Models\DocumentRevision;
+use App\Models\Product;
 use App\Models\RolePermission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -29,7 +32,109 @@ class ExampleTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('Total Project Tracking (Semua Periode)');
+            ->assertSee('Total Project (Semua Periode)');
+    }
+
+    public function test_dashboard_counts_a00_to_a05_transition_as_one_project(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+        $customer = Customer::create(['code' => 'SZK', 'name' => 'Suzuki Indomobil, PT']);
+        $product = Product::create(['code' => 'AEP', 'name' => 'Antenna', 'line' => 'AUTOMOTIVE ELECTRONIC PART']);
+        $project = DocumentProject::create([
+            'product_id' => $product->id,
+            'customer' => $customer->name,
+            'model' => 'YHA',
+            'part_number' => 'W40294',
+            'part_name' => 'ANTENNA',
+            'project_key' => 'dashboard-transition-aep',
+        ]);
+
+        $a00Revision = DocumentRevision::create([
+            'document_project_id' => $project->id,
+            'version_number' => 1,
+            'received_date' => '2026-08-01',
+            'pic_engineering' => 'Engineering',
+            'partlist_original_name' => '',
+            'partlist_file_path' => '',
+            'umh_original_name' => '',
+            'umh_file_path' => '',
+            'status' => DocumentRevision::STATUS_SUDAH_COSTING,
+            'a00' => 'ada',
+        ]);
+        $a05Revision = DocumentRevision::create([
+            'document_project_id' => $project->id,
+            'version_number' => 2,
+            'received_date' => '2026-08-02',
+            'pic_engineering' => 'Engineering',
+            'partlist_original_name' => '',
+            'partlist_file_path' => '',
+            'umh_original_name' => '',
+            'umh_file_path' => '',
+            'status' => DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
+            'a00' => 'ada',
+            'a05' => 'ada',
+        ]);
+
+        foreach ([$a00Revision, $a05Revision] as $index => $revision) {
+            CostingData::create([
+                'product_id' => $product->id,
+                'customer_id' => $customer->id,
+                'tracking_revision_id' => $revision->id,
+                'period' => '2026-08',
+                'wo_number' => 'AEP-' . ($index + 1),
+                'model' => 'YHA',
+                'assy_no' => 'W40294',
+                'assy_name' => 'ANTENNA',
+                'forecast' => 2000,
+                'project_period' => 2,
+                'material_cost' => 100,
+            ]);
+        }
+
+        $response = $this->actingAs($user)->get('/?period=2026-08');
+
+        $response
+            ->assertOk()
+            ->assertViewHas('costingProjectCount', 1)
+            ->assertViewHas('statusProjectTotal', 1)
+            ->assertViewHas('a00ProjectCount', 0)
+            ->assertViewHas('a05ProjectCount', 1)
+            ->assertViewHas('topCustomerPotentialSales', function ($rows) {
+                $customer = $rows->first();
+
+                return $rows->count() === 1
+                    && (int) $customer['a00_count'] === 0
+                    && (int) $customer['a04_count'] === 0
+                    && (int) $customer['a05_count'] === 1
+                    && (float) $customer['a00_potential'] === 0.0
+                    && (float) $customer['a04_potential'] === 0.0
+                    && (float) $customer['a05_potential'] > 0;
+            })
+            ->assertViewHas('analysisSalesRows', function ($rows) {
+                $category = $rows->first();
+
+                return $rows->count() === 1
+                    && (int) $category['project_count'] === 1
+                    && (int) $category['a00_count'] === 0
+                    && (int) $category['a04_count'] === 0
+                    && (int) $category['a05_count'] === 1
+                    && (float) $category['a05_potential'] > 0;
+            });
+
+        $this->actingAs($user)
+            ->get('/?period=2026-08&customer='.$customer->id)
+            ->assertOk()
+            ->assertViewHas('analysisSalesRows', function ($rows) {
+                $model = $rows->first();
+
+                return $rows->count() === 1
+                    && $model['name'] === 'YHA'
+                    && (int) $model['project_count'] === 1
+                    && (int) $model['a00_count'] === 0
+                    && (int) $model['a04_count'] === 0
+                    && (int) $model['a05_count'] === 1
+                    && (float) $model['a05_potential'] > 0;
+            });
     }
 
     public function test_marketing_dashboard_only_shows_projects_assigned_to_the_logged_in_pic(): void

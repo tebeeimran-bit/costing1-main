@@ -77,6 +77,107 @@
             background: #1d4ed8;
         }
 
+        .dashboard-summary-stack {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .status-overview-grid {
+            display: grid;
+            grid-template-columns: 180px minmax(250px, .8fr) minmax(420px, 1.4fr);
+            gap: 1.5rem;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .status-insight-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: .75rem;
+        }
+
+        .status-insight-card {
+            min-height: 86px;
+            padding: .85rem;
+            border: 1px solid var(--slate-200);
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+
+        .potential-origin {
+            position: relative;
+            cursor: help;
+            border-radius: 7px;
+            transition: background-color .15s ease, box-shadow .15s ease;
+        }
+
+        .potential-origin:hover {
+            background: #fff7cc;
+            box-shadow: inset 0 0 0 2px #facc15;
+            z-index: 20;
+        }
+
+        .potential-origin:hover::after {
+            content: attr(data-origin);
+            position: absolute;
+            right: 8px;
+            bottom: calc(100% - 4px);
+            width: min(430px, 75vw);
+            padding: 11px 13px;
+            border-radius: 9px;
+            background: #0f172a;
+            color: #fff;
+            font-size: .72rem;
+            font-weight: 600;
+            line-height: 1.55;
+            text-align: left;
+            white-space: pre-line;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, .25);
+            pointer-events: none;
+        }
+
+        @media (max-width: 1050px) {
+            .status-overview-grid {
+                grid-template-columns: 180px minmax(220px, 1fr);
+            }
+
+            .status-insight-grid {
+                grid-column: 1 / -1;
+            }
+        }
+
+        .dashboard-status-columns {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .dashboard-status-column {
+            padding: 12px 14px;
+            border-top: 1px solid var(--slate-200);
+        }
+
+        .dashboard-status-column + .dashboard-status-column {
+            border-left: 1px solid var(--slate-200);
+        }
+
+        @media (max-width: 720px) {
+            .status-overview-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .status-insight-grid {
+                grid-column: auto;
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard-status-columns {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard-status-column + .dashboard-status-column {
+                border-left: 0;
+            }
+        }
+
         @media (max-width: 1180px) {
             .dashboard-filter-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -150,10 +251,10 @@
     <!-- KPI Cards -->
     <div class="kpi-grid">
         <div class="kpi-card">
-            <div class="kpi-label">Total Project Tracking (Semua Periode)</div>
+            <div class="kpi-label">Total Project (Semua Periode)</div>
             <div class="kpi-value">{{ number_format($trackingProjectCount ?? 0, 0, ',', '.') }}</div>
             <div style="margin-top: 0.4rem; font-size: 0.72rem; color: rgba(255,255,255,0.7);">
-                Dari menu Project / Tracking
+                Dari menu Project
             </div>
             <div class="kpi-icon">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -165,7 +266,7 @@
         </div>
 
         <div class="kpi-card" style="background: #0f766e; border-color: #0d9488;">
-            <div class="kpi-label" style="color: white;">Project Sudah Costing ({{ $periodDisplayLabel }})</div>
+            <div class="kpi-label" style="color: white;">Project Sudah Costing</div>
             <div class="kpi-value" style="color: white;">{{ number_format($costingProjectCount ?? $totalProjectCount, 0, ',', '.') }}</div>
             <div style="margin-top: 0.4rem; font-size: 0.72rem; color: rgba(255,255,255,0.75);">
                 Pending Form Costing: {{ number_format($pendingFormCostingCount ?? 0, 0, ',', '.') }}
@@ -211,13 +312,22 @@
     </div>
 
     <!-- Bottom Section -->
-    <div class="bottom-grid">
+    <div class="bottom-grid dashboard-summary-stack">
         <!-- Status Project A00/A04/A05 -->
         <div class="card">
             <div class="card-header">
                 <h3 class="card-title">Status Project (A00, A04, A05)</h3>
             </div>
-            <div style="display: flex; gap: 1.5rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap;">
+            @php
+                $a00Potential = (float) ($statusProjectData->firstWhere('label', 'A00 (RFQ/RFI)')['potential_cost'] ?? 0);
+                $a04Potential = (float) ($statusProjectData->firstWhere('label', 'A04 (Canceled/Failed)')['potential_cost'] ?? 0);
+                $a05Potential = (float) ($statusProjectData->firstWhere('label', 'A05 (Die Go)')['potential_cost'] ?? 0);
+                $totalStatusPotential = $a00Potential + $a04Potential + $a05Potential;
+                $conversionRate = $statusProjectTotal > 0 ? ($a05ProjectCount / $statusProjectTotal) * 100 : 0;
+                $cancellationRate = $statusProjectTotal > 0 ? ($a04ProjectCount / $statusProjectTotal) * 100 : 0;
+                $averagePotential = $statusProjectTotal > 0 ? $totalStatusPotential / $statusProjectTotal : 0;
+            @endphp
+            <div class="status-overview-grid">
                 <div style="position: relative; width: 180px; height: 180px; margin: 0 auto;">
                     <div style="width: 180px; height: 180px; border-radius: 50%; background: {{ $statusProjectPieGradient }}; animation: pie-spin-cw 0.9s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; transform-origin: center;"></div>
                     <div style="position: absolute; inset: 34px; border-radius: 50%; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -239,32 +349,33 @@
                         </div>
                     @endforeach
                 </div>
+                <div class="status-insight-grid">
+                    <div class="status-insight-card" style="border-left:4px solid #16a34a;">
+                        <small style="color:var(--slate-500);font-weight:800;">CONVERSION A05</small>
+                        <div style="margin-top:.4rem;color:#15803d;font-size:1.25rem;font-weight:900;">{{ number_format($conversionRate, 1, ',', '.') }}%</div>
+                    </div>
+                    <div class="status-insight-card" style="border-left:4px solid #dc2626;">
+                        <small style="color:var(--slate-500);font-weight:800;">CANCELLATION A04</small>
+                        <div style="margin-top:.4rem;color:#b91c1c;font-size:1.25rem;font-weight:900;">{{ number_format($cancellationRate, 1, ',', '.') }}%</div>
+                    </div>
+                    <div class="status-insight-card" style="border-left:4px solid #3b82f6;">
+                        <small style="color:var(--slate-500);font-weight:800;">POTENSIAL A00</small>
+                        <div style="margin-top:.4rem;color:#1d4ed8;font-size:.95rem;font-weight:900;white-space:nowrap;">Rp {{ number_format($a00Potential, 0, ',', '.') }}</div>
+                    </div>
+                    <div class="status-insight-card" style="border-left:4px solid #dc2626;">
+                        <small style="color:var(--slate-500);font-weight:800;">POTENSIAL A04</small>
+                        <div style="margin-top:.4rem;color:#b91c1c;font-size:.95rem;font-weight:900;white-space:nowrap;">Rp {{ number_format($a04Potential, 0, ',', '.') }}</div>
+                    </div>
+                    <div class="status-insight-card" style="border-left:4px solid #16a34a;">
+                        <small style="color:var(--slate-500);font-weight:800;">POTENSIAL A05</small>
+                        <div style="margin-top:.4rem;color:#15803d;font-size:.95rem;font-weight:900;white-space:nowrap;">Rp {{ number_format($a05Potential, 0, ',', '.') }}</div>
+                    </div>
+                    <div class="status-insight-card" style="border-left:4px solid #64748b;">
+                        <small style="color:var(--slate-500);font-weight:800;">RATA-RATA POTENSIAL / PROJECT</small>
+                        <div style="margin-top:.4rem;color:var(--slate-800);font-size:.95rem;font-weight:900;white-space:nowrap;">Rp {{ number_format($averagePotential, 0, ',', '.') }}</div>
+                    </div>
+                </div>
             </div>
-
-            <table class="data-table" style="table-layout: fixed; width: 100%;">
-                <thead>
-                    <tr>
-                        <th style="width: 36%;">Status Project</th>
-                        <th class="text-right" style="width: 14%;">Jumlah</th>
-                        <th class="text-right" style="width: 16%;">%</th>
-                        <th class="text-right" style="width: 34%;">Potensial Cost</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($statusProjectData as $statusItem)
-                        <tr>
-                            <td style="font-weight: 600; color: var(--slate-700);">{{ $statusItem['label'] }}</td>
-                            <td class="text-right" style="white-space: nowrap;">{{ number_format($statusItem['count'], 0, ',', '.') }}</td>
-                            <td class="text-right" style="white-space: nowrap;">{{ number_format($statusItem['percentage'], 1, ',', '.') }}%</td>
-                            <td class="text-right" style="white-space: nowrap;"><span style="white-space: nowrap;">Rp {{ number_format((float) ($statusItem['potential_cost'] ?? 0), 0, ',', '.') }}</span></td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="4" class="text-center" style="color: var(--slate-400);">Belum ada status project pada periode ini.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
         </div>
 
         <!-- Potensial Cost per Dimension -->
@@ -272,38 +383,69 @@
             <div class="card-header">
                 <h3 class="card-title">Potensial Cost per {{ $analysisDimensionLabel }}</h3>
             </div>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>{{ $analysisDimensionLabel }}</th>
-                        <th class="text-right">Potensial Cost</th>
-                        <th class="text-right">Projects</th>
-                    </tr>
-                </thead>
+            @php
+                $businessCategoryRows = $analysisSalesRows->take(8);
+                $statusStyles = [
+                    'a00' => ['label' => 'A00', 'color' => '#1d4ed8', 'background' => '#dbeafe'],
+                    'a04' => ['label' => 'A04', 'color' => '#b91c1c', 'background' => '#fee2e2'],
+                    'a05' => ['label' => 'A05', 'color' => '#15803d', 'background' => '#dcfce7'],
+                ];
+                $formatPotentialSources = function ($sources) {
+                    if (empty($sources)) {
+                        return "Belum ada project pada status ini.\nPotensial: Rp 0";
+                    }
+
+                    $sourceCollection = collect($sources)->sortByDesc('potential')->values();
+                    $sourceCount = $sourceCollection->count();
+                    $sourceTotal = (float) $sourceCollection->sum('potential');
+                    $visibleSources = $sourceCollection->take(5);
+                    $hiddenSources = $sourceCollection->slice(5);
+                    $header = $sourceCount.' project • Total Rp '.number_format($sourceTotal, 0, ',', '.');
+                    $details = $visibleSources->map(function ($source, $index) {
+                        $identity = collect([
+                            $source['customer'] ?? null,
+                            $source['model'] ?? null,
+                            $source['project'] ?? null,
+                        ])->filter()->implode(' • ');
+
+                        return ($index + 1).'. '.$identity
+                            .' ['.($source['status'] ?? '-').']'
+                            ."\n   ".number_format($source['forecast'] ?? 0, 0, ',', '.')
+                            .' × '.number_format($source['product_life'] ?? 0, 0, ',', '.')
+                            .' × Rp '.number_format($source['cogm'] ?? 0, 0, ',', '.')
+                            .' = Rp '.number_format($source['potential'] ?? 0, 0, ',', '.');
+                    })->implode("\n");
+
+                    if ($hiddenSources->isNotEmpty()) {
+                        $details .= "\n+ ".$hiddenSources->count().' project lainnya'
+                            .' • Rp '.number_format($hiddenSources->sum('potential'), 0, ',', '.');
+                    }
+
+                    return $header."\n".$details;
+                };
+            @endphp
+            <table class="data-table" style="width:100%;table-layout:fixed;">
+                <thead><tr>
+                    <th style="width:22%;">{{ $analysisDimensionLabel }}</th>
+                    <th class="text-right" style="background:#3b82f6;color:#fff;">A00</th>
+                    <th class="text-right" style="background:#dc2626;color:#fff;">A04</th>
+                    <th class="text-right" style="background:#16a34a;color:#fff;">A05</th>
+                    <th class="text-right">Total Potensial</th>
+                    <th class="text-right" style="width:9%;">Project</th>
+                </tr></thead>
                 <tbody>
-                    @php
-                        $businessCategoryRows = $analysisSalesRows->take(8);
-                        $totalPotentialCost = (float) $businessCategoryRows->sum('potential_sales');
-                        $totalProjects = (int) $businessCategoryRows->sum('project_count');
-                    @endphp
                     @forelse($businessCategoryRows as $item)
                         <tr>
-                            <td>{{ $item['name'] }}</td>
-                            <td class="text-right">Rp {{ number_format($item['potential_sales'], 0, ',', '.') }}</td>
+                            <td style="font-weight:700;">{{ $item['name'] }}</td>
+                            @foreach($statusStyles as $statusKey => $statusStyle)
+                                <td class="text-right potential-origin" data-origin="{{ $formatPotentialSources($item[$statusKey.'_sources'] ?? []) }}"><strong style="color:{{ $statusStyle['color'] }};">{{ number_format($item[$statusKey.'_count'] ?? 0, 0, ',', '.') }}</strong><small style="display:block;margin-top:4px;color:{{ $statusStyle['color'] }};white-space:nowrap;">Rp {{ number_format($item[$statusKey.'_potential'] ?? 0, 0, ',', '.') }}</small></td>
+                            @endforeach
+                            <td class="text-right potential-origin" data-origin="{{ $formatPotentialSources($item['all_sources'] ?? []) }}" style="font-weight:700;">Rp {{ number_format($item['potential_sales'], 0, ',', '.') }}</td>
                             <td class="text-right">{{ number_format($item['project_count'], 0, ',', '.') }}</td>
                         </tr>
                     @empty
-                        <tr>
-                            <td colspan="3" class="text-center" style="color: var(--slate-400);">Belum ada data {{ strtolower($analysisDimensionLabel) }}.</td>
-                        </tr>
+                        <tr><td colspan="6" class="text-center" style="color:var(--slate-400);">Belum ada data {{ strtolower($analysisDimensionLabel) }}.</td></tr>
                     @endforelse
-                    @if($businessCategoryRows->isNotEmpty())
-                        <tr>
-                            <td style="font-weight: 800;">Total</td>
-                            <td class="text-right" style="font-weight: 800;">Rp {{ number_format($totalPotentialCost, 0, ',', '.') }}</td>
-                            <td class="text-right" style="font-weight: 800;">{{ number_format($totalProjects, 0, ',', '.') }}</td>
-                        </tr>
-                    @endif
                 </tbody>
             </table>
         </div>
@@ -314,25 +456,27 @@
                 <h3 class="card-title">Top 5 Customer</h3>
             </div>
 
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Customer</th>
-                        <th>Business Category</th>
-                        <th class="text-right">Potensial Cost</th>
-                    </tr>
-                </thead>
+            <table class="data-table" style="width:100%;table-layout:fixed;">
+                <thead><tr>
+                    <th style="width:20%;">Customer</th>
+                    <th style="width:19%;">Business Category</th>
+                    <th class="text-right" style="background:#3b82f6;color:#fff;">A00</th>
+                    <th class="text-right" style="background:#dc2626;color:#fff;">A04</th>
+                    <th class="text-right" style="background:#16a34a;color:#fff;">A05</th>
+                    <th class="text-right">Total Potensial</th>
+                </tr></thead>
                 <tbody>
                     @forelse($topCustomerPotentialSales as $customer)
                         <tr>
-                            <td>{{ $customer['customer_name'] }}</td>
+                            <td style="font-weight:700;">{{ $customer['customer_name'] }}</td>
                             <td>{{ $customer['business_category'] }}</td>
-                            <td class="text-right">Rp {{ number_format($customer['potential_sales'], 0, ',', '.') }}</td>
+                            @foreach($statusStyles as $statusKey => $statusStyle)
+                                <td class="text-right"><strong style="color:{{ $statusStyle['color'] }};">{{ number_format($customer[$statusKey.'_count'] ?? 0, 0, ',', '.') }}</strong><small style="display:block;margin-top:4px;color:{{ $statusStyle['color'] }};white-space:nowrap;">Rp {{ number_format($customer[$statusKey.'_potential'] ?? 0, 0, ',', '.') }}</small></td>
+                            @endforeach
+                            <td class="text-right" style="font-weight:700;">Rp {{ number_format($customer['potential_sales'], 0, ',', '.') }}</td>
                         </tr>
                     @empty
-                        <tr>
-                            <td colspan="3" class="text-center" style="color: var(--slate-400);">Belum ada data customer.</td>
-                        </tr>
+                        <tr><td colspan="6" class="text-center" style="color:var(--slate-400);">Belum ada data customer.</td></tr>
                     @endforelse
                 </tbody>
             </table>
