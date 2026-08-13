@@ -30,7 +30,7 @@ Satu PC atau VM internal menjalankan Laravel dan MySQL. PC pengguna hanya mengak
 PC pengguna ── jaringan LAN ──> PC/VM server Laravel ──> MySQL localhost
 ```
 
-- Port web internal: `8000`
+- Port web internal production: `80` (HTTP) atau `443` (HTTPS)
 - Port MySQL: `3306`, hanya untuk localhost/server
 - MySQL tidak perlu dibuka langsung kepada PC pengguna
 - Data dan file aplikasi harus tetap berada di jaringan internal perusahaan
@@ -43,7 +43,7 @@ Salin `.env.production.example` menjadi `.env`, lalu sesuaikan nilainya:
 APP_ENV=production
 APP_MODE=production
 APP_DEBUG=false
-APP_URL=http://IP-SERVER:8000
+APP_URL=http://IP-SERVER
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -104,6 +104,10 @@ php artisan app:deployment-check
 Jangan mengganti `APP_KEY` setelah aplikasi mulai menyimpan data/session production.
 
 ## Menjalankan pada PC Server
+
+Untuk penggunaan rutin 5–20 pengguna, gunakan Apache/Nginx sebagai Windows Service dan arahkan document root ke folder `public`. Jangan menggunakan PHP built-in server atau `php artisan serve` sebagai server production. Panduan lengkap tersedia di [Deployment On-Premise Windows](docs/DEPLOYMENT-ON-PREMISE-WINDOWS.md).
+
+Bagian berikut hanya untuk uji coba sementara:
 
 Pastikan layanan MySQL sudah aktif sebelum menjalankan aplikasi. Cara menjalankannya
 menyesuaikan instalasi MySQL pada server.
