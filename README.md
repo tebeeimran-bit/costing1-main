@@ -22,22 +22,56 @@ Aplikasi web internal berbasis Laravel untuk mengelola proses costing manufaktur
 - Composer
 - Vite/Node.js hanya diperlukan jika asset frontend akan dibangun ulang
 
-## Arsitektur Internal
+## Environment Aplikasi
 
-Satu PC atau VM internal menjalankan Laravel dan MySQL. PC pengguna hanya mengakses aplikasi melalui browser.
+Aplikasi memiliki dua environment yang terpisah:
+
+- **Development** digunakan untuk pengembangan fitur, debugging, migrasi percobaan, dan pengujian.
+- **Production** digunakan untuk aktivitas operasional dan data aktual pengguna.
 
 ```text
-PC pengguna ── jaringan LAN ──> PC/VM server Laravel ──> MySQL localhost
+Developer --> Server Development --> Database Development
+Pengguna  --> Server Production  --> Database Production
 ```
 
-- Port web internal production: `80` (HTTP) atau `443` (HTTPS)
-- Port MySQL: `3306`, hanya untuk localhost/server
-- MySQL tidak perlu dibuka langsung kepada PC pengguna
-- Data dan file aplikasi harus tetap berada di jaringan internal perusahaan
+Kode, konfigurasi, database, dan file unggahan setiap environment harus dipisahkan. Perubahan selalu diverifikasi di development sebelum diterapkan ke production.
+
+### Memilih Environment yang Benar
+
+Gunakan panduan berikut agar data tidak tertukar:
+
+| Kegiatan | Folder yang dijalankan | Database |
+| --- | --- | --- |
+| Membuat atau memperbaiki fitur | `C:\Users\tsz\Costing-System\Development` | `db_costing_dev` |
+| Menguji fitur dan memasukkan data percobaan | `C:\Users\tsz\Costing-System\Development` | `db_costing_dev` |
+| Memasukkan data operasional sebenarnya | `C:\Users\tsz\Costing-System\Production` | `db_costing` |
+| Memberikan akses kepada pengguna | `C:\Users\tsz\Costing-System\Production` | `db_costing` |
+
+Nama folder tidak menentukan database. Database yang digunakan ditentukan oleh nilai `DB_DATABASE` di file `.env` dalam masing-masing folder. Selalu periksa folder aktif dan `.env` sebelum menjalankan migration atau memasukkan data penting.
 
 ## Konfigurasi Environment
 
-Salin `.env.production.example` menjadi `.env`, lalu sesuaikan nilainya:
+Gunakan file environment sesuai server. Salin `.env.example` untuk development atau `.env.production.example` untuk production menjadi `.env`, lalu sesuaikan nilainya.
+
+Contoh development:
+
+```env
+APP_ENV=local
+APP_MODE=demo
+APP_DEBUG=true
+APP_URL=http://localhost:8000
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=db_costing_dev
+DB_USERNAME=costing_dev
+DB_PASSWORD=PASSWORD_DATABASE_DEVELOPMENT
+```
+
+`APP_MODE=demo` merupakan mode non-production yang digunakan aplikasi pada server development.
+
+Contoh production:
 
 ```env
 APP_ENV=production
@@ -53,11 +87,47 @@ DB_USERNAME=costing_app
 DB_PASSWORD=PASSWORD_DATABASE
 ```
 
-Jangan menyimpan `.env` di repository publik. Batasi akses file hanya untuk administrator server.
+Jangan menyimpan `.env` di repository. Gunakan kredensial database yang berbeda untuk development dan production.
 
-## Instalasi Database Baru
+## Menyiapkan Database Development
 
-Buat database dan user MySQL khusus aplikasi:
+Login ke MySQL menggunakan akun administrator:
+
+```powershell
+mysql -u root -p
+```
+
+Buat database dan akun khusus Development. Ganti contoh password berikut dengan password yang kuat:
+
+```sql
+CREATE DATABASE db_costing_dev
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
+
+CREATE USER 'costing_dev'@'localhost'
+IDENTIFIED BY 'PASSWORD_DATABASE_DEVELOPMENT';
+
+GRANT ALL PRIVILEGES ON db_costing_dev.*
+TO 'costing_dev'@'localhost';
+
+FLUSH PRIVILEGES;
+```
+
+Pastikan `.env` di folder Development menggunakan `DB_DATABASE=db_costing_dev`, lalu jalankan:
+
+```powershell
+cd C:\Users\tsz\Costing-System\Development
+php artisan key:generate
+php artisan config:clear
+php artisan migrate --seed
+php artisan migrate:status
+```
+
+Data yang dimasukkan melalui aplikasi Development hanya tersimpan di `db_costing_dev` dan tidak otomatis masuk ke Production.
+
+## Menyiapkan Database Production
+
+Buat database dan akun MySQL khusus Production:
 
 ```sql
 CREATE DATABASE db_costing
@@ -69,21 +139,22 @@ GRANT ALL PRIVILEGES ON db_costing.* TO 'costing_app'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Untuk database kosong, jalankan:
+Untuk database Production yang masih kosong, jalankan:
 
 ```powershell
+cd C:\Users\tsz\Costing-System\Production
 php artisan migrate --seed --force
 ```
 
-Jika paket serah-terima berisi `database/db_costing.sql`, restore data dengan:
+Jika tersedia dump awal `database/db_costing.sql`, restore data dengan:
 
 ```powershell
 mysql -u costing_app -p db_costing < database/db_costing.sql
 ```
 
-Jangan menjalankan `migrate:fresh` pada database yang sudah berisi data.
+Jangan menjalankan `migrate:fresh` pada Production karena perintah tersebut menghapus seluruh tabel dan data.
 
-## Menyiapkan Aplikasi
+## Menyiapkan Aplikasi Production
 
 Jika folder `vendor` belum tersedia:
 
@@ -103,36 +174,65 @@ php artisan app:deployment-check
 
 Jangan mengganti `APP_KEY` setelah aplikasi mulai menyimpan data/session production.
 
-## Menjalankan pada PC Server
+## Menjalankan Environment Development
 
-Untuk penggunaan rutin 5–20 pengguna, gunakan Apache/Nginx sebagai Windows Service dan arahkan document root ke folder `public`. Jangan menggunakan PHP built-in server atau `php artisan serve` sebagai server production. Panduan lengkap tersedia di [Deployment On-Premise Windows](docs/DEPLOYMENT-ON-PREMISE-WINDOWS.md).
-
-Bagian berikut hanya untuk uji coba sementara:
-
-Pastikan layanan MySQL sudah aktif sebelum menjalankan aplikasi. Cara menjalankannya
-menyesuaikan instalasi MySQL pada server.
-
-Jalankan Laravel agar dapat diakses dari jaringan internal:
+Pastikan MySQL aktif dan `.env` mengarah ke database development. Buka PowerShell, masuk ke folder aplikasi, lalu jalankan server:
 
 ```powershell
-php -S 0.0.0.0:8000 -t public public/router.php
+cd C:\Users\tsz\Costing-System\Development
+php artisan serve
 ```
 
-`public/router.php` wajib digunakan pada PHP built-in server agar CSS, JavaScript, dan gambar dilayani sebagai file statis.
+Aplikasi development dapat dibuka melalui `http://127.0.0.1:8000`. Jalankan test suite sebelum menyiapkan rilis ke production.
 
-Cari IP server menggunakan:
+Development hanya digunakan untuk pengembangan dan pengujian. Jangan membagikan alamat development kepada pengguna operasional.
+
+## Menjalankan Environment Production Secara Manual
+
+Gunakan bagian ini untuk memasukkan data operasional sebenarnya dan memberikan akses kepada pengguna. Pastikan MySQL aktif dan `.env` pada folder Production menggunakan `DB_DATABASE=db_costing`. Buka PowerShell, lalu jalankan:
 
 ```powershell
-ipconfig
+cd C:\Users\tsz\Costing-System\Production
+php artisan serve --host=0.0.0.0 --port=8000 --no-reload
 ```
-
-Jika IP server adalah `192.168.1.50`, pengguna membuka:
+http://127.0.0.1:8000
+Cari alamat IPv4 server dengan `ipconfig`, lalu bagikan alamat berikut kepada pengguna:
 
 ```text
-http://192.168.1.50:8000
+http://IP-SERVER-PRODUCTION:8000
 ```
 
-`127.0.0.1:8000` hanya dapat dibuka dari PC server. Setiap PC memiliki IP berbeda, tetapi harus berada dalam jaringan internal yang dapat saling terhubung.
+Contoh: `http://192.168.1.50:8000`. Izinkan koneksi masuk TCP port `8000` pada Windows Firewall hanya dari jaringan internal. PowerShell harus tetap terbuka selama aplikasi digunakan. Tekan `Ctrl+C` untuk mematikan aplikasi.
+
+## Menjalankan Environment Production sebagai Service
+
+Untuk layanan production yang berjalan otomatis, gunakan Apache atau Nginx dan arahkan document root ke folder `public`. Aktifkan HTTPS dan gunakan `APP_DEBUG=false`. Cara ini lebih sesuai untuk pemakaian rutin daripada menjalankan server secara manual melalui PowerShell.
+
+Apache/Nginx dan MySQL sebaiknya dijalankan sebagai Windows Service dengan tipe startup **Automatic**, sehingga aplikasi kembali tersedia setelah server dinyalakan atau direstart. Untuk memeriksa dan menyalakannya secara manual:
+
+1. Buka **Services** melalui menu Start atau jalankan `services.msc`.
+2. Pastikan service Apache/Nginx dan MySQL berstatus **Running**.
+3. Jika belum aktif, pilih service tersebut lalu klik **Start**.
+4. Buka alamat aplikasi production dari browser server untuk memastikan halaman login tampil.
+
+### Membagikan Akses Production
+
+Pastikan server memiliki alamat IP tetap atau hostname internal. Izinkan port `8000` untuk server manual, atau port `80` (HTTP)/`443` (HTTPS) untuk Apache/Nginx, hanya dari jaringan internal. Sesuaikan `APP_URL` di `.env` dengan cara menjalankan server, misalnya:
+
+```env
+APP_URL=http://192.168.1.50:8000
+```
+
+Kemudian jalankan:
+
+```powershell
+php artisan optimize
+php artisan app:deployment-check
+```
+
+Bagikan URL dari `APP_URL` kepada pengguna. Perangkat pengguna harus terhubung ke jaringan yang dapat menjangkau server. Port database `3306` tidak perlu dibuka atau dibagikan karena pengguna mengakses aplikasi melalui browser.
+
+Panduan konfigurasi lengkap tersedia di [Deployment On-Premise Windows](docs/DEPLOYMENT-ON-PREMISE-WINDOWS.md).
 
 ## Backup dan Restore
 
@@ -157,16 +257,30 @@ storage/app
 
 Simpan backup di media internal terpisah dan uji proses restore secara berkala.
 
-## Deployment Pembaruan
+## Deployment Development ke Production
 
-Sebelum pembaruan, backup database dan `storage/app`. Setelah source diperbarui:
+Data Development tidak perlu dan tidak boleh disalin ke Production. Yang dipindahkan hanya perubahan source code, migration baru, dependency, dan asset aplikasi.
+
+Urutan pembaruan yang aman:
+
+1. Selesaikan fitur dan pengujian di folder Development.
+2. Jalankan `php artisan test` di Development.
+3. Backup database Production dan folder `storage/app`.
+4. Matikan aplikasi Production dengan `Ctrl+C` jika dijalankan secara manual.
+5. Terapkan perubahan source code dari Development ke Production. Jangan menimpa `.env`, database, `storage/app`, atau file unggahan Production.
+6. Buka PowerShell di folder Production dan jalankan:
 
 ```powershell
+cd C:\Users\tsz\Costing-System\Production
 composer install --no-dev --optimize-autoloader
 php artisan migrate --force
 php artisan optimize
 php artisan app:deployment-check
 ```
+
+7. Nyalakan kembali aplikasi Production dan periksa fitur baru serta data lama.
+
+`php artisan migrate --force` hanya menerapkan perubahan struktur database dari migration baru. Perintah tersebut tidak menyalin data percobaan dari `db_costing_dev` ke `db_costing`.
 
 ## Pemeriksaan dan Pengujian
 
