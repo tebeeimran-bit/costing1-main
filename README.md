@@ -105,14 +105,8 @@ Jangan mengganti `APP_KEY` setelah aplikasi mulai menyimpan data/session product
 
 ## Menjalankan pada PC Server
 
-MySQL harus aktif terlebih dahulu. Untuk MySQL portable yang digunakan pada PC pengembangan saat ini:
-
-```powershell
-Start-Process `
-  -FilePath "C:\Users\tsz\scoop\apps\mysql\current\bin\mysqld.exe" `
-  -ArgumentList "--defaults-file=C:\Users\tsz\scoop\persist\mysql\my.ini", "--bind-address=127.0.0.1" `
-  -WindowStyle Hidden
-```
+Pastikan layanan MySQL sudah aktif sebelum menjalankan aplikasi. Cara menjalankannya
+menyesuaikan instalasi MySQL pada server.
 
 Jalankan Laravel agar dapat diakses dari jaringan internal:
 
@@ -136,32 +130,19 @@ http://192.168.1.50:8000
 
 `127.0.0.1:8000` hanya dapat dibuka dari PC server. Setiap PC memiliki IP berbeda, tetapi harus berada dalam jaringan internal yang dapat saling terhubung.
 
-## Kebutuhan Tim IT
-
-- Tetapkan IP statis atau DHCP reservation untuk server.
-- Izinkan inbound TCP port `8000` hanya dari jaringan internal/domain.
-- Jangan mengekspos MySQL port `3306` ke internet atau PC pengguna biasa.
-- Jalankan MySQL dan Laravel otomatis setelah restart.
-- Nonaktifkan sleep otomatis pada PC server selama jam operasional.
-- Batasi akses folder aplikasi, `.env`, backup, dan dump SQL.
-- Gunakan HTTPS/reverse proxy internal jika tersedia.
-- Siapkan backup database dan `storage/app` secara berkala.
-
-Untuk operasional jangka panjang, gunakan PC atau VM internal khusus daripada workstation pengguna.
-
 ## Backup dan Restore
 
 Contoh backup MySQL:
 
 ```powershell
-mysqldump -u root -p --single-transaction --routines --triggers `
+mysqldump -u costing_app -p --single-transaction --routines --triggers `
   --set-gtid-purged=OFF db_costing > db_costing-backup.sql
 ```
 
 Contoh restore:
 
 ```powershell
-mysql -u root -p db_costing < db_costing-backup.sql
+mysql -u costing_app -p db_costing < db_costing-backup.sql
 ```
 
 Backup juga folder berikut karena dapat berisi dokumen project:
