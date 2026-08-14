@@ -81,8 +81,8 @@ HandlesCostingMarketing
         $role = (string) ($request->user()->role ?? '');
         abort_unless(in_array($role, ['admin', 'admin_costing', 'marketing', 'coordinator_costing', 'editor'], true), 403);
 
-        $path = $revision->cogm_export_file_path ?: $revision->cogm_import_file_path;
-        $name = $revision->cogm_export_original_name ?: $revision->cogm_import_original_name ?: 'COGM.xlsx';
+        $path = $revision->cogm_import_file_path ?: $revision->cogm_export_file_path;
+        $name = $revision->cogm_import_original_name ?: $revision->cogm_export_original_name ?: 'COGM.xlsx';
         abort_unless($path && Storage::disk('local')->exists($path), 404, 'File Excel COGM belum tersedia. Lakukan Export COGM dari Form Costing terlebih dahulu.');
 
         return Storage::disk('local')->download($path, $name);

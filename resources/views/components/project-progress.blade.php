@@ -10,7 +10,7 @@
     <div class="compact-progress-popover">
         <div class="compact-progress-head"><strong>Progress Project</strong><button class="compact-progress-close" type="button" aria-label="Tutup" onclick="this.closest('details').removeAttribute('open')">&times;</button></div>
         @foreach($projectProgress['steps'] as $index=>$step)
-            <div class="compact-progress-step {{ $step['state'] }}"><span class="compact-progress-dot">{{ $step['state']==='done'?'✓':$index+1 }}</span><strong>{{ $step['label'] }}</strong><span class="compact-progress-state">{{ $step['state']==='done'?'Selesai':($step['state']==='active'?'Aktif':'Belum') }}</span></div>
+            <div class="compact-progress-step {{ $step['state'] }}"><span class="compact-progress-dot">{{ $step['state']==='done'?'✓':$index+1 }}</span><strong>{{ $step['label'] }}</strong><span class="compact-progress-state">{{ $step['status'] ?? ($step['state']==='done'?'Selesai':($step['state']==='active'?'Aktif':'Belum')) }}</span></div>
         @endforeach
     </div>
 </details>

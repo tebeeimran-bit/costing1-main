@@ -258,6 +258,41 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseCount('document_revisions',1);
     }
 
+    public function test_project_without_drawing_skips_distribution_and_keeps_progress_note(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+        $customer = Customer::create(['code' => 'NO-DRAW', 'name' => 'No Drawing Customer']);
+        $category = BusinessCategory::create(['code' => 'NOD', 'name' => 'No Drawing Category']);
+
+        $this->actingAs($user)->post(route('breakdown.manual.store'), [
+            'business_category_id' => $category->id,
+            'customer_id' => $customer->id,
+            'model' => 'NOD1',
+            'assy_name' => 'NO DRAWING ASSY',
+            'assy_number' => 'NOD-001',
+            'received_date' => '2026-08-14',
+            'pic_engineering' => 'Engineer',
+        ])->assertRedirect(route('breakdown.inbox'));
+
+        $revision = \App\Models\DocumentProject::where('part_number', 'NOD-001')->firstOrFail()->revisions()->firstOrFail();
+        $this->actingAs($user)->post(route('document-control.drawing.skip', $revision), [
+            'drawing_skip_reason' => 'Customer tidak menerbitkan drawing untuk assy ini.',
+        ])
+            ->assertRedirect(route('document-control.inbox'))
+            ->assertSessionHas('success');
+
+        $drawingTask = ProjectWorkflowTask::where('document_revision_id', $revision->id)
+            ->where('stage', ProjectWorkflowTask::STAGE_DRAWING)->firstOrFail();
+        $this->assertSame(ProjectWorkflowTask::STATUS_COMPLETED, $drawingTask->status);
+        $this->assertTrue((bool) data_get($drawingTask->metadata, 'drawing_unavailable'));
+        $this->assertSame('Tidak ada drawing — Customer tidak menerbitkan drawing untuk assy ini.', collect(app(\App\Services\ProjectProgressService::class)->compact($revision->fresh())['steps'])->firstWhere('key', 'drawing')['status']);
+        $this->actingAs($user)->get(route('project'))
+            ->assertOk()
+            ->assertSee('NOD-001')
+            ->assertSee('Tidak ada drawing')
+            ->assertSee('Customer tidak menerbitkan drawing untuk assy ini.');
+    }
+
     public function test_saving_breakdown_automatically_sends_project_to_costing_inbox(): void
     {
         Storage::fake('local');

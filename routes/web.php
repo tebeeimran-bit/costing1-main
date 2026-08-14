@@ -61,6 +61,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('/registrations/{registration}', [DocumentControlRegistrationController::class, 'destroy'])->name('destroy');
         Route::post('/registrations/import', [DocumentControlRegistrationController::class, 'import'])->name('import');
         Route::post('/tasks/{task}/complete', [DocumentControlRegistrationController::class, 'completeDistribution'])->name('tasks.complete');
+        Route::post('/revisions/{revision}/skip-drawing', [DocumentControlRegistrationController::class, 'skipDrawing'])->name('drawing.skip');
     });
     Route::middleware('permission:inbox_breakdown')->prefix('breakdown')->name('breakdown.')->group(function () {
         Route::get('/inbox', [BreakdownInboxController::class, 'index'])->name('inbox');
@@ -85,6 +86,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/costing/inbox', [ProjectGroupController::class, 'costingInbox'])->name('costing.inbox');
         Route::get('/costing/documents/{revision}/download-cogm', [CostingController::class, 'downloadExportedCogm'])->name('costing.cogm.download');
         Route::post('/costing/revisions/{revision}', [ProjectGroupController::class, 'uploadCostingRevision'])->name('costing.revisions.store');
+        Route::post('/costing/revisions/{revision}/manual-cogm', [ProjectGroupController::class, 'uploadManualCogm'])->name('costing.manual-cogm.store');
         Route::get('/costing-groups/{group}',[CostingGroupController::class,'workspace'])->name('costing-groups.workspace');
         Route::post('/costing-groups/{group}/draft',[CostingGroupController::class,'draft'])->name('control-project.costing-groups.draft');
         Route::post('/costing-groups/{group}/submit-approval',[CostingGroupController::class,'submitApproval'])->name('control-project.costing-groups.submit-approval');

@@ -701,6 +701,11 @@
             </div>
             <h3 id="app-confirm-title" class="app-confirm-title">Konfirmasi Aksi</h3>
             <p id="app-confirm-message" class="app-confirm-message">Apakah Anda yakin?</p>
+            <div id="app-confirm-reason-wrap" class="app-confirm-reason is-hidden">
+                <label for="app-confirm-reason">Alasan tidak ada drawing <span>*</span></label>
+                <textarea id="app-confirm-reason" rows="3" maxlength="1000" placeholder="Tuliskan alasan project tidak memiliki drawing..."></textarea>
+                <small id="app-confirm-reason-error" class="is-hidden">Alasan wajib diisi.</small>
+            </div>
             <div class="app-confirm-actions">
                 <button type="button" class="app-confirm-btn app-confirm-btn-secondary" onclick="closeAppConfirm()">Batal</button>
                 <button type="button" id="app-confirm-ok" class="app-confirm-btn app-confirm-btn-danger" onclick="executeAppConfirm()">Ya, Lanjutkan</button>
@@ -736,6 +741,7 @@
 
     <script>
         let appConfirmCurrentOnConfirm = null;
+        let appConfirmReasonRequired = false;
         let appNotifyCurrentOnClose = null;
         let appLoadingVisible = false;
 
@@ -774,30 +780,46 @@
             const messageNode = document.getElementById('app-confirm-message');
             const titleNode = document.getElementById('app-confirm-title');
             const okButton = document.getElementById('app-confirm-ok');
+            const reasonWrap = document.getElementById('app-confirm-reason-wrap');
+            const reasonInput = document.getElementById('app-confirm-reason');
+            const reasonError = document.getElementById('app-confirm-reason-error');
 
             messageNode.textContent = message || 'Apakah Anda yakin ingin melanjutkan?';
             titleNode.textContent = options.title || 'Konfirmasi Aksi';
             okButton.textContent = options.buttonLabel || 'Ya, Lanjutkan';
             okButton.classList.toggle('app-confirm-btn-danger', options.tone !== 'primary');
             okButton.classList.toggle('app-confirm-btn-primary', options.tone === 'primary');
+            appConfirmReasonRequired = options.reasonRequired === true;
+            reasonWrap?.classList.toggle('is-hidden', !appConfirmReasonRequired);
+            reasonError?.classList.add('is-hidden');
+            if (reasonInput) reasonInput.value = '';
             appConfirmCurrentOnConfirm = onConfirm;
             modal.classList.remove('is-hidden');
             document.body.style.overflow = 'hidden';
-            okButton.focus();
+            (appConfirmReasonRequired ? reasonInput : okButton)?.focus();
         }
 
         function closeAppConfirm() {
             const modal = document.getElementById('app-confirm-modal');
             appConfirmCurrentOnConfirm = null;
+            appConfirmReasonRequired = false;
             modal.classList.add('is-hidden');
             document.body.style.overflow = '';
         }
 
         function executeAppConfirm() {
+            const reasonInput = document.getElementById('app-confirm-reason');
+            const reasonError = document.getElementById('app-confirm-reason-error');
+            const reason = reasonInput?.value.trim() || '';
+            if (appConfirmReasonRequired && !reason) {
+                reasonError?.classList.remove('is-hidden');
+                reasonInput?.focus();
+                return;
+            }
             if (typeof appConfirmCurrentOnConfirm === 'function') {
                 const callback = appConfirmCurrentOnConfirm;
                 closeAppConfirm();
-                callback();
+                callback(reason);
             } else {
                 closeAppConfirm();
             }
@@ -928,13 +950,18 @@
 
                 event.preventDefault();
                 const message = form.dataset.confirmMessage || 'Apakah Anda yakin ingin melanjutkan?';
-                openAppConfirm(message, function () {
+                openAppConfirm(message, function (reason) {
+                    if (form.dataset.confirmReason === 'true') {
+                        const reasonField = form.querySelector('[name="drawing_skip_reason"]');
+                        if (reasonField) reasonField.value = reason;
+                    }
                     showAppLoading();
                     HTMLFormElement.prototype.submit.call(form);
                 }, {
                     title: form.dataset.confirmTitle || 'Konfirmasi Aksi',
                     buttonLabel: form.dataset.confirmButton || 'Ya, Lanjutkan',
                     tone: form.dataset.confirmTone || 'danger',
+                    reasonRequired: form.dataset.confirmReason === 'true',
                 });
             });
 

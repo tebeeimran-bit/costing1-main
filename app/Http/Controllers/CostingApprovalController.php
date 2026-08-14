@@ -6,7 +6,6 @@ use App\Models\CogmSubmission;
 use App\Models\CostingApproval;
 use App\Models\CostingData;
 use App\Models\DocumentRevision;
-use App\Models\UnpricedPart;
 use App\Models\ProjectA00Item;
 use App\Models\ProjectWorkflowTask;
 use App\Models\CostingGroupVersion;
@@ -27,10 +26,6 @@ class CostingApprovalController extends Controller
         $costing = $this->costingForRevision($revision);
         if (!$costing) {
             return back()->with('error', 'Submit approval ditolak karena form costing untuk project ini belum ada.');
-        }
-
-        if ($this->hasOpenUnpricedParts($revision)) {
-            return back()->with('warning', 'Submit approval ditolak karena masih ada part tanpa harga. Selesaikan pricing dulu.');
         }
 
         if (in_array($revision->status, [
@@ -62,7 +57,13 @@ class CostingApprovalController extends Controller
         });
         $this->refreshCostingGroup($revision);
 
-        return back()->with('success', 'Costing berhasil disubmit ke Coordinator Costing untuk approval.');
+        $openUnpricedCount = $revision->unpricedParts()->whereNull('resolved_at')->count();
+        $message = 'Costing berhasil disubmit ke Coordinator Costing untuk approval.';
+        if ($openUnpricedCount > 0) {
+            $message .= " Catatan: {$openUnpricedCount} part belum memiliki harga.";
+        }
+
+        return back()->with('success', $message);
     }
 
     public function approve(Request $request, DocumentRevision $revision)
@@ -193,7 +194,13 @@ class CostingApprovalController extends Controller
         $this->authorizeRole($request, ['admin', 'admin_costing', 'marketing', 'coordinator_costing']);
         $search = trim((string) $request->query('search'));
 
-        $submissions = CogmSubmission::with(['revision.project.product','revision.latestCostingRevision','comments.user','events.user'])
+        $submissions = CogmSubmission::with([
+            'revision.project.product',
+            'revision.latestCostingRevision',
+            'revision.unpricedParts' => fn ($query) => $query->whereNull('resolved_at'),
+            'comments.user',
+            'events.user',
+        ])
             ->when(
                 (string) $request->user()->role === 'marketing',
                 fn ($query) => $query->whereRaw('LOWER(TRIM(pic_marketing)) = ?', [
@@ -376,13 +383,6 @@ class CostingApprovalController extends Controller
             'cogm_value' => $costing ? $this->cogmValue($costing) : null,
             'submitted_at' => now(),
         ]);
-    }
-
-    private function hasOpenUnpricedParts(DocumentRevision $revision): bool
-    {
-        return UnpricedPart::where('document_revision_id', $revision->id)
-            ->whereNull('resolved_at')
-            ->exists();
     }
 
     private function cogmValue(CostingData $costing): float

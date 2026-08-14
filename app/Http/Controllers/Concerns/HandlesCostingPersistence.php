@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Models\Product;
 use App\Models\Customer;
-use App\Models\CogmSubmission;
 use App\Models\Material;
 use App\Models\CostingData;
 use App\Models\CostingExcelTemplate;
@@ -199,41 +198,6 @@ HandlesCostingPersistence
                 ]);
             }
 
-            if ($editingSubmittedCogm) {
-                $costingData->refresh();
-                $submission = CogmSubmission::where('document_revision_id', $trackingRevisionId)
-                    ->latest('submitted_at')
-                    ->first();
-
-                if ($submission) {
-                    $updatedCogmValue = (float) $costingData->material_cost
-                        + (float) $costingData->labor_cost
-                        + (float) $costingData->overhead_cost
-                        + (float) $costingData->scrap_cost;
-                    $submission->update([
-                        'cogm_value' => $updatedCogmValue,
-                        'update_count' => ((int) $submission->update_count) + 1,
-                        'last_updated_by' => $request->user()->name,
-                        'last_updated_at' => now(),
-                    ]);
-                    $submission->events()->create([
-                        'user_id'=>$request->user()->id,'event_type'=>'cogm_updated','source'=>'costing',
-                        'title'=>'COGM diperbarui dari Inbox Costing',
-                        'description'=>'Nilai COGM diperbarui dan dikirim ulang ke Marketing.',
-                        'cogm_value'=>$updatedCogmValue,
-                    ]);
-
-                    $approval = \App\Models\CostingApproval::where('document_revision_id', $trackingRevisionId)
-                        ->latest('id')
-                        ->first();
-                    $approval?->update(['cogm_value' => $updatedCogmValue]);
-                }
-
-                DocumentRevision::whereKey($trackingRevisionId)->update([
-                    'status' => DocumentRevision::STATUS_SUBMITTED_TO_MARKETING,
-                ]);
-            }
-
             DB::commit();
 
             /*
@@ -259,10 +223,10 @@ HandlesCostingPersistence
 
             if ($updateSection === '') {
                 $successMessage = $editingSubmittedCogm
-                    ? 'Perubahan COGM berhasil disimpan dan Inbox Marketing telah diperbarui.'
+                    ? 'Data costing berhasil disimpan. Gunakan Upload Update COGM untuk mengirim pembaruan resmi ke Marketing.'
                     : 'Data costing berhasil disimpan.';
             } elseif ($editingSubmittedCogm) {
-                $successMessage = 'Perubahan berhasil disimpan dan COGM di Inbox Marketing telah diperbarui.';
+                $successMessage = 'Perubahan berhasil disimpan sebagai draft Costing. Inbox Marketing belum diperbarui.';
             }
 
             if ($importFromPartlist) {

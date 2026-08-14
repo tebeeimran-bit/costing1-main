@@ -27,6 +27,10 @@ class DocumentRevision extends Model
         'period',
         'pic_engineering',
         'status',
+        'pricing_status',
+        'manual_missing_price_count',
+        'pricing_status_note',
+        'pricing_status_updated_at',
         'cogm_generated_at',
         'pic_marketing',
         'a00',
@@ -68,6 +72,7 @@ class DocumentRevision extends Model
     protected $casts = [
         'received_date' => 'date',
         'cogm_generated_at' => 'datetime',
+        'pricing_status_updated_at' => 'datetime',
         'a00_received_date' => 'date',
         'a04_received_date' => 'date',
         'a05_received_date' => 'date',

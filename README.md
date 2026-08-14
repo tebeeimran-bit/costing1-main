@@ -174,6 +174,16 @@ php artisan app:deployment-check
 
 Jangan mengganti `APP_KEY` setelah aplikasi mulai menyimpan data/session production.
 
+## Menjalankan MySQL Secara Manual
+
+Jika MySQL dipasang melalui Scoop dan tidak dijalankan sebagai Windows Service, buka PowerShell atau Command Prompt baru, lalu jalankan:
+
+```powershell
+mysqld --console
+```
+
+Tunggu hingga muncul pesan `ready for connections` pada port `3306`. Biarkan terminal MySQL tetap terbuka selama aplikasi digunakan. Gunakan terminal terpisah untuk menjalankan `php artisan serve`. Tekan `Ctrl+C` pada terminal MySQL untuk menghentikannya.
+
 ## Menjalankan Environment Development
 
 Pastikan MySQL aktif dan `.env` mengarah ke database development. Buka PowerShell, masuk ke folder aplikasi, lalu jalankan server:

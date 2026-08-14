@@ -1,7 +1,54 @@
         // Calculate totals for Resume COGM
+        function applyResumeCostFormula(input, useStoredFormula = false) {
+            if (!input) return 0;
+
+            const enteredValue = useStoredFormula && input.dataset.resumeFormula
+                ? input.dataset.resumeFormula
+                : String(input.value || '').trim();
+            const isFormula = enteredValue.startsWith('=') || /[+*/()×]/.test(enteredValue)
+                || /\d\s*-\s*\d/.test(enteredValue) || /\d\s*[xX]\s*\d/.test(enteredValue);
+
+            if (!isFormula) {
+                delete input.dataset.resumeFormula;
+                input.setCustomValidity('');
+                formatResumeMoneyInput(input);
+                return getResumeMoneyValue(input);
+            }
+
+            try {
+                const materialCost = getResumeMoneyValue('materialCost');
+                let expression = enteredValue.replace(/^\s*=\s*/, '');
+                expression = expression.replace(/TOTAL[ _]MATERIAL[ _]COST|MATERIAL[ _]COST/gi, `(${materialCost})`);
+                expression = expression.replace(/[xX×]/g, '*').replace(/\s+/g, '');
+                expression = expression.replace(/\d[\d.,]*/g, (numberText) => String(parseResumeMoneyNumber(numberText)));
+
+                if (!expression || !/^[0-9+\-*/().]+$/.test(expression)) {
+                    throw new Error('Formula hanya boleh berisi angka dan operator +, -, *, /.');
+                }
+
+                const result = Function(`"use strict"; return (${expression});`)();
+                if (!Number.isFinite(result)) {
+                    throw new Error('Hasil formula tidak valid atau terjadi pembagian dengan nol.');
+                }
+
+                input.dataset.resumeFormula = enteredValue;
+                input.setCustomValidity('');
+                setResumeMoneyValue(input, result);
+                return result;
+            } catch (error) {
+                input.setCustomValidity(error.message || 'Formula Depresiasi Tooling Cost tidak valid.');
+                input.reportValidity();
+                return getResumeMoneyValue(input);
+            }
+        }
+
         function calculateTotals(recalculateMaterialTable = true) {
             const materialCost = getResumeMoneyValue('materialCost');
             const laborCost = getResumeMoneyValue('laborCost');
+            const toolingInput = document.getElementById('overheadCost');
+            if (toolingInput?.dataset.resumeFormula) {
+                applyResumeCostFormula(toolingInput, true);
+            }
             const overheadCost = getResumeMoneyValue('overheadCost');
             const scrapCost = getResumeMoneyValue('scrapCost');
             const cogmTotal = materialCost + laborCost + overheadCost + scrapCost;
@@ -43,7 +90,44 @@
                     costingResumeOverrides[key] = element.textContent.trim();
                     syncCostingResumeOverridesInput();
                 });
+
+                if (element.dataset.crField === 'summary.tooling_cost') {
+                    element.title = 'Masukkan angka atau formula, lalu tekan Enter untuk menghitung.';
+                    element.addEventListener('keydown', (event) => {
+                        if (event.key !== 'Enter') return;
+                        event.preventDefault();
+                        if (commitToolingFormulaFromPreview(element)) {
+                            submitResumeCogmSectionFromEnter(event);
+                        }
+                    });
+                    element.addEventListener('blur', () => {
+                        if (/^\s*=/.test(element.textContent || '')) {
+                            commitToolingFormulaFromPreview(element);
+                        }
+                    });
+                }
             });
+        }
+
+        function commitToolingFormulaFromPreview(element) {
+            const toolingInput = document.getElementById('overheadCost');
+            if (!toolingInput || !element) return false;
+
+            toolingInput.value = String(element.textContent || '').trim();
+            const result = applyResumeCostFormula(toolingInput);
+            if (toolingInput.validationMessage) return false;
+
+            [
+                'summary.material_pct', 'summary.process_pct',
+                'summary.tooling_cost', 'summary.tooling_pct',
+                'summary.admin_pct', 'summary.cogm_total', 'summary.cogm_pct',
+                'metrics.potential_sales_month', 'metrics.potential_sales_lifetime',
+                'metrics.rp_per_cct', 'metrics.estimated_mp'
+            ].forEach((key) => delete costingResumeOverrides[key]);
+            syncCostingResumeOverridesInput();
+            calculateTotals(false);
+            element.textContent = costingResumeMoney(result);
+            return true;
         }
 
         function applyCostingResumeOverridesToPreview() {

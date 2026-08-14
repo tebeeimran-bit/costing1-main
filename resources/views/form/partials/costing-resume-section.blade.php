@@ -28,8 +28,10 @@
         <div class="form-group">
             <label class="form-label">Depresiasi Tooling Cost (IDR)</label>
             <input type="text" inputmode="decimal" name="overhead_cost" class="form-input resume-money-input" id="overheadCost"
-                value="{{ isset($costingData->overhead_cost) ? number_format((float) $costingData->overhead_cost, 2, ',', '.') : '' }}" placeholder="0"
-                onchange="formatResumeMoneyInput(this); calculateTotals()">
+                value="{{ isset($costingData->overhead_cost) ? number_format((float) $costingData->overhead_cost, 2, ',', '.') : '' }}" placeholder="Contoh: =TOTAL_MATERIAL_COST*0,05"
+                title="Bisa diisi angka atau formula dengan +, -, *, / dan TOTAL_MATERIAL_COST"
+                onchange="applyResumeCostFormula(this); calculateTotals()">
+            <small class="form-text">Bisa diisi manual atau formula, contoh: <code>=TOTAL_MATERIAL_COST*0,05</code></small>
         </div>
         <div class="form-group">
             <label class="form-label">Administrasi Cost (IDR)</label>
@@ -72,7 +74,6 @@
                             <div class="costing-resume-rate-row"><strong id="crRateJpy" data-cr-field="rate.jpy">0</strong><span>: JPY</span></div>
                             <div class="costing-resume-rate-row"><strong id="crRateLme" data-cr-field="rate.lme">0</strong><span>: LME</span></div>
                         </div>
-                        <div class="costing-resume-labour"><span>Labour / Process Cost</span><span>Rp</span><strong id="crLabourCost" data-cr-field="rate.labour_cost">0,00</strong></div>
                     </div>
                 </div>
                 <div class="costing-resume-table-wrap"><table class="costing-resume-table"><thead><tr><th style="text-align:left;">Part Name</th><th style="width:110px;">Qty</th><th style="width:72px;">Unit</th><th style="width:150px;">Amount</th><th style="width:70px;">%</th></tr></thead><tbody id="costingResumeMaterialBody"><tr><td colspan="5" class="costing-resume-empty">Material belum tersedia.</td></tr></tbody></table></div>

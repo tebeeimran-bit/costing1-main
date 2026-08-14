@@ -1303,6 +1303,7 @@
             font-size: 0.92rem;
             line-height: 1.5;
         }
+        .app-confirm-reason{margin-top:14px;text-align:left}.app-confirm-reason.is-hidden,.app-confirm-reason small.is-hidden{display:none}.app-confirm-reason label{display:block;margin-bottom:6px;color:#334155;font-size:12px;font-weight:800}.app-confirm-reason label span{color:#ef4444}.app-confirm-reason textarea{box-sizing:border-box;width:100%;min-height:78px;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;color:#334155;font:inherit;font-size:12px;resize:vertical;outline:none}.app-confirm-reason textarea:focus{border-color:#f97316;box-shadow:0 0 0 3px rgba(249,115,22,.12)}.app-confirm-reason small{display:block;margin-top:5px;color:#dc2626;font-size:10px;font-weight:700}
 
         .app-confirm-actions {
             display: flex;
@@ -1388,4 +1389,3 @@
                 transform: translateY(0) scale(1);
             }
         }
-

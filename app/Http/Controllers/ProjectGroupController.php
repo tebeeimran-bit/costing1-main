@@ -14,8 +14,10 @@ use App\Models\ProjectA00Item;
 use App\Models\User;
 use App\Notifications\CostingGroupChanged;
 use App\Services\TrackingDocument\TrackingDocumentFileService;
+use App\Services\Costing\ManualCogmWorkbookService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use App\Support\BusinessCategoryContext;
@@ -35,7 +37,8 @@ class ProjectGroupController extends Controller
             ->with([
                 'customer', 'product', 'materialBreakdowns',
                 'trackingRevision.project.product',
-                'trackingRevision.latestCostingRevision',
+                'trackingRevision.latestCostingRevision.uploader',
+                'trackingRevision.latestSubmission',
                 'trackingRevision.latestApproval.submitter',
                 'trackingRevision.latestApproval.approver',
             ])
@@ -143,6 +146,11 @@ class ProjectGroupController extends Controller
             $revision = $costing->trackingRevision;
             $approval = $revision?->latestApproval;
             $openUnpriced = $revision?->unpricedParts()->whereNull('resolved_at')->count() ?? 0;
+            if ($revision?->pricing_status === 'full_price') {
+                $openUnpriced = 0;
+            } elseif ($revision?->pricing_status === 'incomplete' && $revision->manual_missing_price_count !== null) {
+                $openUnpriced = (int) $revision->manual_missing_price_count;
+            }
             $revisionStatus = (string) ($revision?->status ?? '');
 
             $costing->workflow_label = match ($revisionStatus) {
@@ -160,9 +168,11 @@ class ProjectGroupController extends Controller
                 default => 'info',
             };
             $costing->open_unpriced_count = $openUnpriced;
+            $costing->pricing_status_label = $revision?->pricing_status === 'full_price'
+                ? 'Full Price · Harga lengkap'
+                : ($openUnpriced > 0 ? 'Belum Full Price · '.$openUnpriced.' part belum memiliki harga' : 'Harga lengkap');
             $costing->can_submit_approval = in_array($userRole, ['admin', 'admin_costing', 'editor'], true)
-                && $openUnpriced === 0
-                && in_array($revisionStatus, [DocumentRevision::STATUS_SUDAH_COSTING, DocumentRevision::STATUS_COGM_GENERATED, DocumentRevision::STATUS_REJECTED_BY_COORDINATOR], true);
+                && in_array($revisionStatus, [DocumentRevision::STATUS_SUDAH_COSTING, DocumentRevision::STATUS_PENDING_PRICING, DocumentRevision::STATUS_COGM_GENERATED, DocumentRevision::STATUS_REJECTED_BY_COORDINATOR], true);
             $costing->can_approve = in_array($userRole, ['admin', 'coordinator_costing'], true)
                 && $revisionStatus === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL;
             $costing->can_send = in_array($userRole, ['admin', 'coordinator_costing'], true)
@@ -202,7 +212,7 @@ class ProjectGroupController extends Controller
     public function uploadCostingRevision(Request $request, DocumentRevision $revision)
     {
         $data = $request->validate([
-            'revision_type' => ['required', 'in:price,partlist,umh'],
+            'revision_type' => ['required', 'in:partlist,umh'],
             'revision_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:20480'],
             'description' => ['nullable', 'string', 'max:1000'],
         ], [
@@ -284,6 +294,111 @@ class ProjectGroupController extends Controller
         $message = $label.' berhasil diunggah dan disimpan pada riwayat project.';
         if ($submission) $message .= ' Inbox Marketing dan notifikasi PIC Marketing telah diperbarui.';
         return back()->with('success', $message);
+    }
+
+    public function uploadManualCogm(Request $request, DocumentRevision $revision, ManualCogmWorkbookService $workbookService)
+    {
+        abort_unless(in_array((string) $request->user()->role, ['admin', 'admin_costing', 'editor'], true), 403);
+
+        $data = $request->validate([
+            'cogm_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:20480'],
+            'price_update_number' => ['required', 'integer', 'min:1', 'max:999'],
+            'pricing_status' => ['required', 'in:incomplete,full_price'],
+            'missing_price_count' => ['nullable', 'integer', 'min:1', 'required_if:pricing_status,incomplete'],
+            'full_price_confirmation' => ['nullable', 'accepted_if:pricing_status,full_price'],
+            'description' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'missing_price_count.required_if' => 'Isi jumlah part yang belum memiliki harga.',
+            'full_price_confirmation.accepted_if' => 'Konfirmasi bahwa seluruh harga sudah lengkap dan final.',
+        ]);
+
+        $costing = CostingData::where('tracking_revision_id', $revision->id)->latest('id')->first();
+        if (!$costing) return back()->with('error', 'Data Form Costing project ini belum tersedia.');
+
+        try {
+            $summary = $workbookService->extractSummary($request->file('cogm_file')->getPathname());
+        } catch (\Throwable $e) {
+            report($e);
+            return back()->with('error', 'File COGM tidak dapat dibaca: '.$e->getMessage());
+        }
+
+        if (!array_key_exists('cogm_total', $summary) && !array_key_exists('material_cost', $summary)) {
+            return back()->with('error', 'Ringkasan COGM tidak ditemukan. Pastikan file memiliki label TOTAL MATERIAL COST, PROCESS COST, dan COGM.');
+        }
+
+        $file = $data['cogm_file'];
+        $path = $file->store('workflow/costing-revisions/'.$revision->id.'/manual-cogm');
+        $oldValues = [
+            'material_cost' => (float) $costing->material_cost,
+            'labor_cost' => (float) $costing->labor_cost,
+            'overhead_cost' => (float) $costing->overhead_cost,
+            'scrap_cost' => (float) $costing->scrap_cost,
+        ];
+        $costs = array_replace($oldValues, array_intersect_key($summary, $oldValues));
+        if (isset($summary['cogm_total']) && !isset($summary['scrap_cost'])) {
+            $costs['scrap_cost'] = max(0, (float) $summary['cogm_total'] - $costs['material_cost'] - $costs['labor_cost'] - $costs['overhead_cost']);
+        }
+        $cogmValue = array_sum($costs);
+        $missingCount = $data['pricing_status'] === 'incomplete' ? (int) $data['missing_price_count'] : 0;
+
+        try {
+            $submission = DB::transaction(function () use ($request, $revision, $costing, $data, $file, $path, $costs, $cogmValue, $missingCount) {
+                $costing->update($costs);
+                $revision->update([
+                    'cogm_import_original_name' => $file->getClientOriginalName(),
+                    'cogm_import_file_path' => $path,
+                    'cogm_import_uploaded_at' => now(),
+                    'pricing_status' => $data['pricing_status'],
+                    'manual_missing_price_count' => $missingCount,
+                    'pricing_status_note' => $data['description'] ?? null,
+                    'pricing_status_updated_at' => now(),
+                ]);
+                ProjectDocumentRevision::create([
+                    'document_project_id' => $revision->document_project_id,
+                    'document_revision_id' => $revision->id,
+                    'workflow_task_id' => $revision->workflowTasks()->where('stage', ProjectWorkflowTask::STAGE_COSTING)->latest('id')->value('id'),
+                    'revision_type' => 'price',
+                    'original_name' => $file->getClientOriginalName(),
+                    'file_path' => $path,
+                    'description' => $data['description'] ?? ($data['pricing_status'] === 'full_price' ? 'Full Price · Harga lengkap' : $missingCount.' part belum memiliki harga'),
+                    'uploaded_by' => $request->user()->id,
+                ]);
+
+                $submission = CogmSubmission::where('document_revision_id', $revision->id)->latest('submitted_at')->first();
+                if ($submission) {
+                    $submission->update([
+                        'cogm_value' => $cogmValue,
+                        'update_count' => (int) $data['price_update_number'],
+                        'last_updated_by' => $request->user()->name,
+                        'last_updated_at' => now(),
+                    ]);
+                    $submission->events()->create([
+                        'user_id' => $request->user()->id, 'event_type' => 'manual_cogm_updated', 'source' => 'costing',
+                        'title' => 'COGM manual diperbarui',
+                        'description' => $data['description'] ?? ($data['pricing_status'] === 'full_price' ? 'Full Price · Harga lengkap' : $missingCount.' part belum memiliki harga'),
+                        'cogm_value' => $cogmValue,
+                    ]);
+                }
+                $revision->latestApproval?->update(['cogm_value' => $cogmValue]);
+                return $submission;
+            });
+        } catch (\Throwable $e) {
+            Storage::disk('local')->delete($path);
+            throw $e;
+        }
+
+        if ($submission) {
+            $recipients = User::where('role', 'marketing')
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim((string) $submission->pic_marketing))])->get();
+            $recipients->each->notify(new CostingGroupChanged([
+                'event' => 'manual_cogm_updated', 'title' => 'Update COGM Manual',
+                'message' => ($revision->project?->part_number ?: 'Project').' menerima file COGM manual terbaru.',
+                'url' => route('marketing.cogm-inbox', absolute: false),
+            ]));
+        }
+
+        $statusLabel = $data['pricing_status'] === 'full_price' ? 'Full Price · Harga lengkap' : $missingCount.' part belum memiliki harga';
+        return back()->with('success', 'Update Harga '.$data['price_update_number'].' berhasil digunakan. Status: '.$statusLabel.'.');
     }
 
     public function destroyGroup(Request $request, TrackingDocumentFileService $fileService)
@@ -533,11 +648,14 @@ class ProjectGroupController extends Controller
                         $sample = $steps->first();
                         $activeStatuses = $steps->filter(fn ($step) => ($step['state'] ?? null) === 'active')
                             ->pluck('status')->filter()->unique()->implode(' / ');
+                        $completedStatuses = $steps->filter(fn ($step) => ($step['state'] ?? null) === 'done')
+                            ->pluck('status')->filter(fn ($status) => $status && $status !== 'Selesai')->unique();
                         return [
                             'key' => $key,
                             'label' => $sample['label'],
                             'state' => $completed ? 'done' : ($active ? 'active' : 'pending'),
-                            'status' => $completed ? 'Selesai' : ($active ? ($activeStatuses ?: 'Sedang proses') : 'Belum dimulai'),
+                            'skipped' => $completed && $steps->every(fn ($step) => (bool) ($step['skipped'] ?? false)),
+                            'status' => $completed ? ($completedStatuses->implode(' / ') ?: 'Selesai') : ($active ? ($activeStatuses ?: 'Sedang proses') : 'Belum dimulai'),
                             'date' => $steps->pluck('date')->filter()->sortDesc()->first(),
                             'time' => $steps->pluck('time')->filter()->sortDesc()->first(),
                             'pic' => $completed || $active ? $steps->pluck('pic')->filter(fn ($pic) => $pic && $pic !== '-')->unique()->implode(', ') : '-',
@@ -622,7 +740,7 @@ class ProjectGroupController extends Controller
 
         $definitions = [
             ['key'=>'a00','label'=>'A00','done'=>$hasA00,'date'=>$revision->a00_received_date ?? $revision->created_at,'pic'=>$revision->project?->a00Form?->creator?->name],
-            ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'date'=>$hasDrawing ? ($drawingTask?->completed_at ?? $drawing?->registration_date ?? $drawing?->created_at) : null,'pic'=>$drawingTask?->completedBy?->name ?? $drawingTask?->assignedUser?->name],
+            ['key'=>'drawing','label'=>'Drawing','done'=>$hasDrawing,'drawing_skipped'=>(bool) data_get($drawingTask?->metadata,'drawing_unavailable'),'drawing_skip_reason'=>data_get($drawingTask?->metadata,'drawing_skip_reason'),'date'=>$hasDrawing ? ($drawingTask?->completed_at ?? $drawing?->registration_date ?? $drawing?->created_at) : null,'pic'=>$drawingTask?->completedBy?->name ?? $drawingTask?->assignedUser?->name],
             ['key'=>'breakdown','label'=>'Breakdown','done'=>$hasBreakdown,'active'=>(bool)$breakdownTask,'status'=>$breakdownStatus,'date'=>$breakdownTask?->completed_at ?? $breakdownTask?->started_at ?? $breakdownTask?->available_at ?? ($hasBreakdown ? $costing?->updated_at : null),'pic'=>$breakdownTask?->completedBy?->name ?? $breakdownTask?->assignedUser?->name],
             ['key'=>'costing','label'=>'Costing','done'=>$hasCosting,'active'=>(bool)$costing || (bool)$costingTask,'status'=>$isRejected ? 'Perlu revisi' : ((bool)$costing ? 'Sedang proses' : 'Siap dimulai'),'date'=>$approval?->submitted_at ?? $costingTask?->started_at ?? $costingTask?->available_at ?? $costing?->updated_at,'pic'=>$approval?->submitter?->name ?? $costingTask?->completedBy?->name ?? $costingTask?->assignedUser?->name],
             ['key'=>'new-part-request','label'=>'New Part Request','done'=>$hasNewPartPricing,'active'=>$openUnpricedCount > 0,'status'=>$openUnpricedCount > 0 ? $openUnpricedCount.' part menunggu harga baru' : ($hasNewPartRequest ? 'Harga baru sudah lengkap' : 'Tidak ada part baru'),'date'=>$hasNewPartRequest ? $revision->updated_at : null,'pic'=>$newPartActor],
@@ -631,19 +749,28 @@ class ProjectGroupController extends Controller
         ];
         $lastDone = collect($definitions)->search(fn ($step) => !$step['done']);
         $activeIndex = $lastDone === false ? null : $lastDone;
+        $drawingSkipped = (bool) data_get($drawingTask?->metadata, 'drawing_unavailable');
 
-        return collect($definitions)->map(function ($step, $index) use ($activeIndex, $isManualBreakdown, $isNewProjectDraft) {
+        return collect($definitions)->map(function ($step, $index) use ($activeIndex, $isManualBreakdown, $isNewProjectDraft, $drawingSkipped) {
             $state = $step['done'] ? 'done' : (($step['active'] ?? false) || $index === $activeIndex ? 'active' : 'pending');
-            if ($isNewProjectDraft) $state = 'pending';
-            if ($isManualBreakdown) {
+            if ($isNewProjectDraft && !$drawingSkipped) $state = 'pending';
+            if ($drawingSkipped) {
+                if ($step['key'] === 'drawing') $state = 'done';
+                if ($step['key'] === 'a00' && !$step['done']) $state = 'pending';
+                if ($step['key'] === 'breakdown' && !$step['done']) $state = 'active';
+            }
+            if ($isManualBreakdown && !$drawingSkipped) {
                 if (in_array($step['key'], ['a00','drawing'], true)) $state = 'pending';
                 if ($step['key'] === 'breakdown' && !$step['done']) $state = 'active';
             }
             return [
                 'key'=>$step['key'],'label'=>$step['label'],'state'=>$state,
-                'status'=>$isManualBreakdown && in_array($step['key'],['a00','drawing'],true)
-                    ? 'Dilewati — project dimulai dari Breakdown'
-                    : ($state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai')),
+                'skipped'=>(bool) ($step['drawing_skipped'] ?? false),
+                'status'=>($step['drawing_skipped'] ?? false)
+                    ? 'Tidak ada drawing — '.($step['drawing_skip_reason'] ?: 'Tanpa keterangan')
+                    : ($isManualBreakdown && in_array($step['key'],['a00','drawing'],true)
+                        ? 'Dilewati — project dimulai dari Breakdown'
+                        : ($state === 'done' ? 'Selesai' : ($state === 'active' ? ($step['status'] ?? 'Sedang proses') : 'Belum dimulai'))),
                 'date'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->locale('id')->translatedFormat('d F Y') : null,
                 'time'=>$step['date'] ? \Carbon\Carbon::parse($step['date'])->format('H:i') : null,
                 'pic'=>$step['pic'] ?: '-',

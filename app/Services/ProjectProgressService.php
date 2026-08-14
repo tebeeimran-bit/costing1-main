@@ -31,7 +31,7 @@ class ProjectProgressService
 
         $steps = collect([
             ['key'=>'a00','label'=>'A00','done'=>$revision->a00 === 'ada' || filled($revision->a00_received_date)],
-            ['key'=>'drawing','label'=>'Drawing','done'=>$taskDone(ProjectWorkflowTask::STAGE_DRAWING)],
+            ['key'=>'drawing','label'=>'Drawing','done'=>$taskDone(ProjectWorkflowTask::STAGE_DRAWING),'status'=>data_get($tasks->get(ProjectWorkflowTask::STAGE_DRAWING)?->metadata, 'drawing_unavailable') ? 'Tidak ada drawing — '.(data_get($tasks->get(ProjectWorkflowTask::STAGE_DRAWING)?->metadata, 'drawing_skip_reason') ?: 'Tanpa keterangan') : null],
             ['key'=>'breakdown','label'=>'Breakdown','done'=>$taskDone(ProjectWorkflowTask::STAGE_BREAKDOWN)],
             ['key'=>'costing','label'=>'Costing','done'=>$hasCosting],
             ['key'=>'new_part','label'=>'New Part Request','done'=>$hasNewPartActivity && $openNewParts === 0],

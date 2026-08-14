@@ -89,14 +89,9 @@ class TrackingDocumentController extends Controller
 
     public function submitCogm(Request $request, DocumentRevision $revision)
     {
-        $hasOpenUnpriced = UnpricedPart::where('document_revision_id', $revision->id)
+        $openUnpricedCount = UnpricedPart::where('document_revision_id', $revision->id)
             ->whereNull('resolved_at')
-            ->exists();
-
-        if ($hasOpenUnpriced) {
-            return redirect()->back()
-                ->with('warning', 'Submit COGM ditolak karena masih ada part tanpa harga pada revisi ini.');
-        }
+            ->count();
 
         $validated = $request->validate([
             'pic_marketing' => 'required|string|max:255',
@@ -119,8 +114,12 @@ class TrackingDocumentController extends Controller
             'pic_marketing' => $validated['pic_marketing'],
         ]);
 
-        return redirect()->back()
-            ->with('success', 'COGM berhasil disubmit ke Marketing.');
+        $message = 'COGM berhasil disubmit ke Marketing.';
+        if ($openUnpricedCount > 0) {
+            $message .= " Catatan: {$openUnpricedCount} part belum memiliki harga.";
+        }
+
+        return redirect()->back()->with('success', $message);
     }
 
     public function updateFiles(UpdateTrackingFilesRequest $request, DocumentRevision $revision, TrackingDocumentFileService $fileService)

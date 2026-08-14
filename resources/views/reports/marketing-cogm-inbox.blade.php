@@ -45,6 +45,8 @@
 
     .marketing-inbox-table-wrap {
         overflow-x: auto;
+        border: 1px solid #d8e2ef;
+        border-radius: 9px;
     }
 
     .marketing-inbox-table {
@@ -55,25 +57,42 @@
 
     .marketing-inbox-table th,
     .marketing-inbox-table td {
-        padding: 0.78rem 0.9rem;
+        padding: 9px 10px;
         border-bottom: 1px solid #e2e8f0;
         text-align: left;
-        vertical-align: top;
-        font-size: 0.78rem;
+        vertical-align: middle;
+        font-size: 10px;
     }
 
     .marketing-inbox-table th {
-        background: #ffffff;
-        color: #64748b;
-        font-size: 0.68rem;
+        background: #f5f8fc;
+        color: #52647c;
+        font-size: 8px;
         font-weight: 900;
         text-transform: uppercase;
-        letter-spacing: 0.02em;
+        letter-spacing: 0;
+        white-space: nowrap;
+    }
+
+    .marketing-inbox-table th:last-child {
+        text-align: left !important;
     }
 
     .marketing-inbox-table td {
         color: #334155;
         font-weight: 700;
+    }
+
+    .marketing-inbox-table th:nth-child(1),
+    .marketing-inbox-table td:nth-child(1) {
+        min-width: 115px;
+        white-space: nowrap;
+    }
+
+    .marketing-inbox-table th:nth-child(2),
+    .marketing-inbox-table td:nth-child(2) {
+        min-width: 155px;
+        white-space: nowrap;
     }
 
     .marketing-inbox-table tr:last-child td {
@@ -90,7 +109,7 @@
         border-radius: 8px;
         background: #eff6ff;
         color: #1d4ed8;
-        font-size: 0.68rem;
+        font-size: 9px;
         font-weight: 900;
         text-decoration: none;
         white-space: nowrap;
@@ -102,7 +121,7 @@
         color: #1e40af;
     }
 
-    .inbox-actions { display:flex;justify-content:flex-end;gap:.4rem;align-items:center; }
+    .marketing-inbox-table tbody tr[data-href] > td:last-child{min-width:140px;vertical-align:middle}.inbox-actions{display:flex;width:140px;margin-left:auto;align-items:stretch;flex-direction:column;gap:4px}.inbox-actions .inbox-action{box-sizing:border-box;width:100%}
     .inbox-action.download { border-color:#bbf7d0;background:#f0fdf4;color:#15803d; }
     .inbox-action.download:hover { border-color:#86efac;background:#dcfce7;color:#166534; }
     .inbox-file-missing { color:#94a3b8;font-size:.64rem;font-weight:800;white-space:nowrap; }
@@ -117,14 +136,14 @@
         display: inline-flex;
         align-items: center;
         border-radius: 999px;
-        padding: 0.28rem 0.6rem;
+        padding: 5px 8px;
         background: #dcfce7;
         color: #15803d;
-        font-size: 0.68rem;
+        font-size: 9px;
         font-weight: 900;
         white-space: nowrap;
     }
-    .inbox-update{display:grid;gap:.16rem;margin-top:.35rem;padding:.35rem .5rem;border:1px solid #fde68a;border-radius:7px;background:#fffbeb;color:#92400e;font-size:.61rem;font-weight:800}.inbox-update small{color:#a16207;font-size:.56rem;font-weight:700}
+    .inbox-status-summary{display:flex;max-width:285px;align-items:flex-start;flex-direction:column;gap:4px}.inbox-update{display:inline-flex;align-items:center;gap:4px;margin:0;padding:4px 6px;border:1px solid #fde68a;border-radius:6px;background:#fffbeb;color:#92400e;font-size:9px;font-weight:800;white-space:nowrap}.inbox-update small{color:#a16207;font-size:8px;font-weight:700}.inbox-update small+small{width:100%;white-space:normal}
 
     .inbox-empty {
         padding: 2rem;
@@ -133,7 +152,7 @@
         font-size: 0.85rem;
         font-weight: 750;
     }
-    .marketing-status{display:inline-flex;margin-top:.35rem;padding:.25rem .5rem;border-radius:999px;font-size:.62rem;font-weight:900}.marketing-status.waiting{background:#fef3c7;color:#92400e}.marketing-status.cancel{background:#fee2e2;color:#b91c1c}.marketing-status.die_go{background:#dcfce7;color:#15803d}.marketing-status.unset{background:#e2e8f0;color:#475569}.marketing-detail-row{display:none}.marketing-detail-row.open{display:table-row}.marketing-detail{display:grid;grid-template-columns:minmax(230px,.8fr) minmax(260px,1fr) minmax(300px,1.3fr);gap:12px;padding:12px;background:#f8fafc}.marketing-panel{padding:12px;border:1px solid #dbe5f2;border-radius:9px;background:#fff}.marketing-panel h4{margin:0 0 9px;color:#173b75;font-size:.72rem}.marketing-panel form{display:grid;gap:7px}.marketing-panel select,.marketing-panel textarea{box-sizing:border-box;width:100%;padding:8px;border:1px solid #cbd8ea;border-radius:7px;font:inherit;font-size:.68rem}.marketing-panel textarea{min-height:66px;resize:vertical}.marketing-panel button{justify-self:end;border:0;border-radius:7px;background:#2864e8;color:#fff;padding:7px 10px;font-size:.64rem;font-weight:850;cursor:pointer}.marketing-timeline{display:grid;gap:7px;max-height:240px;overflow:auto}.marketing-event{padding:8px;border-left:3px solid #60a5fa;border-radius:5px;background:#f8fafc;color:#475569;font-size:.63rem}.marketing-event strong,.marketing-event small{display:block}.marketing-event small{margin-top:2px;color:#94a3b8}.marketing-warning{margin-top:7px;padding:7px;border-radius:6px;background:#fff7ed;color:#c2410c;font-size:.62rem;font-weight:800}@media(max-width:900px){.marketing-detail{grid-template-columns:1fr}}
+    .marketing-status{display:inline-flex;margin:0;padding:.25rem .5rem;border-radius:999px;font-size:.62rem;font-weight:900;white-space:nowrap}.marketing-status.waiting{background:#fef3c7;color:#92400e}.marketing-status.cancel{background:#fee2e2;color:#b91c1c}.marketing-status.die_go{background:#dcfce7;color:#15803d}.marketing-status.unset{background:#e2e8f0;color:#475569}.marketing-detail-row{display:none}.marketing-detail-row.open{display:table-row}.marketing-detail{display:grid;grid-template-columns:minmax(230px,.8fr) minmax(260px,1fr) minmax(300px,1.3fr);gap:12px;padding:12px;background:#f8fafc}.marketing-panel{padding:12px;border:1px solid #dbe5f2;border-radius:9px;background:#fff}.marketing-panel h4{margin:0 0 9px;color:#173b75;font-size:.72rem}.marketing-panel form{display:grid;gap:7px}.marketing-panel select,.marketing-panel textarea{box-sizing:border-box;width:100%;padding:8px;border:1px solid #cbd8ea;border-radius:7px;font:inherit;font-size:.68rem}.marketing-panel textarea{min-height:66px;resize:vertical}.marketing-panel button{justify-self:end;border:0;border-radius:7px;background:#2864e8;color:#fff;padding:7px 10px;font-size:.64rem;font-weight:850;cursor:pointer}.marketing-timeline{display:grid;gap:7px;max-height:240px;overflow:auto}.marketing-event{padding:8px;border-left:3px solid #60a5fa;border-radius:5px;background:#f8fafc;color:#475569;font-size:.63rem}.marketing-event strong,.marketing-event small{display:block}.marketing-event small{margin-top:2px;color:#94a3b8}.marketing-warning{margin:0;padding:.28rem .45rem;border-radius:6px;background:#fff7ed;color:#c2410c;font-size:.6rem;font-weight:800;white-space:nowrap}@media(max-width:900px){.marketing-detail{grid-template-columns:1fr}}
 </style>
 
 <div class="marketing-search-bar"><form class="marketing-search" method="GET"><input name="search" value="{{ $search }}" placeholder="Cari customer, model, part, atau PIC..."><button class="marketing-search-btn">Cari</button>@if($search !== '')<a class="marketing-search-btn secondary" href="{{ route('marketing.cogm-inbox',absolute:false) }}">Reset</a>@endif</form></div>
@@ -147,7 +166,7 @@
     </tbody></table></div>
     @endif
     <div class="marketing-inbox-header">
-        <h3>COGM Per Item / Legacy</h3>
+        <h3>COGM Per Item</h3>
         <span>{{ $submissions->total() }} submission</span>
     </div>
 
@@ -173,6 +192,11 @@
                     @php
                         $revision = $submission->revision;
                         $project = $revision?->project;
+                        $openUnpricedCount = $revision?->pricing_status === 'full_price'
+                            ? 0
+                            : ($revision?->pricing_status === 'incomplete'
+                                ? (int) ($revision?->manual_missing_price_count ?? 0)
+                                : ($revision?->unpricedParts?->count() ?? 0));
                         $latestCostingRevision = $revision?->latestCostingRevision;
                         $costingUpdateLabel = match($latestCostingRevision?->revision_type) {
                             'price' => 'Update Harga', 'partlist' => 'Update Partlist',
@@ -192,13 +216,13 @@
                         <td style="text-align:right;"><span class="inbox-cogm">Rp {{ number_format((float) $submission->cogm_value, 0, ',', '.') }}</span></td>
                         <td>{{ $submission->submitted_by ?? '-' }}</td>
                         <td>{{ $submission->submitted_at ? $submission->submitted_at->format('d/m/Y H:i') : '-' }}</td>
-                        <td><span class="inbox-pill">Submitted to Marketing</span><div><span class="marketing-status {{ $submission->marketing_status ?: 'unset' }}">{{ ['waiting'=>'Waiting','cancel'=>'Cancel','die_go'=>'Die Go (Berhasil)'][$submission->marketing_status] ?? 'Status belum diisi' }}</span></div>@if($submission->last_updated_at)<div class="inbox-update">{{ $costingUpdateLabel }} ({{ $submission->update_count }}x)<small>{{ $submission->last_updated_by }} · {{ $submission->last_updated_at->format('d/m/Y H:i') }}</small>@if($latestCostingRevision?->description)<small>{{ $latestCostingRevision->description }}</small>@endif</div>@endif</td>
+                        <td><div class="inbox-status-summary"><span class="inbox-pill">Submitted to Marketing</span>@if($openUnpricedCount > 0)<span class="marketing-warning">Belum Full Price · {{ $openUnpricedCount }} part belum memiliki harga</span>@else<span class="marketing-status die_go">Full Price · Harga lengkap</span>@endif @if($submission->marketing_status)<span class="marketing-status {{ $submission->marketing_status }}">{{ ['waiting'=>'Waiting','cancel'=>'Cancel','die_go'=>'Die Go (Berhasil)'][$submission->marketing_status] }}</span>@endif @if($submission->last_updated_at)<span class="inbox-update">{{ $costingUpdateLabel }} {{ $submission->update_count }}x</span>@endif</div></td>
                         <td style="text-align:right;">
                             <div class="inbox-actions">
-                                @if($revision?->costing_edit_file_path)
+                                @if($revision?->cogm_import_file_path)
+                                    <a class="inbox-action download" data-no-row-open href="{{ route('marketing.cogm-import.download', $submission, absolute: false) }}" title="{{ $revision->cogm_import_original_name }}">Download COGM Manual</a>
+                                @elseif($revision?->costing_edit_file_path)
                                     <a class="inbox-action download" data-no-row-open href="{{ route('marketing.costing-edit.download', $revision, absolute: false) }}" title="{{ $revision->costing_edit_original_name }}">Download File Import</a>
-                                @elseif($revision?->cogm_import_file_path)
-                                    <a class="inbox-action download" data-no-row-open href="{{ route('marketing.cogm-import.download', $submission, absolute: false) }}" title="{{ $revision->cogm_import_original_name }}">Download File Import</a>
                                 @elseif($latestCostingRevision?->file_path)
                                     <a class="inbox-action download" data-no-row-open href="{{ route('marketing.cogm-update.download', $submission, absolute: false) }}" title="{{ $latestCostingRevision->original_name }}">Download {{ $costingUpdateLabel }}</a>
                                 @else

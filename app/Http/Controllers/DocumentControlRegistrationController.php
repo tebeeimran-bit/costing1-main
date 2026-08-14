@@ -225,6 +225,58 @@ class DocumentControlRegistrationController extends Controller
         return redirect()->route('document-control.inbox')->with('success', $message);
     }
 
+    public function skipDrawing(Request $request, DocumentRevision $revision)
+    {
+        $data = $request->validate([
+            'drawing_skip_reason' => ['required', 'string', 'max:1000'],
+        ], [
+            'drawing_skip_reason.required' => 'Alasan project tidak memiliki drawing wajib diisi.',
+        ]);
+        $revision->loadMissing('project');
+
+        DB::transaction(function () use ($request, $revision, $data) {
+            $drawingTask = ProjectWorkflowTask::firstOrCreate([
+                'document_revision_id' => $revision->id,
+                'stage' => ProjectWorkflowTask::STAGE_DRAWING,
+            ], [
+                'document_project_id' => $revision->document_project_id,
+                'assigned_role' => 'document_control',
+                'available_at' => now(),
+            ]);
+
+            abort_if($drawingTask->drawingRegistration()->exists(), 422, 'Project sudah memiliki registrasi drawing.');
+
+            $drawingTask->update([
+                'status' => ProjectWorkflowTask::STATUS_COMPLETED,
+                'assigned_user_id' => $drawingTask->assigned_user_id ?: $request->user()->id,
+                'started_at' => $drawingTask->started_at ?: now(),
+                'completed_by_id' => $request->user()->id,
+                'completed_at' => now(),
+                'notes' => 'Tidak ada drawing: '.$data['drawing_skip_reason'],
+                'metadata' => array_merge($drawingTask->metadata ?? [], [
+                    'drawing_unavailable' => true,
+                    'drawing_skipped_by' => $request->user()->name,
+                    'drawing_skipped_at' => now()->toIso8601String(),
+                    'drawing_skip_reason' => $data['drawing_skip_reason'],
+                ]),
+            ]);
+
+            ProjectWorkflowTask::firstOrCreate([
+                'document_revision_id' => $revision->id,
+                'stage' => ProjectWorkflowTask::STAGE_BREAKDOWN,
+            ], [
+                'document_project_id' => $revision->document_project_id,
+                'assigned_role' => 'admin_costing',
+                'status' => ProjectWorkflowTask::STATUS_PENDING,
+                'available_at' => now(),
+                'metadata' => ['source' => 'drawing_skipped', 'drawing_task_id' => $drawingTask->id],
+            ]);
+        });
+
+        return redirect()->route('document-control.inbox')
+            ->with('success', ($revision->project?->part_number ?: 'Project').' ditandai tidak memiliki drawing. Proses distribusi drawing dilewati.');
+    }
+
     public function destroy(Request $request, DocumentControlRegistration $registration)
     {
         $registration->delete();

@@ -425,6 +425,7 @@
                 '_token',
                 'costing_data_id',
                 'tracking_revision_id',
+                'edit_submitted',
                 'update_section',
                 'import_partlist',
                 'import_partlist_file'
@@ -512,11 +513,19 @@
                         return;
                     }
 
+                    if (inputId === 'overheadCost') {
+                        applyResumeCostFormula(input);
+                    }
+
                     submitResumeCogmSectionFromEnter(event);
                 });
 
                 input.addEventListener('blur', function () {
-                    formatResumeMoneyInput(input);
+                    if (inputId === 'overheadCost') {
+                        applyResumeCostFormula(input);
+                    } else {
+                        formatResumeMoneyInput(input);
+                    }
                     calculateTotals(false);
                 });
             });
