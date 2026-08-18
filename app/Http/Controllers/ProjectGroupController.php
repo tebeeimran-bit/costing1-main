@@ -12,6 +12,10 @@ use App\Models\ProjectDocumentRevision;
 use App\Models\CogmSubmission;
 use App\Models\ProjectA00Item;
 use App\Models\User;
+use App\Models\BusinessCategory;
+use App\Models\Customer;
+use App\Models\Plant;
+use App\Models\Pic;
 use App\Notifications\CostingGroupChanged;
 use App\Services\TrackingDocument\TrackingDocumentFileService;
 use App\Services\Costing\ManualCogmWorkbookService;
@@ -565,6 +569,7 @@ class ProjectGroupController extends Controller
 
                 'created_at' => $revision->created_at ?? $project->created_at ?? $costing->created_at ?? null,
                 'updated_at' => $revision->updated_at ?? $project->updated_at ?? $costing->updated_at ?? null,
+                'update_note' => $this->cleanText(filled($revision->change_remark) ? $revision->change_remark : 'Informasi project diperbarui'),
             ];
         });
 
@@ -622,6 +627,7 @@ class ProjectGroupController extends Controller
                     'pic_marketing' => $this->joinUnique($items->pluck('pic_marketing')),
                     'created_at' => $items->sortBy('created_at')->first()->created_at,
                     'updated_at' => $items->sortByDesc('updated_at')->first()->updated_at,
+                    'update_note' => $items->sortByDesc('updated_at')->first()->update_note,
                     'total_part_number' => $items->pluck('part_number')->filter()->unique()->count(),
                     'total_items' => $items->count(),
                     'shared_a00_labels' => $items
@@ -669,7 +675,7 @@ class ProjectGroupController extends Controller
                         ->values(),
                 ];
             })
-            ->sortByDesc('updated_at')
+            ->sortByDesc(fn ($group) => optional($group->created_at)->getTimestamp() ?? 0)
             ->values();
 
         $currentPage = LengthAwarePaginator::resolveCurrentPage();
@@ -685,6 +691,11 @@ class ProjectGroupController extends Controller
             'pagedGroups' => $pagedGroups,
             'search' => $search,
             'perPage' => $perPage,
+            'businessCategories' => BusinessCategory::query()->orderBy('name')->get(),
+            'customers' => Customer::query()->orderBy('name')->get(),
+            'plants' => Plant::query()->orderBy('name')->get(),
+            'picsEngineering' => Pic::query()->where('type', 'engineering')->orderBy('name')->get(),
+            'picsMarketing' => Pic::query()->where('type', 'marketing')->orderBy('name')->get(),
         ]);
     }
 

@@ -51,21 +51,59 @@ class ProjectA00Form extends Model
         return filled($event['date'] ?? null) ? \Carbon\Carbon::parse($event['date']) : null;
     }
 
+    public function formattedCustomerName(): string
+    {
+        $name = trim((string) $this->customer);
+
+        if (preg_match('/^(.+?),\s*PT$/iu', $name, $matches) === 1) {
+            return 'PT '.trim($matches[1]);
+        }
+
+        return $name;
+    }
+
     public function resolvedSignaturePath(string $role): ?string
     {
-        [$type,$nameColumn,$legacyColumn]=match($role){
-            'approved'=>['director','approved_by','approved_signature_path'],
-            'acknowledged'=>['div_marketing','acknowledged_by','acknowledged_signature_path'],
-            'prepared'=>['marketing','prepared_by','prepared_signature_path'],
+        [$types,$nameColumn,$legacyColumn]=match($role){
+            'approved'=>[['president_director','director'],'approved_by','approved_signature_path'],
+            'acknowledged'=>[['director','div_marketing'],'acknowledged_by','acknowledged_signature_path'],
+            'prepared'=>[['marketing'],'prepared_by','prepared_signature_path'],
             default=>[null,null,null],
         };
-        if(!$type)return null;
-        $name=(string)$this->{$nameColumn};
-        $normalized=preg_replace('/[^\pL\pN]+/u','',mb_strtolower(trim($name)));
-        $master=$normalized===''?null:Pic::query()->where('type',$type)->whereNotNull('signature_path')->get()
-            ->first(fn($pic)=>preg_replace('/[^\pL\pN]+/u','',mb_strtolower(trim($pic->name)))===$normalized)
-            ?->signature_path;
+        if(!$types)return null;
+        $master=$this->resolvedSignerPic($types,$nameColumn)?->signature_path;
         return $master?:$this->{$legacyColumn};
+    }
+
+    public function resolvedSignerRoleLabel(string $role): string
+    {
+        [$types,$nameColumn,$fallback]=match($role){
+            'approved'=>[['president_director','director'],'approved_by','Direktur Utama'],
+            'acknowledged'=>[['director','div_marketing'],'acknowledged_by','Direktur'],
+            'prepared'=>[['marketing'],'prepared_by','Marketing'],
+            default=>[null,null,'-'],
+        };
+
+        if (!$types) return $fallback;
+
+        $type=$this->resolvedSignerPic($types,$nameColumn)?->type;
+
+        return match($type){
+            'president_director'=>'Direktur Utama',
+            'director'=>'Direktur',
+            'div_marketing'=>'Div. Marketing',
+            'marketing'=>'Marketing',
+            'engineering'=>'Engineering',
+            default=>$fallback,
+        };
+    }
+
+    private function resolvedSignerPic(array $types, string $nameColumn): ?Pic
+    {
+        $normalized=preg_replace('/[^\pL\pN]+/u','',mb_strtolower(trim((string)$this->{$nameColumn})));
+
+        return $normalized==='' ? null : Pic::query()->whereIn('type',$types)->get()
+            ->first(fn($pic)=>preg_replace('/[^\pL\pN]+/u','',mb_strtolower(trim($pic->name)))===$normalized);
     }
     public function project(){return $this->belongsTo(DocumentProject::class,'document_project_id');}
     public function projectRevision(){return $this->belongsTo(DocumentRevision::class,'document_revision_id');}

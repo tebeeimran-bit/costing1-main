@@ -469,6 +469,7 @@
     .group-row .status-pill { padding: .25rem .48rem; font-size: .62rem; }
     .updated-compact { color: #475569; white-space: nowrap; line-height: 1.35; }
     .updated-compact small { display: block; color: #94a3b8; font-size: .62rem; }
+    .updated-compact .update-note{display:block;min-width:150px;max-width:190px;margin-top:.28rem;color:#64748b;font-size:.60rem;font-weight:650;line-height:1.45;white-space:normal;overflow-wrap:anywhere}
     .row-actions { position: relative; display: flex; justify-content: center; }
     .row-actions summary { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #334155; cursor: pointer; font-size: 1.05rem; font-weight: 900; list-style: none; }
     .row-actions summary::-webkit-details-marker { display: none; }
@@ -500,6 +501,15 @@
     }
     .new-project-dialog{position:fixed;inset:0;width:min(980px,calc(100vw - 30px));height:min(540px,calc(100vh - 30px));margin:auto;padding:0;border:0;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.3)}
     .new-project-dialog::backdrop{background:rgba(15,23,42,.55)}.new-project-frame{display:block;width:100%;height:100%;border:0;background:#f8fafc}
+    .edit-project-dialog{position:fixed;inset:0;width:min(880px,calc(100vw - 28px));max-height:calc(100vh - 28px);margin:auto;padding:0;border:0;border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 28px 80px rgba(15,23,42,.32)}
+    .edit-project-dialog::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(2px)}.edit-project-form{display:flex;max-height:calc(100vh - 28px);flex-direction:column}
+    .edit-project-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.2rem;background:linear-gradient(135deg,#123f86,#2563eb);color:#fff}.edit-project-head h3{margin:0;font-size:1rem}.edit-project-head p{margin:.18rem 0 0;color:#dbeafe;font-size:.69rem;font-weight:600}
+    .edit-project-close{display:grid;width:32px;height:32px;place-items:center;border:1px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-size:1.2rem;cursor:pointer}.edit-project-body{overflow-y:auto;padding:1.15rem 1.2rem;background:#f8fafc}
+    .edit-project-section{padding:1rem;border:1px solid #dbe5f2;border-radius:12px;background:#fff}.edit-project-section+.edit-project-section{margin-top:.85rem}.edit-project-section-title{margin:0 0 .8rem;color:#0f172a;font-size:.78rem;font-weight:850}
+    .edit-project-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem}.edit-project-grid .span-2{grid-column:span 2}.edit-project-field{display:grid;min-width:0;gap:.35rem}.edit-project-field label{color:#475569;font-size:.68rem;font-weight:800}.edit-project-field label span{color:#dc2626}
+    .edit-project-field input,.edit-project-field select{box-sizing:border-box;width:100%;height:40px;padding:0 .7rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font:inherit;font-size:.75rem;outline:none}.edit-project-field input:focus,.edit-project-field select:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.11)}
+    .edit-project-quantity{display:grid;grid-template-columns:1.1fr .8fr 1.1fr;gap:.4rem}.edit-project-actions{display:flex;justify-content:flex-end;gap:.6rem;padding:.85rem 1.2rem;border-top:1px solid #e2e8f0;background:#fff}.edit-project-actions button{min-height:38px;padding:.5rem 1rem;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer}.edit-cancel{border:1px solid #cbd5e1;background:#fff;color:#475569}.edit-save{border:1px solid #2563eb;background:#2563eb;color:#fff}
+    @media(max-width:760px){.edit-project-grid{grid-template-columns:1fr}.edit-project-grid .span-2{grid-column:auto}.edit-project-quantity{grid-template-columns:1fr}.edit-project-actions button{flex:1}}
 
 </style>
 
@@ -524,7 +534,7 @@
         <table class="project-table">
             <thead>
                 <tr>
-                    <th style="width:105px;">Tanggal</th><th style="width:145px;">Customer</th><th style="width:90px;">Model</th><th style="width:175px;">No. Assy</th><th style="width:210px;">Assy Name</th><th style="width:210px;">PIC</th><th style="width:340px;">Progress</th><th style="width:110px;">Update</th><th style="width:64px;text-align:center;">Aksi</th>
+                    <th style="width:105px;">Tanggal</th><th style="width:145px;">Customer</th><th style="width:90px;">Model</th><th style="width:175px;">No. Assy</th><th style="width:210px;">Assy Name</th><th style="width:210px;">PIC</th><th style="width:340px;">Progress</th><th style="width:190px;">Update Terakhir</th><th style="width:64px;text-align:center;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -630,8 +640,32 @@
                         <td><button type="button" class="progress-trigger" onclick="openProjectProgress('{{ $rowId }}')"><span class="progress-track">@foreach($progress as $step)<span class="progress-step {{ ($step['skipped'] ?? false)?'skipped':$step['state'] }}"><span class="progress-dot">{{ ($step['skipped'] ?? false)?'−':($step['state']==='done'?'✓':$loop->iteration) }}</span><span>{{ $step['label'] }}</span></span>@endforeach</span>@php $currentStep=$progress->firstWhere('state','active'); @endphp<span class="progress-caption">{{ $currentStep ? 'Sedang '.$currentStep['label'] : 'Semua tahapan selesai' }} · klik untuk detail</span></button>
                         <template id="{{ $rowId }}Progress"><div class="progress-dialog-head"><strong>Progress Project — {{ $group->project_name }}</strong><button type="button" class="progress-dialog-close" onclick="closeProjectProgress()">×</button></div><div class="progress-dialog-body">@foreach($progress as $step)<div class="progress-detail-row"><span class="progress-dot" @if($step['skipped'] ?? false) style="border-color:#94a3b8;background:#e2e8f0;color:#475569" @elseif($step['state']==='done') style="border-color:#22b45b;background:#22b45b;color:#fff" @elseif($step['state']==='active') style="border-color:#2563eb;background:#2563eb;color:#fff" @endif>{{ ($step['skipped'] ?? false)?'−':($step['state']==='done'?'✓':$loop->iteration) }}</span><strong>{{ $step['label'] }}</strong><span class="progress-detail-state {{ ($step['skipped'] ?? false)?'skipped':$step['state'] }}">{{ $step['status'] }}</span><span class="progress-detail-meta"><span>{{ $step['date'] ?: '—' }}</span>@if($step['time'])<small>{{ $step['time'] }}</small>@endif<small>{{ $step['pic'] ?: '—' }}</small></span></div>@endforeach</div></template></td>
                         @endif
-                        <td class="updated-compact">@if($group->updated_at){{ \Carbon\Carbon::parse($group->updated_at)->format('d/m/Y') }}<small>{{ \Carbon\Carbon::parse($group->updated_at)->format('H:i') }}</small>@else - @endif</td>
+                        <td class="updated-compact">@if($group->updated_at){{ \Carbon\Carbon::parse($group->updated_at)->format('d/m/Y') }}<small>{{ \Carbon\Carbon::parse($group->updated_at)->format('H:i') }}</small><span class="update-note" title="{{ $group->update_note }}">{{ $group->update_note }}</span>@else - @endif</td>
                         <td><details class="row-actions"><summary aria-label="Buka aksi">⋮</summary><div class="row-action-menu">
+                                @foreach($group->items as $editItem)
+                                    @php
+                                        $editCategory = $businessCategories->first(fn ($category) => strcasecmp((string) $category->code, (string) $editItem->project?->product?->code) === 0);
+                                        $editCustomer = $customers->first(fn ($customer) => strcasecmp(trim((string) $customer->name), trim((string) $editItem->customer)) === 0);
+                                        $editPayload = [
+                                            'action' => route('tracking-documents.update-project-info', ['project' => $editItem->project->id], false),
+                                            'business_category_id' => $editCategory?->id,
+                                            'customer_id' => $editItem->costing?->customer_id ?? $editCustomer?->id,
+                                            'model' => $editItem->model,
+                                            'part_number' => $editItem->part_number,
+                                            'part_name' => $editItem->part_name,
+                                            'forecast' => $editItem->costing?->forecast,
+                                            'forecast_uom' => $editItem->costing?->forecast_uom ?? 'PCE',
+                                            'forecast_basis' => $editItem->costing?->forecast_basis ?? 'per_month',
+                                            'project_period' => $editItem->costing?->project_period,
+                                            'line' => $editItem->costing?->line,
+                                            'period' => $editItem->costing?->period,
+                                            'received_date' => optional($editItem->revision->received_date)->format('Y-m-d'),
+                                            'pic_engineering' => $editItem->pic_engineering === '-' ? '' : $editItem->pic_engineering,
+                                            'pic_marketing' => $editItem->pic_marketing === '-' ? '' : $editItem->pic_marketing,
+                                        ];
+                                    @endphp
+                                    <button type="button" onclick="openEditProjectModal({{ Illuminate\Support\Js::from($editPayload) }})">{{ $group->items->count() > 1 ? 'Edit '.$editItem->part_number : 'Edit Project' }}</button>
+                                @endforeach
                                 <form method="POST" action="{{ route('project.group.destroy', absolute:false) }}" class="js-confirm-form" data-confirm-message="Apakah yakin akan hapus project?">
                                     @csrf
                                     @method('DELETE')
@@ -791,6 +825,31 @@
 
 <dialog class="progress-dialog" id="projectProgressDialog"><div id="projectProgressContent"></div></dialog>
 <dialog class="new-project-dialog" id="newProjectDialog"><iframe id="newProjectFrame" class="new-project-frame" title="Form New Project"></iframe></dialog>
+<dialog class="edit-project-dialog" id="editProjectDialog">
+    <form id="editProjectForm" class="edit-project-form" method="POST">
+        @csrf
+        <div class="edit-project-head"><div><h3>Edit Project</h3><p id="editProjectSubtitle">Perbarui informasi utama project</p></div><button type="button" class="edit-project-close" onclick="closeEditProjectModal()" aria-label="Tutup">&times;</button></div>
+        <div class="edit-project-body">
+            <section class="edit-project-section"><h4 class="edit-project-section-title">Informasi Project</h4><div class="edit-project-grid">
+                <div class="edit-project-field"><label>Business Category <span>*</span></label><select name="business_category_id" required><option value="">Pilih kategori</option>@foreach($businessCategories as $category)<option value="{{ $category->id }}">{{ $category->code }} - {{ $category->name }}</option>@endforeach</select></div>
+                <div class="edit-project-field"><label>Customer <span>*</span></label><select name="customer_id" required><option value="">Pilih customer</option>@foreach($customers as $customer)<option value="{{ $customer->id }}">{{ $customer->code }} - {{ $customer->name }}</option>@endforeach</select></div>
+                <div class="edit-project-field"><label>Model <span>*</span></label><input name="model" maxlength="255" required></div>
+                <div class="edit-project-field"><label>Assy No. <span>*</span></label><input name="part_number" maxlength="255" required></div>
+                <div class="edit-project-field span-2"><label>Assy Name <span>*</span></label><input name="part_name" maxlength="255" required></div>
+            </div></section>
+            <section class="edit-project-section"><h4 class="edit-project-section-title">Detail Produksi & PIC</h4><div class="edit-project-grid">
+                <div class="edit-project-field span-2"><label>Quantity</label><div class="edit-project-quantity"><input type="number" name="forecast" min="0" placeholder="Jumlah"><select name="forecast_uom"><option value="PCE">PCE</option><option value="Set">Set</option></select><select name="forecast_basis"><option value="per_month">Per Bulan</option><option value="per_year">Per Tahun</option></select></div></div>
+                <div class="edit-project-field"><label>Product's Life</label><input type="number" name="project_period" min="0" step="any"></div>
+                <div class="edit-project-field"><label>Plant</label><select name="line"><option value="">Pilih plant</option>@foreach($plants as $plant)<option value="{{ $plant->code }}">{{ $plant->code }} - {{ $plant->name }}</option>@endforeach</select></div>
+                <div class="edit-project-field"><label>Periode</label><input type="month" name="period"></div>
+                <div class="edit-project-field"><label>Tanggal Diterima</label><input type="date" name="received_date"></div>
+                <div class="edit-project-field"><label>PIC Engineering <span>*</span></label><select name="pic_engineering" required><option value="">Pilih PIC Engineering</option>@foreach($picsEngineering as $pic)<option value="{{ $pic->name }}">{{ $pic->name }}</option>@endforeach</select></div>
+                <div class="edit-project-field"><label>PIC Marketing <span>*</span></label><select name="pic_marketing" required><option value="">Pilih PIC Marketing</option>@foreach($picsMarketing as $pic)<option value="{{ $pic->name }}">{{ $pic->name }}</option>@endforeach</select></div>
+            </div></section>
+        </div>
+        <div class="edit-project-actions"><button type="button" class="edit-cancel" onclick="closeEditProjectModal()">Batal</button><button type="submit" class="edit-save">Simpan Perubahan</button></div>
+    </form>
+</dialog>
 
 <script>
     function openProjectProgress(rowId) {
@@ -808,12 +867,31 @@
 
     function openNewProjectModal(){const dialog=document.getElementById('newProjectDialog'),frame=document.getElementById('newProjectFrame');dialog.style.height='min(540px, calc(100vh - 30px))';frame.src=@json(route('tracking-documents.create',['embedded'=>1],false));dialog.showModal()}
     function closeNewProjectModal(reload=false){const dialog=document.getElementById('newProjectDialog'),frame=document.getElementById('newProjectFrame');dialog.close();frame.src='';if(reload)location.reload()}
+    function openEditProjectModal(data){
+        const dialog=document.getElementById('editProjectDialog'),form=document.getElementById('editProjectForm');
+        if(!dialog||!form)return;
+        form.action=data.action;
+        Object.entries(data).forEach(([name,value])=>{
+            const field=form.elements.namedItem(name);
+            if(!field||name==='action')return;
+            const normalizedValue=value??'';
+            if(field instanceof HTMLSelectElement&&normalizedValue!==''&&!Array.from(field.options).some(option=>option.value===String(normalizedValue))){
+                field.add(new Option(String(normalizedValue),String(normalizedValue)));
+            }
+            field.value=normalizedValue;
+        });
+        document.getElementById('editProjectSubtitle').textContent=(data.part_number||'Project')+' - '+(data.part_name||'');
+        document.querySelectorAll('.row-actions[open]').forEach(menu=>menu.removeAttribute('open'));
+        dialog.showModal();
+    }
+    function closeEditProjectModal(){document.getElementById('editProjectDialog')?.close()}
     document.getElementById('newProjectFrame')?.addEventListener('load',function(){try{const dialog=document.getElementById('newProjectDialog'),contentHeight=this.contentDocument?.documentElement?.scrollHeight||540;dialog.style.height=Math.max(430,Math.min(contentHeight,window.innerHeight-30))+'px'}catch(error){}});
     window.addEventListener('message',event=>{if(event.origin!==location.origin)return;if(event.data?.type==='new-project-cancel')closeNewProjectModal(false);if(event.data?.type==='new-project-created')closeNewProjectModal(true)});
 
     document.getElementById('projectProgressDialog')?.addEventListener('click', function (event) {
         if (event.target === this) this.close();
     });
+    document.getElementById('editProjectDialog')?.addEventListener('click',function(event){if(event.target===this)this.close()});
 
     function toggleProjectGroup(rowId) {
         const child = document.getElementById(rowId + 'Child');

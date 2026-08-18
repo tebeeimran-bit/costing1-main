@@ -64,6 +64,30 @@ class AuthController extends Controller
         return redirect()->route('login');
     }
 
+    public function updateOwnPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string', 'current_password'],
+            'password' => ['required', 'string', 'min:8', 'different:current_password', 'confirmed'],
+        ], [
+            'current_password.required' => 'Password saat ini wajib diisi.',
+            'current_password.current_password' => 'Password saat ini tidak sesuai.',
+            'password.required' => 'Password baru wajib diisi.',
+            'password.min' => 'Password baru minimal 8 karakter.',
+            'password.different' => 'Password baru harus berbeda dari password saat ini.',
+            'password.confirmed' => 'Konfirmasi password baru tidak sesuai.',
+        ]);
+
+        $request->user()->forceFill([
+            'password' => Hash::make($validated['password']),
+            'remember_token' => null,
+        ])->save();
+
+        $request->session()->regenerate();
+
+        return redirect()->route('profile.show')->with('password_success', 'Password berhasil diperbarui.');
+    }
+
     public function permissions()
     {
         $users = User::orderBy('name')->get();

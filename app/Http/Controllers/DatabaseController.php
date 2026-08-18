@@ -246,7 +246,7 @@ class DatabaseController extends Controller
     public function pics()
     {
         $pics = Pic::query()
-            ->orderByRaw("CASE type WHEN 'engineering' THEN 1 WHEN 'marketing' THEN 2 WHEN 'director' THEN 3 WHEN 'div_marketing' THEN 4 ELSE 5 END")
+            ->orderByRaw("CASE type WHEN 'engineering' THEN 1 WHEN 'marketing' THEN 2 WHEN 'president_director' THEN 3 WHEN 'director' THEN 4 WHEN 'div_marketing' THEN 5 ELSE 6 END")
             ->orderBy('name')
             ->get();
         return view('database.pics', compact('pics'));

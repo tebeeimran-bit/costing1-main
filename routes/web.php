@@ -117,6 +117,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', function () {
         return view('profile.show');
     })->name('profile.show');
+    Route::put('/profile/password', [AuthController::class, 'updateOwnPassword'])->name('profile.password.update');
 
     // ── DASHBOARD ─────────────────────────────────────────────────────────────
     // Dashboard is the authenticated landing page for every role. Its contents

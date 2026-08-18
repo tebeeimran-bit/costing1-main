@@ -68,7 +68,7 @@ class A00ExcelPdfService
         $lifeText = $regularLives->map(fn ($years) => $years.' Years')->join(', ');
         $values = [
             'S2'=>$a00->document_number, 'S3'=>\PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($a00->document_date), 'S4'=>$a00->revision,
-            'S5'=>$a00->from_department.' - '.$a00->to_department, 'K11'=>$a00->customer,
+            'S5'=>$a00->from_department.' - '.$a00->to_department, 'K11'=>$a00->formattedCustomerName(),
             'K12'=>$bulky?$a00->items->pluck('model')->filter()->unique()->join(', '):$item?->model,
             'K13'=>$bulky?$a00->items->pluck('assy_name')->filter()->unique()->join(', '):$item?->assy_name,
             'K14'=>$bulky?'Terlampir':$item?->assy_number, 'K15'=>$bulky?'Terlampir':$item?->quantity,
@@ -113,7 +113,7 @@ class A00ExcelPdfService
         }
         $offset=max(0,$events->count()-5);
         $issueCell=($translateForPdf?'M':'S').(43+$offset);
-        $sheet->setCellValue($issueCell,$a00->issue_location.', '.$a00->document_date->translatedFormat('d F Y'));
+        $sheet->setCellValue($issueCell,$a00->issue_location.', '.$a00->document_date->locale('id')->translatedFormat('d F Y'));
         $issueRow=43+$offset;
         $issueRange=($translateForPdf?'M':'S').$issueRow.':V'.$issueRow;
         $sheet->getStyle($issueRange)->getBorders()->getBottom()
@@ -125,6 +125,9 @@ class A00ExcelPdfService
         $sheet->setCellValue('Q'.(49+$offset),$a00->acknowledged_by?:'-');
         $preparedBy=trim((string)$a00->prepared_by);
         $sheet->setCellValue('T'.(49+$offset),preg_match('/^admin(istrator)?$/i',$preparedBy)?'':($preparedBy?:'-'));
+        $sheet->setCellValue('M'.(50+$offset),$a00->resolvedSignerRoleLabel('approved'));
+        $sheet->setCellValue('Q'.(50+$offset),$a00->resolvedSignerRoleLabel('acknowledged'));
+        $sheet->setCellValue('T'.(50+$offset),$a00->resolvedSignerRoleLabel('prepared'));
         foreach($sheet->getDrawingCollection() as $key=>$drawing)if(stripos($drawing->getName(),'LOGO')===false)$sheet->getDrawingCollection()->offsetUnset($key);
         $this->addApprovalSignatures($sheet,$a00,$offset);
         $sheet->getPageSetup()->setPrintArea('A1:W'.(55+$offset));
@@ -210,7 +213,7 @@ class A00ExcelPdfService
     {
         $sheet=$book->getSheetByName('LAMPIRAN ASSY');if(!$sheet)return;
         if($a00->items->count()<=1){$book->removeSheetByIndex($book->getIndex($sheet));return;}
-        $sheet->setCellValue('K9',$a00->customer);$sheet->setCellValue('K10',$a00->items->pluck('model')->filter()->unique()->join(', '));
+        $sheet->setCellValue('K9',$a00->formattedCustomerName());$sheet->setCellValue('K10',$a00->items->pluck('model')->filter()->unique()->join(', '));
         if($a00->items->count()>3){$extra=$a00->items->count()-3;$sheet->insertNewRowBefore(17,$extra);for($row=17;$row<17+$extra;$row++){$sheet->duplicateStyle($sheet->getStyle('D16:R16'),"D{$row}:R{$row}");$sheet->mergeCells("D{$row}:H{$row}");$sheet->mergeCells("I{$row}:M{$row}");$sheet->mergeCells("N{$row}:R{$row}");}}
         foreach($a00->items->values() as $i=>$item){$row=14+$i;$monthly=$item->quantity;if($monthly!==null&&str_contains(strtolower((string)$item->quantity_basis),'year'))$monthly/=12;$sheet->setCellValue('D'.$row,$item->assy_name);$sheet->setCellValue('I'.$row,$item->assy_number);$sheet->setCellValue('N'.$row,$monthly);}
         for($i=$a00->items->count();$i<3;$i++)$sheet->getRowDimension(14+$i)->setVisible(false);

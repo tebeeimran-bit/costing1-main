@@ -50,7 +50,8 @@
                     <select name="type" class="form-input" required>
                         <option value="engineering">Engineering</option>
                         <option value="marketing">Marketing</option>
-                        <option value="director">Director</option>
+                        <option value="president_director">Direktur Utama</option>
+                        <option value="director">Direktur</option>
                         <option value="div_marketing">Div. Marketing</option>
                     </select>
                 </div>
@@ -90,7 +91,8 @@
                     <select id="edit-pic-type" name="type" class="form-input" required>
                         <option value="engineering">Engineering</option>
                         <option value="marketing">Marketing</option>
-                        <option value="director">Director</option>
+                        <option value="president_director">Direktur Utama</option>
+                        <option value="director">Direktur</option>
                         <option value="div_marketing">Div. Marketing</option>
                     </select>
                 </div>
@@ -130,7 +132,7 @@
                         <tr>
                             <td>{{ $index + 1 }}</td>
                             <td>{{ $pic->name }}</td>
-                            <td>{{ ['engineering'=>'Engineering','marketing'=>'Marketing','director'=>'Director','div_marketing'=>'Div. Marketing'][$pic->type] ?? ucfirst($pic->type) }}</td>
+                            <td>{{ ['engineering'=>'Engineering','marketing'=>'Marketing','president_director'=>'Direktur Utama','director'=>'Direktur','div_marketing'=>'Div. Marketing'][$pic->type] ?? ucfirst($pic->type) }}</td>
                             <td style="text-align:center">@if($pic->signature_path)<img src="{{ Storage::disk('public')->url($pic->signature_path) }}" alt="TTD {{ $pic->name }}" style="display:inline-block;max-width:90px;max-height:42px;object-fit:contain">@else<span style="color:#94a3b8">Belum ada</span>@endif</td>
                             <td style="text-align: center;">
                                 <button type="button" class="btn-action btn-edit" title="Edit"

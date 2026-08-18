@@ -71,8 +71,8 @@ class ProjectA00Controller extends Controller
             'plants'=>Plant::orderBy('code')->get(),
             'picsEngineering'=>Pic::where('type','engineering')->orderBy('name')->get(),
             'picsMarketing'=>Pic::where('type','marketing')->orderBy('name')->get(),
-            'picsDirector'=>Pic::where('type','director')->orderBy('name')->get(),
-            'picsDivMarketing'=>Pic::where('type','div_marketing')->orderBy('name')->get(),
+            'picsDirector'=>Pic::whereIn('type',['president_director','director'])->orderByRaw("CASE type WHEN 'president_director' THEN 1 ELSE 2 END")->orderBy('name')->get(),
+            'picsDivMarketing'=>Pic::whereIn('type',['director','div_marketing'])->orderByRaw("CASE type WHEN 'director' THEN 1 ELSE 2 END")->orderBy('name')->get(),
             'nextNumber'=>null,
             'sourceProject'=>$sourceProject,
             'sourceProjects'=>$sourceProjects,
@@ -230,8 +230,8 @@ class ProjectA00Controller extends Controller
             'categories'=>BusinessCategory::orderBy('name')->get(),'plants'=>Plant::orderBy('code')->get(),
             'picsEngineering'=>Pic::where('type','engineering')->orderBy('name')->get(),
             'picsMarketing'=>Pic::where('type','marketing')->orderBy('name')->get(),
-            'picsDirector'=>Pic::where('type','director')->orderBy('name')->get(),
-            'picsDivMarketing'=>Pic::where('type','div_marketing')->orderBy('name')->get(),
+            'picsDirector'=>Pic::whereIn('type',['president_director','director'])->orderByRaw("CASE type WHEN 'president_director' THEN 1 ELSE 2 END")->orderBy('name')->get(),
+            'picsDivMarketing'=>Pic::whereIn('type',['director','div_marketing'])->orderByRaw("CASE type WHEN 'director' THEN 1 ELSE 2 END")->orderBy('name')->get(),
         ]);
     }
 

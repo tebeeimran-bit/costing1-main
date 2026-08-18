@@ -15,7 +15,7 @@ class UpdatePicRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'type' => 'required|in:engineering,marketing,director,div_marketing',
+            'type' => 'required|in:engineering,marketing,president_director,director,div_marketing',
             'signature' => 'nullable|file|mimes:png|max:2048',
         ];
     }
