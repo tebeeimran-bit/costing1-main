@@ -14,6 +14,7 @@ use App\Models\ProjectA00Item;
 use App\Models\ProjectWorkflowTask;
 use App\Services\Costing\CostingGroupService;
 use App\Services\ControlProject\A00ExcelPdfService;
+use App\Services\ProjectQuantityForecastService;
 use App\Support\BusinessCategoryContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -93,13 +94,20 @@ class ProjectA00Controller extends Controller
             'items.*.quantity'=>['nullable','integer','min:0'],'items.*.quantity_uom'=>['required','string','max:20'],
             'items.*.quantity_basis'=>['required','string','max:30'],'items.*.product_life_years'=>['nullable','integer','min:0','max:99'],
             'items.*.spot_order'=>['nullable','boolean'],
+            'items.*.quantity_forecast_enabled'=>['nullable','boolean'],
+            'items.*.quantity_forecast_period_type'=>['nullable','in:year,month'],
+            'items.*.quantity_forecasts'=>['nullable','array','max:1188'],
+            'items.*.quantity_forecasts.*.year_number'=>['required_with:items.*.quantity_forecasts','integer','min:1','max:99'],
+            'items.*.quantity_forecasts.*.calendar_year'=>['nullable','integer','min:2000','max:2200'],
+            'items.*.quantity_forecasts.*.month_number'=>['nullable','integer','min:1','max:12'],
+            'items.*.quantity_forecasts.*.quantity'=>['required_with:items.*.quantity_forecasts','numeric','min:0'],
             'document_date'=>['required','date'],'revision'=>['required','string','max:10'],'from_department'=>['required','string','max:100'],'to_department'=>['required','string','max:100'],
             'request_type'=>['nullable','in:RFI,RFQ,OTHER'],'request_number'=>['nullable','string','max:100'],'request_received_date'=>['nullable','date'],
             'source_file'=>['nullable','file','mimes:pdf,xls,xlsx,doc,docx','max:10240'],'due_part_list'=>['nullable','date'],'due_umh'=>['nullable','date'],'due_new_part_price'=>['nullable','date'],
             'due_costing'=>['nullable','date'],'due_submit_quotation'=>['nullable','date'],'pp1_date'=>['nullable','date'],'pp2_date'=>['nullable','date'],
             'pp3_date'=>['nullable','date'],'sop_mp_date'=>['nullable','date'],'sop_mp_tba'=>['nullable','boolean'],'issue_location'=>['required','string','max:100'],
             'customer_events'=>['nullable','array','min:1','max:20'],'customer_events.*.name'=>['required','string','max:100'],
-            'customer_events.*.date'=>['nullable','date'],'customer_events.*.tba'=>['nullable','boolean'],
+            'customer_events.*.date'=>['nullable','string','max:50'],'customer_events.*.tba'=>['nullable','boolean'],
             'prepared_by'=>['nullable','string','max:255'],'acknowledged_by'=>['nullable','string','max:255'],'approved_by'=>['nullable','string','max:255'],'notes'=>['nullable','string','max:2000'],
             'prepared_signature'=>['nullable','file','mimes:png','max:2048'],'acknowledged_signature'=>['nullable','file','mimes:png','max:2048'],'approved_signature'=>['nullable','file','mimes:png','max:2048'],
         ]);
@@ -120,6 +128,10 @@ class ProjectA00Controller extends Controller
             $created=[];
             $linkedProjectCount=collect($data['items'])->pluck('document_project_id')->filter()->unique()->count();
             foreach($data['items'] as $index=>$item){
+                $forecastEnabled=!empty($item['quantity_forecast_enabled']);
+                $forecastPeriodType=$item['quantity_forecast_period_type']??'year';
+                $quantityForecasts=$item['quantity_forecasts']??[];
+                unset($item['quantity_forecast_enabled'],$item['quantity_forecast_period_type'],$item['quantity_forecasts']);
                 $existingProjectId=(int)($item['document_project_id']??0);
                 unset($item['document_project_id']);
                 if($existingProjectId>0){
@@ -141,12 +153,18 @@ class ProjectA00Controller extends Controller
                     $project=DocumentProject::create(['product_id'=>$product->id,'customer'=>$customer->name,'model'=>$item['model'],'part_number'=>$item['assy_number'],'part_name'=>$item['assy_name'],'project_key'=>$key]);
                     $revision=DocumentRevision::create(['document_project_id'=>$project->id,'version_number'=>1,'received_date'=>$data['document_date'],'plant_id'=>$data['plant_id'],'period'=>$data['period'],'pic_engineering'=>$data['pic_engineering'],'pic_marketing'=>$data['pic_marketing'],'status'=>DocumentRevision::STATUS_A00_ISSUED,'a00'=>'ada','a00_received_date'=>$data['document_date'],'partlist_original_name'=>'','partlist_file_path'=>'','umh_original_name'=>'','umh_file_path'=>'','notes'=>$data['notes']??null,'change_remark'=>'A00 New Project Declaration diterbitkan.']);
                 }
-                $created[]=['project'=>$project,'revision'=>$revision,'item'=>$item];
+                $created[]=['project'=>$project,'revision'=>$revision,'item'=>$item,'forecast_enabled'=>$forecastEnabled,'forecast_period_type'=>$forecastPeriodType,'quantity_forecasts'=>$quantityForecasts];
             }
             $first=$created[0]; $items=$data['items']; unset($data['items'],$data['business_category_id'],$data['customer_id'],$data['source_file'],$data['plant_id'],$data['period'],$data['pic_engineering'],$data['pic_marketing']);
             $form=ProjectA00Form::create($data+$signaturePaths+['document_project_id'=>$first['project']->id,'document_revision_id'=>$first['revision']->id,'customer'=>$customer->name,'model'=>$first['item']['model'],'assy_number'=>$first['item']['assy_number'],'assy_name'=>$first['item']['assy_name'],'quantity'=>$first['item']['quantity']??null,'quantity_uom'=>$first['item']['quantity_uom'],'quantity_basis'=>$first['item']['quantity_basis'],'product_life_years'=>$first['item']['product_life_years']??null,'spot_order'=>!empty($first['item']['spot_order']),'source_file_name'=>$stored['name'],'source_file_path'=>$stored['path'],'status'=>'issued','issued_at'=>now(),'created_by'=>$request->user()->id]);
             foreach($created as $index=>$entry) {
                 ProjectA00Item::create(['project_a00_form_id'=>$form->id,'document_project_id'=>$entry['project']->id,'document_revision_id'=>$entry['revision']->id,'line_number'=>$index+1]+$entry['item']);
+                $forecastService=app(ProjectQuantityForecastService::class);
+                $forecastRows=$forecastService->sync($entry['revision'],$entry['forecast_enabled'],$entry['forecast_period_type'],$entry['quantity_forecasts'],$entry['item']['quantity_uom']);
+                if($forecastRows->isNotEmpty()){
+                    $summary=$forecastService->summary($forecastRows);
+                    $entry['revision']->costingData?->update(['forecast'=>round($summary['average']),'forecast_basis'=>$summary['basis'],'project_period'=>$summary['years']]);
+                }
                 $drawingTask=ProjectWorkflowTask::firstOrCreate([
                     'document_revision_id'=>$entry['revision']->id,
                     'stage'=>ProjectWorkflowTask::STAGE_DRAWING,
@@ -201,15 +219,24 @@ class ProjectA00Controller extends Controller
             app(CostingGroupService::class)->syncFromA00($a00, auth()->id());
         }
 
-        $a00->load('project','projectRevision','items.project','costingGroup.items.a00Item','costingGroup.items.project','costingGroup.items.costingData','costingGroup.items.revision');
+        $a00->load('project','projectRevision','items.project','items.quantityForecasts','costingGroup.items.a00Item','costingGroup.items.project','costingGroup.items.costingData','costingGroup.items.revision');
         return view('control-project.a00.show',['a00'=>$a00]);
     }
 
     public function downloadPdf(ProjectA00Form $a00, A00ExcelPdfService $pdfService)
     {
         $filename='A00 - '.str_replace(['<','>',':','"','/','\\','|','?','*'],'-',$a00->document_number).'.pdf';
-        $path=$pdfService->generate($a00);$content=(string)file_get_contents($path);@unlink($path);
-        return response($content,200,['Content-Type'=>'application/pdf','Content-Disposition'=>'attachment; filename="'.$filename.'"']);
+        return response()->streamDownload(function() use($a00,$pdfService){
+            $path=$pdfService->generate($a00);
+            try{
+                $stream=fopen($path,'rb');
+                if($stream===false)throw new \RuntimeException('PDF gagal dibuka.');
+                fpassthru($stream);
+                fclose($stream);
+            }finally{
+                @unlink($path);
+            }
+        },$filename,['Content-Type'=>'application/pdf','Cache-Control'=>'no-store, no-cache, must-revalidate']);
     }
 
     public function downloadExcel(ProjectA00Form $a00, A00ExcelPdfService $excelService)
@@ -224,7 +251,7 @@ class ProjectA00Controller extends Controller
 
     public function edit(ProjectA00Form $a00)
     {
-        $a00->load(['project.product','projectRevision.plant','items.project.product','items.projectRevision']);
+        $a00->load(['project.product','projectRevision.plant','items.project.product','items.projectRevision','items.quantityForecasts']);
         return view('control-project.a00.edit', [
             'a00'=>$a00,'customers'=>Customer::orderBy('name')->get(),
             'categories'=>BusinessCategory::orderBy('name')->get(),'plants'=>Plant::orderBy('code')->get(),
@@ -251,12 +278,19 @@ class ProjectA00Controller extends Controller
             'items.*.assy_number'=>['required','string','max:255'],'items.*.quantity'=>['nullable','integer','min:0'],
             'items.*.quantity_uom'=>['required','string','max:20'],'items.*.quantity_basis'=>['required','string','max:30'],
             'items.*.product_life_years'=>['nullable','integer','min:0','max:99'],'items.*.spot_order'=>['nullable','boolean'],
+            'items.*.quantity_forecast_enabled'=>['nullable','boolean'],
+            'items.*.quantity_forecast_period_type'=>['nullable','in:year,month'],
+            'items.*.quantity_forecasts'=>['nullable','array','max:1188'],
+            'items.*.quantity_forecasts.*.year_number'=>['required_with:items.*.quantity_forecasts','integer','min:1','max:99'],
+            'items.*.quantity_forecasts.*.calendar_year'=>['nullable','integer','min:2000','max:2200'],
+            'items.*.quantity_forecasts.*.month_number'=>['nullable','integer','min:1','max:12'],
+            'items.*.quantity_forecasts.*.quantity'=>['required_with:items.*.quantity_forecasts','numeric','min:0'],
             'due_part_list'=>['nullable','date'],'due_umh'=>['nullable','date'],'due_new_part_price'=>['nullable','date'],
             'due_costing'=>['nullable','date'],'due_submit_quotation'=>['nullable','date'],'pp1_date'=>['nullable','date'],
             'pp2_date'=>['nullable','date'],'pp3_date'=>['nullable','date'],'sop_mp_date'=>['nullable','date'],
             'sop_mp_tba'=>['nullable','boolean'],'issue_location'=>['required','string','max:100'],
             'customer_events'=>['nullable','array','min:1','max:20'],'customer_events.*.name'=>['required','string','max:100'],
-            'customer_events.*.date'=>['nullable','date'],'customer_events.*.tba'=>['nullable','boolean'],
+            'customer_events.*.date'=>['nullable','string','max:50'],'customer_events.*.tba'=>['nullable','boolean'],
             'prepared_by'=>['nullable','string','max:255'],'acknowledged_by'=>['nullable','string','max:255'],
             'approved_by'=>['nullable','string','max:255'],'notes'=>['nullable','string','max:2000'],
             'prepared_signature'=>['nullable','file','mimes:png','max:2048'],
@@ -283,13 +317,27 @@ class ProjectA00Controller extends Controller
         DB::transaction(function() use($data,$a00,$customer,$category,$storedFile,$newSignaturePaths){
             $product=Product::firstOrCreate(['code'=>$category->code ?: strtoupper(Str::slug($category->name,'-'))],['name'=>$category->name,'line'=>'']);
             $a00->load('items.project','items.projectRevision');
-            foreach($data['items'] as $itemData){
+            foreach($data['items'] as $itemIndex=>$itemData){
                 $item=$a00->items->firstWhere('id',(int)$itemData['id']);
                 abort_unless($item,422,'Item A00 tidak valid.');
+                $forecastEnabled=!empty($itemData['quantity_forecast_enabled']);
+                $forecastPeriodType=$itemData['quantity_forecast_period_type']??'year';
+                $quantityForecasts=$itemData['quantity_forecasts']??[];
+                unset($itemData['quantity_forecast_enabled'],$itemData['quantity_forecast_period_type'],$itemData['quantity_forecasts']);
                 $key=hash('sha256',mb_strtolower(implode('|',[trim($customer->name),trim($itemData['model']),trim($itemData['assy_number']),trim($itemData['assy_name'])])));
                 $item->project->update(['product_id'=>$product->id,'customer'=>$customer->name,'model'=>$itemData['model'],'part_number'=>$itemData['assy_number'],'part_name'=>$itemData['assy_name'],'project_key'=>$key]);
                 $item->projectRevision->update(['received_date'=>$data['document_date'],'plant_id'=>$data['plant_id'],'period'=>$data['period'],'pic_engineering'=>$data['pic_engineering'],'pic_marketing'=>$data['pic_marketing'],'a00_received_date'=>$data['document_date'],'notes'=>$data['notes']??null]);
+                $forecastService=app(ProjectQuantityForecastService::class);
+                $forecastRows=$forecastService->sync($item->projectRevision,$forecastEnabled,$forecastPeriodType,$quantityForecasts,$itemData['quantity_uom']);
+                if($forecastRows->isNotEmpty()){
+                    $summary=$forecastService->summary($forecastRows);
+                    $itemData['quantity']=round($summary['average']);
+                    $itemData['quantity_basis']=$summary['basis']==='per_month'?'per Month':'per Year';
+                    $itemData['product_life_years']=$summary['years'];
+                    $item->projectRevision->costingData?->update(['forecast'=>$itemData['quantity'],'forecast_uom'=>strtoupper($itemData['quantity_uom'])==='PCS'?'PCE':$itemData['quantity_uom'],'forecast_basis'=>$summary['basis'],'project_period'=>$summary['years']]);
+                }
                 $item->update(collect($itemData)->except('id')->all()+['spot_order'=>!empty($itemData['spot_order'])]);
+                $data['items'][$itemIndex]=$itemData;
             }
             $first=$a00->items->firstWhere('id',(int)$data['items'][0]['id']);
             $formData=collect($data)->except(['items','business_category_id','customer_id','plant_id','period','pic_engineering','pic_marketing','source_file'])->all();

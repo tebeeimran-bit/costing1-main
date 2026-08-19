@@ -563,6 +563,7 @@
             const moq = parseInputNumber(row.querySelector('.qty-moq')?.value || 0);
             const quantity = parseInputNumber(document.getElementById('forecast')?.value || document.getElementById('forecastDisplay')?.value || 0);
             const productLife = parseInputNumber(document.getElementById('projectPeriod')?.value || 0);
+            const forecastBasis = document.querySelector('[name="forecast_basis"]')?.value || 'per_month';
             const unit = (row.querySelector('.unit')?.value || row.querySelector('.unit')?.textContent || '').trim().toUpperCase();
             const cnFlag = (row.querySelector('.cn-type')?.value || '').trim().toUpperCase();
 
@@ -575,7 +576,7 @@
             const unitDivisor = (unit === 'MM') ? 1000 : 1;
 
             // Excel denominator: QUANTITY * PRODUCT_LIFE * 12 * QTY_REQ / unitDivisor
-            let denominator = quantity * productLife * 12 * qtyReq;
+            let denominator = quantity * productLife * (forecastBasis === 'per_year' ? 1 : 12) * qtyReq;
             denominator = denominator / unitDivisor;
 
             if (denominator === 0) {

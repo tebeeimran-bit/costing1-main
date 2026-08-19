@@ -984,6 +984,12 @@
 
             document.addEventListener('click', function (event) {
                 const link = event.target.closest('a');
+                if (link && link.dataset.skipLoadingOverlay === 'true') {
+                    window.skipNextBeforeUnloadLoading = true;
+                    window.setTimeout(function () {
+                        window.skipNextBeforeUnloadLoading = false;
+                    }, 30000);
+                }
                 if (!shouldShowLoadingForLink(link, event)) {
                     return;
                 }
@@ -992,6 +998,10 @@
             }, true);
 
             window.addEventListener('beforeunload', function () {
+                if (window.skipNextBeforeUnloadLoading) {
+                    window.skipNextBeforeUnloadLoading = false;
+                    return;
+                }
                 showAppLoading('Memuat halaman...');
             });
 

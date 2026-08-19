@@ -511,7 +511,7 @@ HandlesMaterialEditor
             }
             $sheet->setCellValue('F12', (float) ($costing?->forecast ?? $sharedValues['forecast'] ?? 0));
             $sheet->setCellValue('F13', (float) ($costing?->project_period ?? $sharedValues['project_period'] ?? 0));
-            $plant = trim((string) preg_replace('/^\s*\d+\s*[\-â€“â€”]\s*/u', '', (string) ($revision?->plant?->name ?? $costing?->line ?? $sharedValues['plant'] ?? '')));
+            $plant = trim((string) preg_replace('/^\s*\d+\s*[\-–—]\s*/u', '', (string) ($revision?->plant?->name ?? $costing?->line ?? $sharedValues['plant'] ?? '')));
             $sheet->setCellValueExplicit('F14', strtoupper($plant), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             foreach ([
                 'N8' => $costing?->exchange_rate_usd ?? $sharedValues['rate_usd'] ?? 0,

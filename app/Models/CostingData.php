@@ -78,6 +78,12 @@ class CostingData extends Model
         return $this->belongsTo(DocumentRevision::class, 'tracking_revision_id');
     }
 
+    public function quantityForecasts()
+    {
+        return $this->hasMany(ProjectQuantityForecast::class, 'document_revision_id', 'tracking_revision_id')
+            ->orderBy('year_number')->orderBy('month_number');
+    }
+
     public function unpricedParts()
     {
         return $this->hasMany(UnpricedPart::class);

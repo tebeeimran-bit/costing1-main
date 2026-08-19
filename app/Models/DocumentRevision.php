@@ -124,6 +124,12 @@ class DocumentRevision extends Model
         return $this->hasOne(CostingData::class, 'tracking_revision_id')->latestOfMany();
     }
 
+    public function quantityForecasts()
+    {
+        return $this->hasMany(ProjectQuantityForecast::class, 'document_revision_id')
+            ->orderBy('year_number')->orderBy('month_number');
+    }
+
     public function workflowTasks(){return $this->hasMany(ProjectWorkflowTask::class,'document_revision_id');}
 
     public function latestCostingRevision()

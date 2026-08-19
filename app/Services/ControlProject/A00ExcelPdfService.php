@@ -6,6 +6,7 @@ use App\Models\ProjectA00Form;
 use Illuminate\Support\Facades\File;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class A00ExcelPdfService
@@ -13,16 +14,18 @@ class A00ExcelPdfService
     private const COLUMN_SCALE = 0.97;
     private const FONT_SCALE = 0.72;
     private const DRAWING_SCALE = 0.82;
+    private const DOCUMENT_WIDTH_SCALE = 1.12;
 
     public function generate(ProjectA00Form $a00): string
     {
         $template = resource_path('a00-new-project-template.xlsx');
         abort_unless(is_file($template), 500, 'Template Excel A00 tidak ditemukan.');
-        $a00->loadMissing('items');
+        $a00->loadMissing('items.quantityForecasts');
 
         $book = IOFactory::load($template);
         $this->fillMain($book->getSheetByName('A00') ?? $book->getSheet(0), $a00, true);
         $this->fillAttachment($book, $a00);
+        $this->fillForecastAttachments($book, $a00);
         if ($attachment = $book->getSheetByName('LAMPIRAN ASSY')) {
             $this->prepareAttachmentForPdf($attachment);
         }
@@ -54,12 +57,405 @@ class A00ExcelPdfService
         return $path;
     }
 
+    private function fillForecastAttachments(Spreadsheet $book, ProjectA00Form $a00): void
+    {
+        if ($a00->items->isNotEmpty()) {
+            $this->fillMatrixForecastAttachments($book, $a00);
+            return;
+        }
+
+        $page = 1;
+        foreach ($a00->items as $item) {
+            if ($item->quantityForecasts->isEmpty()) {
+                continue;
+            }
+
+            foreach ($item->quantityForecasts->chunk(32) as $chunkIndex => $rows) {
+                $sheet = new Worksheet($book, 'QTY FORECAST '.$page++);
+                $book->addSheet($sheet);
+                $isMonthly = $item->quantityForecasts->first()->period_type === 'month';
+                $lastColumn = $isMonthly ? 'E' : 'D';
+
+                $sheet->mergeCells('A1:'.$lastColumn.'1')->setCellValue('A1', 'NEW PROJECT DECLARATION — A00');
+                $sheet->mergeCells('A2:'.$lastColumn.'2')->setCellValue('A2', 'LAMPIRAN FORECAST QUANTITY');
+                $sheet->setCellValue('A4', 'Doc. No');
+                $sheet->mergeCells('B4:'.$lastColumn.'4')->setCellValue('B4', $a00->document_number);
+                $sheet->setCellValue('A5', 'Model')->setCellValue('B5', $item->model);
+                $sheet->setCellValue('A6', 'Assy Name')->setCellValue('B6', $item->assy_name);
+                $sheet->setCellValue('A7', 'Assy No.')->setCellValue('B7', $item->assy_number);
+                $sheet->setCellValue('A8', 'Product Life')->setCellValue('B8', $item->product_life_years.' Years');
+                $sheet->setCellValue('A9', 'Basis')->setCellValue('B9', $isMonthly ? 'Per Bulan' : 'Per Tahun');
+
+                $headers = $isMonthly
+                    ? ['No.', 'Tahun', 'Bulan', 'Quantity', 'UOM']
+                    : ['No.', 'Tahun', 'Quantity', 'UOM'];
+                foreach ($headers as $columnIndex => $header) {
+                    $sheet->setCellValue([$columnIndex + 1, 11], $header);
+                }
+
+                foreach ($rows->values() as $rowIndex => $forecast) {
+                    $excelRow = 12 + $rowIndex;
+                    $globalNumber = ($chunkIndex * 32) + $rowIndex + 1;
+                    $values = $isMonthly
+                        ? [$globalNumber, $forecast->calendar_year ?: 'Tahun '.$forecast->year_number, \Carbon\Carbon::create()->month($forecast->month_number)->translatedFormat('F'), (float) $forecast->quantity, $forecast->uom]
+                        : [$globalNumber, $forecast->calendar_year ?: 'Tahun '.$forecast->year_number, (float) $forecast->quantity, $forecast->uom];
+                    foreach ($values as $columnIndex => $value) {
+                        $sheet->setCellValue([$columnIndex + 1, $excelRow], $value);
+                    }
+                }
+
+                $lastRow = 11 + $rows->count();
+                if ($chunkIndex === $item->quantityForecasts->chunk(32)->count() - 1) {
+                    $totalRow = $lastRow + 2;
+                    $sheet->mergeCells('A'.$totalRow.':'.chr(ord($lastColumn) - 1).$totalRow);
+                    $sheet->setCellValue('A'.$totalRow, 'Total Product Life');
+                    $sheet->setCellValue($lastColumn.$totalRow, (float) $item->quantityForecasts->sum(fn ($row) => (float) $row->quantity));
+                    $lastRow = $totalRow;
+                }
+
+                $sheet->getStyle('A1:'.$lastColumn.'2')->getFont()->setBold(true)->setSize(14);
+                $sheet->getStyle('A1:'.$lastColumn.'2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle('A11:'.$lastColumn.'11')->getFont()->setBold(true);
+                $sheet->getStyle('A11:'.$lastColumn.$lastRow)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                $sheet->getStyle('A11:'.$lastColumn.$lastRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getColumnDimension('A')->setWidth(8);
+                foreach (range('B', $lastColumn) as $column) $sheet->getColumnDimension($column)->setWidth(24);
+                $sheet->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4)
+                    ->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_PORTRAIT)
+                    ->setFitToWidth(1)->setFitToHeight(1);
+                $sheet->getPageMargins()->setTop(0.35)->setBottom(0.35)->setLeft(0.35)->setRight(0.35);
+                $sheet->getPageSetup()->setPrintArea('A1:'.$lastColumn.$lastRow);
+            }
+        }
+    }
+
+    private function fillMatrixForecastAttachments(Spreadsheet $book, ProjectA00Form $a00): void
+    {
+        if ($book->getSheetByName('LAMPIRAN ASSY (2)')) {
+            $this->fillMatrixForecastAttachmentsFromTemplate($book, $a00);
+            return;
+        }
+
+        $items = $a00->items->filter(fn ($item) => $item->quantityForecasts->isNotEmpty())->values();
+        if ($items->isEmpty()) return;
+        $periods = $items->flatMap(fn ($item) => $item->quantityForecasts->map(fn ($forecast) => [
+            'key' => ($forecast->calendar_year ?: $forecast->year_number).'-'.($forecast->month_number ?: 0),
+            'year' => $forecast->calendar_year ?: 'T'.$forecast->year_number,
+            'month' => $forecast->month_number,
+        ]))->unique('key')->sortBy(fn ($period) => sprintf('%04d-%02d', (int) preg_replace('/\D/', '', $period['year']), (int) $period['month']))->values();
+
+        $page = 1;
+        foreach ($periods->chunk(6) as $periodChunkIndex => $periodChunk) {
+            foreach ($items->chunk(25) as $itemChunkIndex => $itemChunk) {
+                $includeTotal = $periodChunkIndex === $periods->chunk(6)->count() - 1;
+                $sheet = new Worksheet($book, 'QTY MATRIX '.$page++);
+                $book->addSheet($sheet);
+
+                $mainSheet = $book->getSheetByName('A00') ?? $book->getSheet(0);
+                $this->copyMainHeaderToAttachment($mainSheet, $sheet);
+                $sheet->mergeCells('B6:V6')->setCellValue('B6', 'LAMPIRAN FORECAST QUANTITY');
+
+                $headers = ['No.', 'Model', 'Assy No.'];
+                foreach ($periodChunk as $period) $headers[] = $period['year'].($period['month'] ? ' '.\Carbon\Carbon::create()->month($period['month'])->translatedFormat('M') : '');
+                if ($includeTotal) $headers[] = 'Total';
+                $columnSlots = ['B:C', 'D:F', 'G:I', 'J:K', 'L:M', 'N:O', 'P:Q', 'R:S', 'T:U', 'V:V'];
+                foreach ($headers as $index => $header) {
+                    [$startColumn, $endColumn] = explode(':', $columnSlots[$index]);
+                    if ($startColumn !== $endColumn) $sheet->mergeCells($startColumn.'7:'.$endColumn.'7');
+                    $sheet->setCellValue($startColumn.'7', $header);
+                }
+
+                foreach ($itemChunk->values() as $rowIndex => $item) {
+                    $excelRow = 8 + $rowIndex;
+                    $values = [($itemChunkIndex * 25) + $rowIndex + 1, $item->model, $item->assy_number];
+                    foreach ($periodChunk as $period) {
+                        $forecast = $item->quantityForecasts->first(fn ($row) => (($row->calendar_year ?: $row->year_number).'-'.($row->month_number ?: 0)) === $period['key']);
+                        $values[] = $forecast ? number_format((float) $forecast->quantity, 0, ',', '.') : null;
+                    }
+                    if ($includeTotal) $values[] = number_format((float) $item->quantityForecasts->sum(fn ($row) => (float) $row->quantity), 0, ',', '.');
+                    foreach ($values as $index => $value) {
+                        [$startColumn, $endColumn] = explode(':', $columnSlots[$index]);
+                        if ($startColumn !== $endColumn) $sheet->mergeCells($startColumn.$excelRow.':'.$endColumn.$excelRow);
+                        $coordinate = $startColumn.$excelRow;
+                        if ($index >= 3 && $value !== null) {
+                            // Keep Indonesian thousands separators literal. Using
+                            // setCellValue() turns "1.200" back into decimal 1.2.
+                            $sheet->setCellValueExplicit($coordinate, (string) $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                        } else {
+                            $sheet->setCellValue($coordinate, $value);
+                        }
+                    }
+                }
+
+                $lastRow = 7 + $itemChunk->count();
+                $sheet->getStyle('B6:V6')->getFont()->setName('Arial Narrow')->setBold(true)->setSize(6);
+                $sheet->getStyle('B6:V6')->getBorders()->getOutline()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                $sheet->getStyle('B7:V7')->getFont()->setName('Arial Narrow')->setBold(true)->setSize(6);
+                $sheet->getStyle('B8:V'.$lastRow)->getFont()->setName('Arial Narrow')->setSize(6);
+                $sheet->getStyle('B7:V'.$lastRow)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                $sheet->getStyle('B7:V'.$lastRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                $sheet->getColumnDimension('A')->setWidth(3.7109375);
+                $sheet->getColumnDimension('W')->setWidth(3.7109375);
+                $sheet->getRowDimension(6)->setRowHeight(14); $sheet->getRowDimension(7)->setRowHeight(16);
+                for ($row = 8; $row <= $lastRow; $row++) $sheet->getRowDimension($row)->setRowHeight(16);
+                if ($lastRow < 40) {
+                    $blankStartRow = $lastRow + 1;
+                    $sheet->mergeCells('B'.$blankStartRow.':V40');
+                    $sheet->getStyle('B'.$blankStartRow.':V40')->getBorders()->getOutline()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                    for ($row = $blankStartRow; $row <= 40; $row++) {
+                        $sheet->getRowDimension($row)->setRowHeight(14);
+                    }
+                }
+                $sheet->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4)->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_PORTRAIT)->setFitToWidth(1)->setFitToHeight(0);
+                $sheet->getPageMargins()->setTop(0.15)->setBottom(0.15)->setLeft(0.15)->setRight(0.15);
+                $sheet->getPageSetup()->setPrintArea('A1:W42');
+            }
+        }
+    }
+
+    private function fillMatrixForecastAttachmentsFromTemplate(Spreadsheet $book, ProjectA00Form $a00): void
+    {
+        $template = $book->getSheetByName('LAMPIRAN ASSY (2)');
+        $items = $a00->items->filter(fn ($item) => $item->quantityForecasts->isNotEmpty())->values();
+
+        if (! $template) {
+            return;
+        }
+
+        if ($items->isEmpty()) {
+            $book->removeSheetByIndex($book->getIndex($template));
+            return;
+        }
+
+        $periods = $items->flatMap(fn ($item) => $item->quantityForecasts->map(fn ($forecast) => [
+            'key' => ($forecast->calendar_year ?: $forecast->year_number).'-'.($forecast->month_number ?: 0),
+            'year' => $forecast->calendar_year ?: 'T'.$forecast->year_number,
+            'month' => $forecast->month_number,
+        ]))->unique('key')->sortBy(fn ($period) => sprintf('%04d-%02d', (int) preg_replace('/\D/', '', $period['year']), (int) $period['month']))->values();
+
+        $periodSlots = ['I:J', 'K:L', 'M:N', 'O:P', 'Q:R', 'S:T'];
+        $dataSlots = ['B:B', 'C:D', 'E:H', ...$periodSlots];
+        $mainSheet = $book->getSheetByName('A00') ?? $book->getSheet(0);
+        $page = 1;
+
+        foreach ($periods->chunk(6) as $periodChunkIndex => $periodChunk) {
+            foreach ($items->chunk(25) as $itemChunkIndex => $itemChunk) {
+                $includeTotal = $periodChunkIndex === $periods->chunk(6)->count() - 1;
+                $sheet = clone $template;
+                $sheet->setTitle('LAMPIRAN QTY '.$page++);
+                // The edited template contains residual formatting through AR.
+                // Dompdf includes that width when scaling, so discard everything
+                // after W to keep the frame identical to page 1.
+                $sheet->removeColumn('X', 21);
+                foreach (range('A', 'W') as $column) {
+                    $sheet->getColumnDimension($column)->setWidth($mainSheet->getColumnDimension($column)->getWidth());
+                }
+                foreach (range(2, 5) as $headerRow) {
+                    $sheet->getRowDimension($headerRow)->setRowHeight($mainSheet->getRowDimension($headerRow)->getRowHeight());
+                }
+                $sheet->duplicateStyle($mainSheet->getStyle('B2:V5'), 'B2:V5');
+                // Reserve rows 7-9 as a visible gap below the document header.
+                // Remove the same number near the bottom so the frame still ends
+                // at row 54 and remains on a single PDF page.
+                $sheet->insertNewRowBefore(7, 3);
+                $sheet->removeRow(51, 3);
+                foreach (array_keys($sheet->getMergeCells()) as $range) {
+                    [, $end] = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::rangeBoundaries($range);
+                    if ($end[1] >= 13) {
+                        $sheet->unmergeCells($range);
+                    }
+                }
+                $book->addSheet($sheet);
+                $this->formatForecastAttachmentHeader($sheet);
+
+                $sheet->mergeCells('B7:V9')->setCellValue('B7', "\u{00A0}");
+                foreach (range(7, 9) as $spacerRow) {
+                    $sheet->getRowDimension($spacerRow)->setRowHeight(10);
+                }
+                if (! isset($sheet->getMergeCells()['B10:V10'])) {
+                    $sheet->mergeCells('B10:V10');
+                }
+                $sheet->getStyle('B10:V10')->getAlignment()
+                    ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT)
+                    ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)
+                    ->setWrapText(false);
+
+                // Match page 1's frame, which closes on row 54 rather than 53.
+                $sheet->getStyle('A53:W53')->getBorders()->getBottom()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_NONE);
+                $sheet->getStyle('A54:W54')->getBorders()->getBottom()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE);
+                $sheet->getStyle('A54')->getBorders()->getLeft()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE);
+                $sheet->getStyle('W54')->getBorders()->getRight()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_DOUBLE);
+                foreach (range(10, 54) as $row) {
+                    $sheet->getRowDimension($row)->setRowHeight(13.5);
+                }
+
+                $logoPath = public_path('images/logo-dharma-mark.png');
+                foreach ($sheet->getDrawingCollection() as $drawing) {
+                    if (stripos($drawing->getName(), 'LOGO') !== false && is_file($logoPath)) {
+                        $drawing->setPath($logoPath)->setCoordinates('B2')->setHeight(48);
+                    }
+                }
+
+                $sheet->setCellValueExplicit('S2', (string) $a00->document_number, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit('S3', $a00->document_date->format('d-M-y'), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit('S4', (string) $a00->revision, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit('S5', $a00->from_department.' - '.$a00->to_department, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+
+                foreach ($periodSlots as $slot) {
+                    [$start] = explode(':', $slot);
+                    $sheet->setCellValue($start.'11', null);
+                }
+                foreach ($periodChunk->values() as $index => $period) {
+                    [$start] = explode(':', $periodSlots[$index]);
+                    $label = $period['year'].($period['month'] ? ' '.\Carbon\Carbon::create()->month($period['month'])->translatedFormat('M') : '');
+                    $sheet->setCellValueExplicit($start.'11', $label, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                }
+                $sheet->setCellValue('U11', $includeTotal ? 'Total' : null);
+
+                if ($itemChunk->count() > 1) {
+                    for ($row = 13; $row < 12 + $itemChunk->count(); $row++) {
+                        $sheet->duplicateStyle($sheet->getStyle('B12:V12'), 'B'.$row.':V'.$row);
+                        $sheet->getRowDimension($row)->setRowHeight($sheet->getRowDimension(12)->getRowHeight());
+                        foreach (['C:D', 'E:H', 'I:J', 'K:L', 'M:N', 'O:P', 'Q:R', 'S:T', 'U:V'] as $slot) {
+                            [$start, $end] = explode(':', $slot);
+                            $sheet->mergeCells($start.$row.':'.$end.$row);
+                        }
+                    }
+                }
+
+                foreach ($itemChunk->values() as $rowIndex => $item) {
+                    $row = 12 + $rowIndex;
+                    foreach (['B', 'C', 'E', 'I', 'K', 'M', 'O', 'Q', 'S', 'U'] as $column) {
+                        $sheet->setCellValue($column.$row, null);
+                    }
+
+                    $values = [($itemChunkIndex * 25) + $rowIndex + 1, $item->model, $item->assy_number];
+                    foreach ($periodChunk as $period) {
+                        $forecast = $item->quantityForecasts->first(fn ($forecast) => (($forecast->calendar_year ?: $forecast->year_number).'-'.($forecast->month_number ?: 0)) === $period['key']);
+                        $values[] = $forecast ? number_format((float) $forecast->quantity, 0, ',', '.') : '';
+                    }
+                    foreach ($values as $index => $value) {
+                        [$start] = explode(':', $dataSlots[$index]);
+                        $sheet->setCellValueExplicit($start.$row, (string) $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                    }
+                    if ($includeTotal) {
+                        $sheet->setCellValueExplicit('U'.$row, number_format((float) $item->quantityForecasts->sum(fn ($forecast) => (float) $forecast->quantity), 0, ',', '.'), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                    }
+                }
+
+                $sheet->getPageSetup()->setPrintArea('A1:W54');
+            }
+        }
+
+        $book->removeSheetByIndex($book->getIndex($template));
+    }
+
+    private function formatForecastAttachmentHeader(Worksheet $sheet): void
+    {
+        foreach (array_keys($sheet->getMergeCells()) as $range) {
+            [, $end] = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::rangeBoundaries($range);
+            if ($end[1] <= 5) {
+                $sheet->unmergeCells($range);
+            }
+        }
+
+        foreach (['B2:E5', 'F2:M5', 'N2:P5'] as $range) {
+            $sheet->mergeCells($range);
+        }
+        foreach (range(2, 5) as $row) {
+            $sheet->mergeCells('Q'.$row.':R'.$row);
+            $sheet->mergeCells('S'.$row.':V'.$row);
+        }
+
+        $sheet->getStyle('B2:V5')->applyFromArray([
+            'font' => ['name' => 'Arial Narrow', 'size' => 8, 'bold' => false, 'color' => ['argb' => 'FF000000']],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFFFFFFF']],
+            'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_NONE]],
+            'alignment' => [
+                'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                'wrapText' => false,
+            ],
+        ]);
+
+        foreach (['B2:E5', 'F2:M5', 'N2:P5', 'Q2:R2', 'S2:V2', 'Q3:R3', 'S3:V3', 'Q4:R4', 'S4:V4', 'Q5:R5', 'S5:V5'] as $range) {
+            $sheet->getStyle($range)->getBorders()->getOutline()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        }
+
+        $sheet->setCellValue('F2', "NEW PROJECT\nDECLARATION");
+        $sheet->setCellValue('N2', 'A00');
+        foreach ([2 => 'Doc. No', 3 => 'Date', 4 => 'Revision', 5 => 'From - To'] as $row => $label) {
+            $sheet->setCellValue('Q'.$row, $label);
+        }
+
+        $sheet->getStyle('F2:M5')->getFont()->setName('Arial Narrow')->setSize(16)->setBold(true);
+        $sheet->getStyle('N2:P5')->getFont()->setName('Arial Narrow')->setSize(28)->setBold(true);
+        $sheet->getStyle('Q2:V5')->getFont()->setName('Arial Narrow')->setSize(8);
+        $sheet->getStyle('F2:P5')->getAlignment()
+            ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)
+            ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)
+            ->setWrapText(true);
+        $sheet->getStyle('Q2:R5')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT)->setIndent(1);
+        $sheet->getStyle('S2:V5')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT)->setIndent(1)->setWrapText(true);
+    }
+
+    private function copyMainHeaderToAttachment(Worksheet $source, Worksheet $target): void
+    {
+        foreach (range('B', 'V') as $column) {
+            $target->getColumnDimension($column)->setWidth($source->getColumnDimension($column)->getWidth() * self::COLUMN_SCALE);
+        }
+
+        foreach (range(2, 5) as $row) {
+            $target->getRowDimension($row)->setRowHeight($source->getRowDimension($row)->getRowHeight());
+        }
+
+        foreach (['B2:E5', 'F2:M5', 'N2:P5'] as $range) {
+            $target->mergeCells($range);
+        }
+        foreach (range(2, 5) as $row) {
+            $target->mergeCells('Q'.$row.':R'.$row);
+            $target->mergeCells('S'.$row.':V'.$row);
+        }
+
+        $target->setCellValue('F2', "NEW PROJECT\nDECLARATION");
+        $target->setCellValue('N2', 'A00');
+        foreach (range(2, 5) as $row) {
+            $target->setCellValue('Q'.$row, $source->getCell('Q'.$row)->getValue());
+            // Copy the rendered metadata, not Excel's underlying serial value.
+            // This keeps the attachment date identical to page 1 (14-Aug-26)
+            // instead of exposing the raw number (for example 46248).
+            $target->setCellValueExplicit('S'.$row, $source->getCell('S'.$row)->getFormattedValue(), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        }
+
+        foreach (['B2:E5', 'F2:M5', 'N2:P5', 'Q2:R2', 'S2:V2', 'Q3:R3', 'S3:V3', 'Q4:R4', 'S4:V4', 'Q5:R5', 'S5:V5'] as $range) {
+            $target->getStyle($range)->getBorders()->getOutline()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+        }
+
+        $target->getStyle('F2:M5')->getFont()->setName('Arial Narrow')->setBold(true)->setSize(16 * self::FONT_SCALE);
+        $target->getStyle('N2:P5')->getFont()->setName('Arial Narrow')->setBold(true)->setSize(28 * self::FONT_SCALE);
+        $target->getStyle('Q2:V5')->getFont()->setName('Arial Narrow')->setSize(8 * self::FONT_SCALE);
+        $target->getStyle('F2:P5')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)->setWrapText(true);
+        $target->getStyle('Q2:V5')->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)->setWrapText(true);
+        $target->getStyle('S2:V5')->getAlignment()->setIndent(1);
+
+        $logoPath = public_path('images/logo-dharma-mark.png');
+        if (is_file($logoPath)) {
+            $logo = new Drawing();
+            $logo->setName('LOGO FORECAST')->setPath($logoPath)->setCoordinates('B2')->setHeight(40)->setWorksheet($target);
+            $this->centerLogoInHeader($target, $logo);
+        }
+    }
+
     private function fillMain(Worksheet $sheet, ProjectA00Form $a00, bool $translateForPdf): void
     {
         if ($translateForPdf) $this->translateMainMergedCells($sheet);
+        foreach (range('A', 'W') as $column) {
+            $sheet->getColumnDimension($column)->setWidth($sheet->getColumnDimension($column)->getWidth() * self::DOCUMENT_WIDTH_SCALE);
+        }
+        $this->formatForecastAttachmentHeader($sheet);
         $this->replaceAndCenterLogo($sheet);
         $item = $a00->items->first();
         $bulky = $a00->items->count() > 1;
+        $singleHasForecast = ! $bulky && $item?->quantityForecasts()->exists();
         $regularLives = $a00->items->where('spot_order', false)
             ->pluck('product_life_years')->filter(fn ($years) => $years !== null)
             ->unique()->sort()->values();
@@ -71,12 +467,13 @@ class A00ExcelPdfService
             'S5'=>$a00->from_department.' - '.$a00->to_department, 'K11'=>$a00->formattedCustomerName(),
             'K12'=>$bulky?$a00->items->pluck('model')->filter()->unique()->join(', '):$item?->model,
             'K13'=>$bulky?$a00->items->pluck('assy_name')->filter()->unique()->join(', '):$item?->assy_name,
-            'K14'=>$bulky?'Terlampir':$item?->assy_number, 'K15'=>$bulky?'Terlampir':$item?->quantity,
-            'N15'=>$bulky?'':$item?->quantity_uom, 'P15'=>$bulky?'':'per',
-            'Q15'=>$bulky?'':preg_replace('/^per\s+/i','',(string)$item?->quantity_basis),
+            'K14'=>$bulky?'Terlampir':$item?->assy_number, 'K15'=>($bulky||$singleHasForecast)?'Terlampir':$item?->quantity,
+            'N15'=>($bulky||$singleHasForecast)?'':$item?->quantity_uom, 'P15'=>($bulky||$singleHasForecast)?'':'per',
+            'Q15'=>($bulky||$singleHasForecast)?'':preg_replace('/^per\s+/i','',(string)$item?->quantity_basis),
             'L16'=>$bulky?$lifeText:($item?->spot_order?'':($item?->product_life_years!==null?$item->product_life_years.' Years':'')),
         ];
         foreach ($values as $cell=>$value) $sheet->setCellValue($cell,$value);
+        $sheet->getStyle('S2:S5')->getAlignment()->setIndent(1)->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
         $sheet->getStyle('S3')->getNumberFormat()->setFormatCode('dd-mmm-yy');
         $sheet->setCellValue('K16',$hasRegularOrder?'☑':'☐');
         $sheet->setCellValue('K17',$hasSpotOrder?'☑':'☐');
@@ -194,6 +591,16 @@ class A00ExcelPdfService
         $sheet->getStyle('D9:J9')->getAlignment()->setWrapText(false);
         $sheet->getStyle('D19:J19')->getAlignment()->setWrapText(false);
         $sheet->getStyle('D27:J27')->getAlignment()->setWrapText(false);
+        foreach ([9, 19, 27] as $sectionRow) {
+            $sheet->getStyle('B'.$sectionRow.':J'.$sectionRow)->getFont()
+                ->setName('Calibri')
+                ->setSize(11)
+                ->setBold(true);
+            $sheet->getStyle('B'.$sectionRow.':J'.$sectionRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT)
+                ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)
+                ->setWrapText(false);
+        }
         $sheet->getStyle('E11:Q17')->getAlignment()->setWrapText(false)->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
         $sheet->getStyle('E21:J25')->getAlignment()->setWrapText(false)->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
         $sheet->getStyle('E29:J33')->getAlignment()->setWrapText(false)->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
@@ -213,11 +620,55 @@ class A00ExcelPdfService
     {
         $sheet=$book->getSheetByName('LAMPIRAN ASSY');if(!$sheet)return;
         if($a00->items->count()<=1){$book->removeSheetByIndex($book->getIndex($sheet));return;}
+        $mainSheet=$book->getSheetByName('A00') ?? $book->getSheet(0);
+        $this->matchAssyAttachmentFrameToMain($mainSheet,$sheet);
         $sheet->setCellValue('K9',$a00->formattedCustomerName());$sheet->setCellValue('K10',$a00->items->pluck('model')->filter()->unique()->join(', '));
+        $quantityPeriods=$a00->items->map(fn($item)=>str_contains(strtolower((string)$item->quantity_basis),'year')?'YEAR':'MONTH')->unique()->values();
+        $mixedQuantityPeriods=$quantityPeriods->count()>1;
+        $sheet->setCellValue('N13',$mixedQuantityPeriods?'VOLUME / PERIOD':'VOLUME / '.($quantityPeriods->first()??'MONTH'));
         if($a00->items->count()>3){$extra=$a00->items->count()-3;$sheet->insertNewRowBefore(17,$extra);for($row=17;$row<17+$extra;$row++){$sheet->duplicateStyle($sheet->getStyle('D16:R16'),"D{$row}:R{$row}");$sheet->mergeCells("D{$row}:H{$row}");$sheet->mergeCells("I{$row}:M{$row}");$sheet->mergeCells("N{$row}:R{$row}");}}
-        foreach($a00->items->values() as $i=>$item){$row=14+$i;$monthly=$item->quantity;if($monthly!==null&&str_contains(strtolower((string)$item->quantity_basis),'year'))$monthly/=12;$sheet->setCellValue('D'.$row,$item->assy_name);$sheet->setCellValue('I'.$row,$item->assy_number);$sheet->setCellValue('N'.$row,$monthly);}
+        foreach($a00->items->values() as $i=>$item){$row=14+$i;$quantity=$item->quantity;$period=str_contains(strtolower((string)$item->quantity_basis),'year')?'YEAR':'MONTH';$sheet->setCellValue('D'.$row,$item->assy_name);$sheet->setCellValue('I'.$row,$item->assy_number);if($mixedQuantityPeriods&&$quantity!==null){$sheet->setCellValueExplicit('N'.$row,number_format((float)$quantity,0,',','.').' / '.$period,\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);}else{$sheet->setCellValue('N'.$row,$quantity);}}
         for($i=$a00->items->count();$i<3;$i++)$sheet->getRowDimension(14+$i)->setVisible(false);
-        $sheet->getPageSetup()->setPrintArea('A1:R54');
+        $sheet->getPageSetup()->setPrintArea('A1:W54');
+    }
+
+    private function matchAssyAttachmentFrameToMain(Worksheet $source, Worksheet $target): void
+    {
+        foreach (range('A','W') as $column) {
+            $target->getColumnDimension($column)->setWidth($source->getColumnDimension($column)->getWidth());
+        }
+        foreach (range(1,5) as $row) {
+            $target->getRowDimension($row)->setRowHeight($source->getRowDimension($row)->getRowHeight());
+        }
+
+        foreach (array_keys($target->getMergeCells()) as $range) {
+            [, $end] = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::rangeBoundaries($range);
+            if ($end[1] <= 5) {
+                $target->unmergeCells($range);
+            }
+        }
+        foreach (['B2:E5','F2:M5','N2:P5'] as $range) {
+            $target->mergeCells($range);
+        }
+        foreach (range(2,5) as $row) {
+            $target->mergeCells('Q'.$row.':R'.$row);
+            $target->mergeCells('S'.$row.':V'.$row);
+        }
+
+        foreach (range(2,5) as $row) {
+            foreach (range('B','V') as $column) {
+                $coordinate=$column.$row;
+                $target->duplicateStyle($source->getStyle($coordinate),$coordinate);
+            }
+        }
+        foreach (['F2','N2','Q2','Q3','Q4','Q5','S2','S3','S4','S5'] as $coordinate) {
+            $target->setCellValueExplicit(
+                $coordinate,
+                (string) $source->getCell($coordinate)->getFormattedValue(),
+                \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+            );
+        }
+        $this->replaceAndCenterLogo($target);
     }
 
     private function prepareAttachmentForPdf(Worksheet $sheet): void
@@ -251,8 +702,14 @@ class A00ExcelPdfService
         // Baris kosong harus tetap memiliki tinggi fisik agar bingkai luar
         // tidak berhenti di tengah halaman ketika dirender menjadi PDF.
         foreach (range(17, 49) as $row) {
-            $sheet->getRowDimension($row)->setRowHeight(15);
+            $sheet->getRowDimension($row)->setRowHeight(12);
         }
+
+        // The ASSY template contains footer guide lines in its empty rows.
+        // Remove them so the empty body ends with the same single outer frame
+        // used by page 1, instead of showing stacked horizontal boxes.
+        $sheet->getStyle('A17:W54')->getBorders()->getAllBorders()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_NONE);
 
         $border = ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['argb' => 'FF000000']];
         $sheet->getStyle('A1:W54')->applyFromArray([
@@ -308,7 +765,25 @@ class A00ExcelPdfService
 
     private function dateParts(Worksheet $sheet,int $row,mixed $value,bool $tba=false): void
     {
-        $date=filled($value)?\Carbon\Carbon::parse($value):null;
+        if($value instanceof \DateTimeInterface){
+            $date=\Carbon\Carbon::instance($value);
+            $raw=$date->format('Y-m-d');
+        }else{
+            $raw=trim((string)($value ?? ''));
+            $date=\Carbon\Carbon::hasFormat($raw,'Y-m-d')?\Carbon\Carbon::createFromFormat('!Y-m-d',$raw):null;
+        }
+
+        if(!$tba && $raw!=='' && !$date){
+            foreach (['L'.$row.':M'.$row,'N'.$row.':O'.$row,'P'.$row.':Q'.$row] as $range) {
+                if(isset($sheet->getMergeCells()[$range])) $sheet->unmergeCells($range);
+            }
+            $sheet->mergeCells('L'.$row.':Q'.$row);
+            $sheet->setCellValue('L'.$row,$raw);
+            $sheet->getStyle('L'.$row.':Q'.$row)->getBorders()->getOutline()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            $sheet->getStyle('L'.$row.':Q'.$row)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            return;
+        }
+
         $sheet->setCellValue('L'.$row,$tba?'TBA':$date?->format('d'));
         $sheet->setCellValue('N'.$row,$tba?null:$date?->format('M'));
         $sheet->setCellValue('P'.$row,$tba?null:$date?->format('Y'));
@@ -316,6 +791,19 @@ class A00ExcelPdfService
 
     private function normalizeForA4(Worksheet $sheet): void
     {
+        if (str_starts_with($sheet->getTitle(), 'QTY MATRIX')) {
+            $range = 'A1:'.$sheet->getHighestColumn().$sheet->getHighestRow();
+            $sheet->getStyle('B6:V6')->getFont()->setName('Arial Narrow')->setBold(true)->setSize(6);
+            $sheet->getStyle('B7:V7')->getFont()->setName('Arial Narrow')->setBold(true)->setSize(6);
+            if ($sheet->getHighestDataRow() >= 8) {
+                $sheet->getStyle('B8:V'.$sheet->getHighestDataRow())->getFont()->setName('Arial Narrow')->setSize(6);
+            }
+            $sheet->getStyle($range)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+            $sheet->getPageMargins()->setTop(0.15)->setRight(0.15)->setBottom(0.15)->setLeft(0.15);
+            $sheet->getPageSetup()->setOrientation('portrait')->setPaperSize(9)->setFitToWidth(1)->setFitToHeight(0);
+            return;
+        }
+
         $sheet->getStyle('A1:'.$sheet->getHighestColumn().$sheet->getHighestRow())->getAlignment()->setWrapText(false);
         $lastColumn=\PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($sheet->getHighestColumn());
         for($index=1;$index<=$lastColumn;$index++){$column=\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($index);$dimension=$sheet->getColumnDimension($column);$width=$dimension->getWidth();if($width>0)$dimension->setWidth($width*self::COLUMN_SCALE);}
@@ -327,6 +815,7 @@ class A00ExcelPdfService
             if(stripos($drawing->getName(),'TTD')===0)$this->centerSignatureInApprovalBox($sheet,$drawing);
         }
         $sheet->getPageMargins()->setTop(0.15)->setRight(0.15)->setBottom(0.15)->setLeft(0.15);
-        $sheet->getPageSetup()->setOrientation('portrait')->setPaperSize(9)->setFitToWidth(1)->setFitToHeight(1);
+        $orientation = str_starts_with($sheet->getTitle(), 'QTY MATRIX') ? 'landscape' : 'portrait';
+        $sheet->getPageSetup()->setOrientation($orientation)->setPaperSize(9)->setFitToWidth(1)->setFitToHeight(1);
     }
 }

@@ -998,7 +998,14 @@ HandlesPartlistParsing
         if ($qtyReq <= 0) {
             $multiplyFactor = 0.0;
         } else {
-            $denominator = $forecast * $projectPeriod * 12 * $qtyReq;
+            $scheduledLifetimeQuantity = $costingData->tracking_revision_id
+                ? (float) \App\Models\ProjectQuantityForecast::where('document_revision_id', $costingData->tracking_revision_id)->sum('quantity')
+                : 0;
+            $basisMultiplier = ($costingData->forecast_basis ?? 'per_month') === 'per_year' ? 1 : 12;
+            $lifetimeQuantity = $scheduledLifetimeQuantity > 0
+                ? $scheduledLifetimeQuantity
+                : $forecast * $projectPeriod * $basisMultiplier;
+            $denominator = $lifetimeQuantity * $qtyReq;
             $denominator = $denominator != 0.0 ? ($denominator / $multiplyUnitDivisor) : 0.0;
             $ratio = $denominator != 0.0 ? ($qtyMoq / $denominator) : 0.0;
             $multiplyFactor = ($cnType === 'C' || $ratio < 1) ? 1.0 : $ratio;

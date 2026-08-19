@@ -47,8 +47,17 @@ class ProjectA00Form extends Model
     public function resolvedMassProductionDate(): ?\Carbon\Carbon
     {
         $event = $this->resolvedMassProductionEvent();
+        $value = trim((string) ($event['date'] ?? ''));
 
-        return filled($event['date'] ?? null) ? \Carbon\Carbon::parse($event['date']) : null;
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+
+        try {
+            return \Carbon\Carbon::createFromFormat('!Y-m-d', $value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public function formattedCustomerName(): string

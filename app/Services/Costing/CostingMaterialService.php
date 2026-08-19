@@ -5,6 +5,7 @@ namespace App\Services\Costing;
 use App\Models\CostingData;
 use App\Models\Material;
 use App\Models\MaterialBreakdown;
+use App\Models\ProjectQuantityForecast;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -199,12 +200,19 @@ class CostingMaterialService
                  */
                 $quantity = $this->toFloatValue($request->input('forecast', $request->input('quantity', $request->input('qty', 0))));
                 $productLife = $this->toFloatValue($request->input('project_period', $request->input('product_life', 0)));
+                $forecastBasis = (string) $request->input('forecast_basis', $costingData->forecast_basis ?? 'per_month');
+                $scheduledLifetimeQuantity = $costingData->tracking_revision_id
+                    ? (float) ProjectQuantityForecast::where('document_revision_id', $costingData->tracking_revision_id)->sum('quantity')
+                    : 0;
+                $lifetimeQuantity = $scheduledLifetimeQuantity > 0
+                    ? $scheduledLifetimeQuantity
+                    : $quantity * $productLife * ($forecastBasis === 'per_year' ? 1 : 12);
                 $unitDivisor = ($unit === 'MM') ? 1000 : 1;
 
                 if ($qtyReq <= 0) {
                     $multiplyFactor = 0;
                 } else {
-                    $denominator = $quantity * $productLife * 12 * $qtyReq;
+                    $denominator = $lifetimeQuantity * $qtyReq;
                     $denominator = ($denominator != 0) ? ($denominator / $unitDivisor) : 0;
                     $ratio = ($denominator != 0) ? ($moq / $denominator) : 0;
                     $multiplyFactor = ($cnType === 'C' || $ratio < 1) ? 1 : $ratio;

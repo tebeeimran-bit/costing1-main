@@ -10,6 +10,7 @@ use App\Models\DocumentRevision;
 use App\Models\Product;
 use App\Models\ProjectWorkflowTask;
 use App\Models\DocumentControlRegistration;
+use App\Services\ProjectQuantityForecastService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -19,6 +20,7 @@ class TrackingDocumentProjectService
 {
     public function __construct(
         private readonly TrackingDocumentFileService $fileService,
+        private readonly ?ProjectQuantityForecastService $quantityForecastService = null,
     ) {
     }
 
@@ -242,6 +244,19 @@ class TrackingDocumentProjectService
                 ->latest('id')
                 ->first();
 
+            $forecastEnabled = !empty($validated['quantity_forecast_enabled']);
+            $quantityForecastService = $this->quantityForecastService ?? app(ProjectQuantityForecastService::class);
+            $forecastRows = $quantityForecastService->sync(
+                $latestRevision,
+                $forecastEnabled,
+                $validated['quantity_forecast_period_type'] ?? 'year',
+                $validated['quantity_forecasts'] ?? [],
+                $validated['forecast_uom'] ?? 'PCE'
+            );
+            $forecastSummary = $forecastRows->isNotEmpty()
+                ? $quantityForecastService->summary($forecastRows)
+                : null;
+
             if ($costingData) {
                 $costingColumns = array_fill_keys(Schema::getColumnListing('costing_data'), true);
 
@@ -251,10 +266,10 @@ class TrackingDocumentProjectService
                     'model' => $normalizedModel,
                     'assy_no' => $normalizedPartNumber,
                     'assy_name' => $normalizedPartName,
-                    'forecast' => $this->parseNumericInput($validated['forecast'] ?? $costingData->forecast ?? 0),
+                    'forecast' => $forecastSummary['average'] ?? $this->parseNumericInput($validated['forecast'] ?? $costingData->forecast ?? 0),
                     'forecast_uom' => $validated['forecast_uom'] ?? $costingData->forecast_uom ?? 'PCE',
-                    'forecast_basis' => $validated['forecast_basis'] ?? $costingData->forecast_basis ?? 'per_month',
-                    'project_period' => $this->parseNumericInput($validated['project_period'] ?? $costingData->project_period ?? 0),
+                    'forecast_basis' => $forecastSummary['basis'] ?? $validated['forecast_basis'] ?? $costingData->forecast_basis ?? 'per_month',
+                    'project_period' => $forecastSummary['years'] ?? $this->parseNumericInput($validated['project_period'] ?? $costingData->project_period ?? 0),
                     'line' => $validated['line'] ?? $costingData->line ?? null,
                     'period' => $validated['period'] ?? $costingData->period ?? null,
                 ];

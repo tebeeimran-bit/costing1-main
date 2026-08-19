@@ -333,7 +333,10 @@ class ProjectA00WorkflowTest extends TestCase
         $response=$this->actingAs($user)->post(route('control-project.a00.store'),[
             'business_category_id'=>$category->id,'customer_id'=>$customer->id,
             'plant_id'=>$plant->id,'period'=>'2026-08','pic_engineering'=>'Engineer Test','pic_marketing'=>'Marketing Test',
-            'items'=>[['model'=>'K4MA','assy_name'=>'CORD ASSY','assy_number'=>'W40294','quantity'=>810000,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year']],
+            'items'=>[['model'=>'K4MA','assy_name'=>'CORD ASSY','assy_number'=>'W40294','quantity'=>810000,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year','product_life_years'=>3,
+                'quantity_forecast_enabled'=>1,'quantity_forecast_period_type'=>'year','quantity_forecasts'=>[
+                    ['year_number'=>1,'calendar_year'=>2026,'quantity'=>700000],['year_number'=>2,'calendar_year'=>2027,'quantity'=>810000],['year_number'=>3,'calendar_year'=>2028,'quantity'=>920000],
+                ]]],
             'document_number'=>'0100/MKT-PROJECT/A00/VII/2026','document_date'=>'2026-07-29','revision'=>'00',
             'from_department'=>'MKT','to_department'=>'TEAM PROJECT','quantity_uom'=>'Pcs',
             'quantity_basis'=>'per Year','issue_location'=>'Cikarang',
@@ -341,7 +344,7 @@ class ProjectA00WorkflowTest extends TestCase
                 ['name'=>'DP','date'=>'2026-08-10'],
                 ['name'=>'PP','date'=>'2026-09-15'],
                 ['name'=>'MPP','tba'=>1],
-                ['name'=>'PILOT','date'=>'2026-10-20'],
+                ['name'=>'PILOT','date'=>'Q4 2027'],
                 ['name'=>'SOP','date'=>'2027-01-10'],
             ],
         ]);
@@ -350,6 +353,8 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseHas('project_a00_forms',['model'=>'K4MA','assy_number'=>'W40294','status'=>'issued']);
         $this->assertDatabaseHas('document_projects',['customer'=>$customer->name,'model'=>'K4MA','part_number'=>'W40294']);
         $this->assertDatabaseHas('project_a00_items',['model'=>'K4MA','assy_number'=>'W40294','quantity'=>810000]);
+        $this->assertDatabaseCount('project_quantity_forecasts',3);
+        $this->assertDatabaseHas('project_quantity_forecasts',['year_number'=>2,'calendar_year'=>2027,'month_number'=>null,'quantity'=>810000]);
         $this->assertDatabaseHas('document_revisions',['version_number'=>1,'status'=>DocumentRevision::STATUS_A00_ISSUED]);
         $this->assertDatabaseHas('document_revisions',['plant_id'=>$plant->id,'period'=>'2026-08','pic_engineering'=>'Engineer Test','pic_marketing'=>'Marketing Test']);
         $this->assertDatabaseHas('project_workflow_tasks',['stage'=>'drawing','assigned_role'=>'document_control','status'=>'pending']);
@@ -359,17 +364,37 @@ class ProjectA00WorkflowTest extends TestCase
         $a00=\App\Models\ProjectA00Form::firstOrFail();
         $this->assertSame(['DP','PP','MPP','PILOT','SOP'],collect($a00->customer_events)->pluck('name')->all());
         $this->assertTrue((bool)$a00->customer_events[2]['tba']);
+        $this->assertSame('Q4 2027',$a00->customer_events[3]['date']);
         $this->actingAs($user)->get(route('control-project.a00.show', $a00))
             ->assertOk()
             ->assertSee('Download PDF')
+            ->assertSee('LAMPIRAN FORECAST QUANTITY')
+            ->assertSeeInOrder(['Model','Assy No.','2026','2027','2028','Total'])
             ->assertSeeInOrder(['DP','PP','MPP','PILOT','SOP'])
+            ->assertSee('Q4 2027')
             ->assertDontSee('Buat Snapshot Draft');
+        $this->actingAs($user)->get(route('control-project.a00.edit',$a00))
+            ->assertOk()->assertSee('Quantity berbeda tiap periode')->assertSee('700000')->assertSee('Q4 2027');
+        $a00Item=$a00->items()->firstOrFail();
+        $this->actingAs($user)->put(route('control-project.a00.update',$a00),[
+            'document_number'=>$a00->document_number,'document_date'=>'2026-07-29','revision'=>'00',
+            'from_department'=>'MKT','to_department'=>'TEAM PROJECT','business_category_id'=>$category->id,
+            'customer_id'=>$customer->id,'plant_id'=>$plant->id,'period'=>'2026-08',
+            'pic_engineering'=>'Engineer Test','pic_marketing'=>'Marketing Test','issue_location'=>'Cikarang',
+            'items'=>[['id'=>$a00Item->id,'model'=>'K4MA','assy_name'=>'CORD ASSY','assy_number'=>'W40294',
+                'quantity'=>810000,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year','product_life_years'=>3,'spot_order'=>0,
+                'quantity_forecast_enabled'=>1,'quantity_forecast_period_type'=>'year','quantity_forecasts'=>[
+                    ['year_number'=>1,'calendar_year'=>2026,'quantity'=>710000],['year_number'=>2,'calendar_year'=>2027,'quantity'=>810000],['year_number'=>3,'calendar_year'=>2028,'quantity'=>910000],
+                ]]],
+        ])->assertRedirect(route('control-project.a00.index'));
+        $this->assertDatabaseHas('project_quantity_forecasts',['document_revision_id'=>$a00Item->document_revision_id,'year_number'=>1,'quantity'=>710000]);
         $excelResponse=$this->actingAs($user)->get(route('control-project.a00.excel',$a00));
         $excelResponse->assertOk()->assertHeader('content-type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         $this->assertStringContainsString('.xlsx',strtolower((string)$excelResponse->headers->get('content-disposition')));
         $excelPath=app(\App\Services\ControlProject\A00ExcelPdfService::class)->generateExcel($a00);
         $excelBook=\PhpOffice\PhpSpreadsheet\IOFactory::load($excelPath);
         $excelSheet=$excelBook->getSheetByName('A00');
+        $this->assertSame('Terlampir',$excelSheet->getCell('K15')->getValue());
         $this->assertSame('Cikarang, 29 Juli 2026',$excelSheet->getCell('S43')->getValue());
         $this->assertNull($excelSheet->getCell('M43')->getValue());
         $this->assertSame('☑',$excelSheet->getCell('K16')->getValue());
@@ -378,7 +403,7 @@ class ProjectA00WorkflowTest extends TestCase
         @unlink($excelPath);
         $pdfResponse=$this->actingAs($user)->get(route('control-project.a00.pdf',$a00));
         $pdfResponse->assertOk()->assertHeader('content-type','application/pdf');
-        $this->assertStringStartsWith('%PDF-', (string)$pdfResponse->getContent());
+        $this->assertStringStartsWith('%PDF-', $pdfResponse->streamedContent());
         $this->assertStringContainsString('attachment;',strtolower((string)$pdfResponse->headers->get('content-disposition')));
         $this->actingAs($user)->put(route('control-project.a00.update-operational',$a00),[
             'plant_id'=>$plant->id,'period'=>'2026-09',
@@ -493,8 +518,12 @@ class ProjectA00WorkflowTest extends TestCase
             'business_category_id'=>$category->id,'customer_id'=>$customer->id,'plant_id'=>$plant->id,
             'period'=>'2026-08','pic_engineering'=>'Engineer Bulky','pic_marketing'=>'Marketing Bulky',
             'items'=>[
-                ['model'=>'M1','assy_name'=>'ASSY 1','assy_number'=>'B001','quantity'=>10,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year'],
-                ['model'=>'M2','assy_name'=>'ASSY 2','assy_number'=>'B002','quantity'=>null,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year'],
+                ['model'=>'M1','assy_name'=>'ASSY 1','assy_number'=>'B001','quantity'=>10,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year','product_life_years'=>2,'quantity_forecast_enabled'=>1,'quantity_forecast_period_type'=>'year','quantity_forecasts'=>[
+                    ['year_number'=>1,'calendar_year'=>2026,'quantity'=>100],['year_number'=>2,'calendar_year'=>2027,'quantity'=>200],
+                ]],
+                ['model'=>'M2','assy_name'=>'ASSY 2','assy_number'=>'B002','quantity'=>null,'quantity_uom'=>'Pcs','quantity_basis'=>'per Year','product_life_years'=>2,'quantity_forecast_enabled'=>1,'quantity_forecast_period_type'=>'year','quantity_forecasts'=>[
+                    ['year_number'=>1,'calendar_year'=>2026,'quantity'=>300],['year_number'=>2,'calendar_year'=>2027,'quantity'=>400],
+                ]],
             ],
             'document_number'=>'BULKY/A00/001','document_date'=>'2026-08-07','revision'=>'00',
             'from_department'=>'MKT','to_department'=>'TEAM PROJECT','issue_location'=>'Cikarang',
@@ -529,12 +558,32 @@ class ProjectA00WorkflowTest extends TestCase
         $pdfA00=\App\Models\ProjectA00Form::with('items')->findOrFail($group->project_a00_form_id);
         $a00PdfHtml=view('control-project.a00.pdf',['a00'=>$pdfA00,'logoData'=>null])->render();
         $this->assertStringContainsString('Terlampir',$a00PdfHtml);
-        $this->assertStringContainsString('VOLUME / MONTH',$a00PdfHtml);
+        $this->assertStringContainsString('VOLUME / YEAR',$a00PdfHtml);
         $this->assertStringContainsString('B001',$a00PdfHtml);
         $this->assertStringContainsString('B002',$a00PdfHtml);
+        $this->actingAs($user)->get(route('control-project.a00.show',$pdfA00))
+            ->assertOk()->assertSee('LAMPIRAN FORECAST QUANTITY')->assertSeeInOrder(['Model','Assy No.','2026','2027','Total']);
         $bulkyPdf=$this->actingAs($user)->get(route('control-project.a00.pdf',$pdfA00));
         $bulkyPdf->assertOk()->assertHeader('content-type','application/pdf');
-        $this->assertStringStartsWith('%PDF-',(string)$bulkyPdf->getContent());
+        $bulkyPdfContent=$bulkyPdf->streamedContent();
+        $this->assertStringStartsWith('%PDF-',$bulkyPdfContent);
+        preg_match_all('#/Type\s*/Page\b#',$bulkyPdfContent,$pdfPages);
+        $this->assertCount(3,$pdfPages[0]);
+        $bulkyExcelPath=app(\App\Services\ControlProject\A00ExcelPdfService::class)->generateExcel($pdfA00);
+        $bulkyExcel=\PhpOffice\PhpSpreadsheet\IOFactory::load($bulkyExcelPath);
+        $mainSheet=$bulkyExcel->getSheetByName('A00');
+        $assySheet=$bulkyExcel->getSheetByName('LAMPIRAN ASSY');
+        $this->assertNotNull($assySheet);
+        foreach(range('A','W') as $column){
+            $this->assertSame($mainSheet->getColumnDimension($column)->getWidth(),$assySheet->getColumnDimension($column)->getWidth());
+        }
+        $this->assertArrayHasKey('B2:E5',$assySheet->getMergeCells());
+        $this->assertArrayHasKey('F2:M5',$assySheet->getMergeCells());
+        $this->assertArrayHasKey('N2:P5',$assySheet->getMergeCells());
+        $this->assertSame($mainSheet->getStyle('F2:M5')->getFont()->getSize(),$assySheet->getStyle('F2:M5')->getFont()->getSize());
+        $this->assertSame('VOLUME / YEAR',$assySheet->getCell('N13')->getValue());
+        $this->assertSame(10,$assySheet->getCell('N14')->getValue());
+        @unlink($bulkyExcelPath);
         $version=app(\App\Services\Costing\BulkyCogmSnapshotService::class)->create($group,'draft',$user->id);
         $this->assertTrue($version->has_incomplete_price);
         $this->assertTrue($version->has_incomplete_quantity);
@@ -597,7 +646,7 @@ class ProjectA00WorkflowTest extends TestCase
         $this->actingAs($recipient)->get(route('marketing.bulky-cogm.download',$finalVersion))->assertStatus(409);
         $this->actingAs($user)->get(route('costing-groups.workspace',$group))
             ->assertOk()->assertSee('Bulky COGM')->assertSee('Marketing Item Bulky')->assertSee('Riwayat:')
-            ->assertSee('Terlampir')->assertSee('VOLUME / MONTH')->assertSee('LAMPIRAN ASSY');
+            ->assertSee('Terlampir')->assertSee('VOLUME / YEAR')->assertSee('LAMPIRAN ASSY');
         $a00=$group->a00Form;
         $projectIds=$a00->items()->pluck('document_project_id')->all();
         $this->actingAs($user)->delete(route('control-project.a00.destroy',$a00))
