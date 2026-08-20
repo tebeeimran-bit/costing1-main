@@ -130,11 +130,13 @@ class ManualCogmWorkbookService
             foreach ($values as $column => $value) {
                 $field = $this->fieldForLabel($this->normalizeLabel((string) $value));
                 if (!$field || array_key_exists($field, $result)) continue;
+                $candidates = [];
                 for ($right = $column + 1; $right <= $column + 8; $right++) {
                     if (!array_key_exists($right, $values)) continue;
                     $number = $this->number($values[$right], (string) $values[$right]);
-                    if ($number !== null) { $result[$field] = $number; break; }
+                    if ($number !== null) $candidates[] = $number;
                 }
+                if ($candidates !== []) $result[$field] = $this->amountCandidate($candidates);
             }
         }
     }
@@ -153,6 +155,7 @@ class ManualCogmWorkbookService
 
     private function findValueToRight(Worksheet $sheet, int $row, int $labelColumn, int $maxColumn): ?float
     {
+        $candidates = [];
         for ($column = $labelColumn + 1; $column <= min($labelColumn + 8, $maxColumn); $column++) {
             $cell = $sheet->getCell([$column, $row]);
             $value = $cell->getValue();
@@ -160,9 +163,18 @@ class ManualCogmWorkbookService
                 $value = $cell->getOldCalculatedValue();
             }
             $number = $this->number($value, $cell->getFormattedValue());
-            if ($number !== null) return $number;
+            if ($number !== null) $candidates[] = $number;
         }
-        return null;
+        return $candidates === [] ? null : $this->amountCandidate($candidates);
+    }
+
+    /**
+     * Resume costing dapat menaruh Qty/jam, Amount, lalu persentase pada baris
+     * yang sama. Nilai Amount adalah kandidat nominal terbesar pada baris itu.
+     */
+    private function amountCandidate(array $candidates): float
+    {
+        return (float) collect($candidates)->sortByDesc(fn (float $value) => abs($value))->first();
     }
 
     private function number(mixed $value, string $formatted): ?float

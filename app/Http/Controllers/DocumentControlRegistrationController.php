@@ -150,7 +150,8 @@ class DocumentControlRegistrationController extends Controller
             ]);
         }
         if($workflowTask && $workflowTask->status===ProjectWorkflowTask::STATUS_PENDING) $workflowTask->update(['status'=>ProjectWorkflowTask::STATUS_IN_PROGRESS,'assigned_user_id'=>$request->user()->id,'started_at'=>now()]);
-        if ($workflowTask && $request->boolean('complete_distribution')) {
+        // Menyimpan registrasi sekaligus menyelesaikan distribusi drawing.
+        if ($workflowTask) {
             return $this->completeDistribution($request, $workflowTask->fresh());
         }
         $message = $workflowTask ? 'Registrasi drawing berhasil disimpan.' : 'Registrasi document control berhasil ditambahkan.';
@@ -182,10 +183,6 @@ class DocumentControlRegistrationController extends Controller
         if ($missing->isNotEmpty()) {
             return back()->with('error', 'Lengkapi '. $missing->join(', ', ' dan ') .' sebelum menyelesaikan distribusi.');
         }
-        if (!$registration->hasAnyDistribution()) {
-            return back()->with('error', 'Isi minimal satu tanggal distribusi sebelum menyelesaikan proses drawing.');
-        }
-
         $pendingDistributions = $registration->missingDistributionLabels();
 
         DB::transaction(function () use ($request, $task, $registration, $pendingDistributions) {
@@ -218,10 +215,7 @@ class DocumentControlRegistrationController extends Controller
             ]);
         });
 
-        $message = 'Distribusi drawing selesai dan task Breakdown telah dikirim ke Admin Costing.';
-        if ($pendingDistributions !== []) {
-            $message .= ' Belum didistribusikan ke: '.implode(', ', $pendingDistributions).'.';
-        }
+        $message = 'Registrasi dan distribusi drawing selesai. Task Breakdown telah dikirim ke Admin Costing.';
         return redirect()->route('document-control.inbox')->with('success', $message);
     }
 

@@ -42,7 +42,7 @@ class ProjectProgressService
         $firstIncomplete = $steps->search(fn (array $step) => !$step['done']);
         $currentIndex = $firstIncomplete === false ? 6 : (int) $firstIncomplete;
         $breakdownSource = data_get($tasks->get(ProjectWorkflowTask::STAGE_BREAKDOWN)?->metadata, 'source');
-        if (in_array($breakdownSource, ['manual_breakdown', 'a00_group_direct'], true)
+        if (in_array($breakdownSource, ['manual_breakdown', 'a00_group_direct', 'a00_direct'], true)
             && !$taskDone(ProjectWorkflowTask::STAGE_BREAKDOWN)) {
             $currentIndex = 2;
         }

@@ -6,6 +6,19 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreDocumentReceiptRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (!$this->has('items') && $this->filled('assy_no')) {
+            $this->merge(['items' => [[
+                'model' => $this->input('model'), 'assy_no' => $this->input('assy_no'),
+                'assy_name' => $this->input('assy_name'), 'forecast' => $this->input('forecast'),
+                'forecast_uom' => $this->input('forecast_uom', 'PCE'),
+                'forecast_basis' => $this->input('forecast_basis', 'per_month'),
+                'project_period' => $this->input('project_period'), 'spot_order' => $this->boolean('spot_order'),
+            ]]]);
+        }
+    }
+
     public function authorize(): bool
     {
         return auth()->check();
@@ -17,10 +30,16 @@ class StoreDocumentReceiptRequest extends FormRequest
             'product_id' => 'nullable|exists:products,id|required_without:business_category_id',
             'business_category_id' => 'nullable|exists:business_categories,id|required_without:product_id',
             'customer_id' => 'required|exists:customers,id',
-            'model' => 'required|string|max:255',
-            'assy_no' => 'required|string|max:255',
-            'assy_name' => 'required|string|max:255',
-            'forecast' => 'nullable|integer|min:0',
+            'items' => 'required|array|min:1|max:20',
+            'items.*.model' => 'required|string|max:255',
+            'items.*.assy_no' => 'required|string|max:255|distinct',
+            'items.*.assy_name' => 'required|string|max:255',
+            'items.*.forecast' => 'nullable|numeric|min:0',
+            'items.*.forecast_uom' => 'required|in:PCE,Set,Unit',
+            'items.*.forecast_basis' => 'required|in:per_month,per_year,spot_order',
+            'items.*.project_period' => 'nullable|integer|min:1|max:99',
+            'items.*.spot_order' => 'nullable|boolean',
+            'forecast' => 'nullable|numeric|min:0',
             'forecast_uom' => 'nullable|string|max:20',
             'forecast_basis' => 'nullable|string|max:20',
             'project_period' => 'nullable|integer|min:0',

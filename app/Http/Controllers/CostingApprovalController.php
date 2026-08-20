@@ -45,15 +45,12 @@ class CostingApprovalController extends Controller
                 'document_revision_id' => $revision->id,
                 'costing_data_id' => $costing->id,
                 'status' => CostingApproval::STATUS_WAITING,
-                'cogm_value' => $this->cogmValue($costing),
+                'cogm_value' => $this->cogmValue($costing, $revision),
                 'submitted_by_id' => $request->user()->id,
                 'submitted_at' => now(),
                 'submit_notes' => $validated['submit_notes'] ?? null,
             ]);
-
-            $revision->update([
-                'status' => DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL,
-            ]);
+            $revision->update(['status' => DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL]);
         });
         $this->refreshCostingGroup($revision);
 
@@ -154,7 +151,7 @@ class CostingApprovalController extends Controller
                 'document_revision_id' => $revision->id,
                 'submitted_at' => now(),
                 'pic_marketing' => $picMarketing,
-                'cogm_value' => $this->cogmValue($costing),
+                'cogm_value' => $this->cogmValue($costing, $revision),
                 'submitted_by' => $request->user()->name,
                 'notes' => $validated['notes'] ?? null,
             ]);
@@ -380,13 +377,18 @@ class CostingApprovalController extends Controller
             'document_revision_id' => $revision->id,
             'costing_data_id' => $costing?->id,
             'status' => CostingApproval::STATUS_WAITING,
-            'cogm_value' => $costing ? $this->cogmValue($costing) : null,
+            'cogm_value' => $costing ? $this->cogmValue($costing, $revision) : null,
             'submitted_at' => now(),
         ]);
     }
 
-    private function cogmValue(CostingData $costing): float
+    private function cogmValue(CostingData $costing, ?DocumentRevision $revision = null): float
     {
+        $revision ??= $costing->trackingRevision;
+        if ($revision?->manual_cogm_value !== null) {
+            return (float) $revision->manual_cogm_value;
+        }
+
         return (float) ($costing->material_cost ?? 0)
             + (float) ($costing->labor_cost ?? 0)
             + (float) ($costing->overhead_cost ?? 0)

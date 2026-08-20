@@ -24,6 +24,22 @@ class TrackingDocumentProjectService
     ) {
     }
 
+    public function createReceipts(array $validated, Request $request): \Illuminate\Support\Collection
+    {
+        $bundleKey = count($validated['items']) > 1 ? (string) Str::uuid() : null;
+        return collect($validated['items'])->map(function (array $item) use ($validated, $request, $bundleKey) {
+            $spotOrder = !empty($item['spot_order']);
+            return $this->createReceipt(array_merge($validated, [
+                'model' => $item['model'], 'assy_no' => $item['assy_no'], 'assy_name' => $item['assy_name'],
+                'forecast' => $item['forecast'] ?? null, 'forecast_uom' => $item['forecast_uom'],
+                'forecast_basis' => $spotOrder ? 'spot_order' : $item['forecast_basis'],
+                'project_period' => $spotOrder ? null : ($item['project_period'] ?? null),
+                'spot_order' => $spotOrder,
+                'project_bundle_key' => $bundleKey,
+            ]), $request);
+        });
+    }
+
     public function createReceipt(array $validated, Request $request): DocumentRevision
     {
         return DB::transaction(function () use ($validated, $request) {
@@ -83,6 +99,12 @@ class TrackingDocumentProjectService
                 'received_date' => $validated['received_date'] ?? now()->toDateString(),
                 'pic_engineering' => $validated['pic_engineering'],
                 'pic_marketing' => $validated['pic_marketing'] ?? null,
+                'forecast' => $validated['forecast'] ?? null,
+                'forecast_uom' => $validated['forecast_uom'] ?? 'PCE',
+                'forecast_basis' => $validated['forecast_basis'] ?? 'per_month',
+                'project_period' => $validated['project_period'] ?? null,
+                'spot_order' => !empty($validated['spot_order']),
+                'project_bundle_key' => $validated['project_bundle_key'] ?? null,
                 'a00' => $a00Status,
                 'a00_received_date' => $a00Status === 'ada' ? ($validated['a00_received_date'] ?? null) : null,
                 'a00_document_original_name' => $a00Status === 'ada' ? $a00Document['name'] : null,
@@ -233,6 +255,63 @@ class TrackingDocumentProjectService
                 'a05_document_file_path' => $a05['path'],
             ]);
 
+            $revisionIds = $project->revisions()->pluck('id');
+
+            // Document Control menyimpan beberapa identitas project sebagai snapshot.
+            // Perbarui snapshot tersebut agar inbox Drawing tidak menampilkan nama lama.
+            DocumentControlRegistration::query()
+                ->whereIn('document_revision_id', $revisionIds)
+                ->update([
+                    'customer' => $normalizedCustomer,
+                    'project' => $normalizedModel,
+                    'part_number' => $normalizedPartNumber,
+                    'part_name' => $normalizedPartName,
+                    'business_category' => $resolvedProduct->line ?: $resolvedProduct->name,
+                ]);
+
+            // Identitas project pada seluruh histori costing harus tetap konsisten.
+            $costingColumns = array_fill_keys(Schema::getColumnListing('costing_data'), true);
+            CostingData::query()
+                ->whereIn('tracking_revision_id', $revisionIds)
+                ->update(array_intersect_key([
+                    'product_id' => $resolvedProduct->id,
+                    'customer_id' => (int) $validated['customer_id'],
+                    'model' => $normalizedModel,
+                    'assy_no' => $normalizedPartNumber,
+                    'assy_name' => $normalizedPartName,
+                ], $costingColumns));
+
+            $a00Item = \App\Models\ProjectA00Item::query()
+                ->with(['form.costingGroup', 'costingGroupItem'])
+                ->where('document_project_id', $project->id)
+                ->first();
+
+            if ($a00Item) {
+                $a00Item->update([
+                    'model' => $normalizedModel,
+                    'assy_number' => $normalizedPartNumber,
+                    'assy_name' => $normalizedPartName,
+                ]);
+                $a00Item->costingGroupItem?->update([
+                    'pic_engineering' => $validated['pic_engineering'],
+                    'pic_marketing' => $validated['pic_marketing'],
+                ]);
+
+                if ((int) $a00Item->line_number === 1) {
+                    $a00Item->form->update([
+                        'customer' => $normalizedCustomer,
+                        'model' => $normalizedModel,
+                        'assy_number' => $normalizedPartNumber,
+                        'assy_name' => $normalizedPartName,
+                    ]);
+                    $a00Item->form->costingGroup?->update([
+                        'pic_engineering' => $validated['pic_engineering'],
+                        'pic_marketing' => $validated['pic_marketing'],
+                        'updated_by_id' => $request->user()?->id,
+                    ]);
+                }
+            }
+
             /*
              * Sinkronkan informasi project di modal Project ke data Form Costing.
              * Jadi setelah field Quantity / Plant / Periode di Form Costing berubah,
@@ -258,8 +337,6 @@ class TrackingDocumentProjectService
                 : null;
 
             if ($costingData) {
-                $costingColumns = array_fill_keys(Schema::getColumnListing('costing_data'), true);
-
                 $costingPayload = [
                     'product_id' => $resolvedProduct->id,
                     'customer_id' => (int) $validated['customer_id'],
@@ -275,10 +352,6 @@ class TrackingDocumentProjectService
                 ];
 
                 $costingData->update(array_intersect_key($costingPayload, $costingColumns));
-
-                $a00Item = \App\Models\ProjectA00Item::query()
-                    ->where('document_revision_id', $latestRevision->id)
-                    ->first();
 
                 if ($a00Item) {
                     $a00Quantity = $costingPayload['forecast'];

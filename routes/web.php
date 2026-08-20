@@ -233,6 +233,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/costing/selected-exchange-rate', [CostingController::class, 'rememberSelectedExchangeRate'])->name('costing.selected-exchange-rate');
         Route::post('/costing/material-excel/export', [CostingController::class, 'exportMaterialEditor'])->name('costing.material-excel.export');
         Route::post('/costing/material-excel/import', [CostingController::class, 'importMaterialEditor'])->name('costing.material-excel.import');
+        Route::post('/costing/material-excel/import-manual', [CostingController::class, 'importManualMaterialExcel'])->name('costing.material-excel.import-manual');
         Route::get('/costing/store', function () {
             return redirect(route('form', [], false))
                 ->with('warning', 'Halaman simpan tidak bisa dibuka langsung. Silakan simpan data dari Form Costing.');

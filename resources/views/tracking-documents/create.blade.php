@@ -124,6 +124,7 @@
             display: flex;
             justify-content: flex-end;
         }
+        .project-items{grid-column:1/-1;display:grid;gap:.75rem}.project-items-head{display:flex;align-items:center;justify-content:space-between}.project-item{border:1px solid #cbd5e1;border-radius:.65rem;background:#f8fafc;padding:.8rem}.project-item-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.7rem;color:#17458e;font-weight:800}.project-item-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem}.project-item .remove-project-item{border:0;background:#fee2e2;color:#b91c1c;border-radius:.4rem;padding:.35rem .6rem;cursor:pointer}.spot-note{display:none;margin-top:.35rem;color:#0f766e;font-size:.75rem;font-weight:700}.project-item.is-spot .spot-note{display:block}
 
         @media (max-width: 1000px) {
             .receipt-grid,
@@ -190,36 +191,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Model <span style="color: var(--red-500);">*</span></label>
-                        <input type="text" name="model" class="form-input" value="{{ old('model') }}" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Assy No. <span style="color: var(--red-500);">*</span></label>
-                        <input type="text" name="assy_no" class="form-input" value="{{ old('assy_no') }}" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Assy Name <span style="color: var(--red-500);">*</span></label>
-                        <input type="text" name="assy_name" class="form-input" value="{{ old('assy_name') }}" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Quantity</label>
-                        <div style="display: grid; grid-template-columns: 1.2fr 1fr 1.2fr; gap: 0.45rem;">
-                            <input type="number" name="forecast" class="form-input" min="0" value="{{ old('forecast', 2000) }}" placeholder="2000">
-                            <select name="forecast_uom" class="form-select">
-                                <option value="PCE" {{ old('forecast_uom', 'PCE') === 'PCE' ? 'selected' : '' }}>PCE</option>
-                                <option value="Set" {{ old('forecast_uom') === 'Set' ? 'selected' : '' }}>Set</option>
-                            </select>
-                            <select name="forecast_basis" class="form-select">
-                                <option value="per_month" {{ old('forecast_basis', 'per_month') === 'per_month' ? 'selected' : '' }}>Per Bulan</option>
-                                <option value="per_year" {{ old('forecast_basis') === 'per_year' ? 'selected' : '' }}>Per Tahun</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Product's Life</label>
-                        <input type="number" name="project_period" class="form-input" min="0" value="{{ old('project_period', 2) }}">
-                    </div>
+                    <div class="project-items"><div class="project-items-head"><div><strong>Item / Assy</strong><small class="field-help">Tambahkan semua assy dalam request yang sama.</small></div><button type="button" class="btn btn-secondary" id="addProjectItem">+ Tambah Item</button></div><div id="projectItems"></div></div>
                     <div class="form-group">
                         <label class="form-label">Plant</label>
                         <select name="line" class="form-select">
@@ -399,7 +371,41 @@
         </div>
     </div>
 
+    @php
+        $initialProjectItems = old('items');
+        if (!is_array($initialProjectItems) || $initialProjectItems === []) {
+            $initialProjectItems = [[
+                'model' => '', 'assy_no' => '', 'assy_name' => '', 'forecast' => 2000,
+                'forecast_uom' => 'PCE', 'forecast_basis' => 'per_month',
+                'project_period' => 2, 'spot_order' => 0,
+            ]];
+        }
+    @endphp
     <script>
+        const initialProjectItems = @json($initialProjectItems);
+        const projectItems = document.getElementById('projectItems');
+        const escapeItem = value => String(value ?? '').replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
+        function addProjectItem(seed = {}) {
+            const item = document.createElement('div'); item.className = 'project-item';
+            item.innerHTML = `<div class="project-item-head"><span>ITEM / ASSY <b data-item-number></b></span><button type="button" class="remove-project-item">Hapus</button></div><div class="project-item-grid">
+                <div class="form-group"><label class="form-label">Model *</label><input class="form-input" data-field="model" value="${escapeItem(seed.model)}" required></div>
+                <div class="form-group"><label class="form-label">Assy No. *</label><input class="form-input" data-field="assy_no" value="${escapeItem(seed.assy_no)}" required></div>
+                <div class="form-group"><label class="form-label">Assy Name *</label><input class="form-input" data-field="assy_name" value="${escapeItem(seed.assy_name)}" required></div>
+                <div class="form-group"><label class="form-label">Quantity</label><input type="number" min="0" step="any" class="form-input" data-field="forecast" value="${escapeItem(seed.forecast ?? 2000)}"></div>
+                <div class="form-group"><label class="form-label">UOM</label><select class="form-select" data-field="forecast_uom"><option ${seed.forecast_uom==='PCE'?'selected':''}>PCE</option><option ${seed.forecast_uom==='Set'?'selected':''}>Set</option><option ${seed.forecast_uom==='Unit'?'selected':''}>Unit</option></select></div>
+                <div class="form-group"><label class="form-label">Basis Quantity</label><select class="form-select" data-field="forecast_basis"><option value="per_month" ${seed.forecast_basis!=='per_year'?'selected':''}>Per Bulan</option><option value="per_year" ${seed.forecast_basis==='per_year'?'selected':''}>Per Tahun</option><option value="spot_order" hidden>Spot Order</option></select></div>
+                <div class="form-group"><label class="form-label">Product's Life (Years)</label><input type="number" min="1" max="99" class="form-input" data-field="project_period" value="${escapeItem(seed.project_period ?? 2)}" required></div>
+                <div class="form-group"><label class="form-label">Jenis Project</label><label style="display:flex;align-items:center;gap:.45rem;height:2.5rem"><input type="checkbox" value="1" data-field="spot_order" ${seed.spot_order?'checked':''}> Spot Order</label><div class="spot-note">Quantity menjadi total pesanan; Product's Life tidak berlaku.</div></div>
+            </div>`;
+            projectItems.appendChild(item);
+            item.querySelector('.remove-project-item').addEventListener('click',()=>{if(projectItems.children.length>1){item.remove();renumberProjectItems();}});
+            item.querySelector('[data-field="spot_order"]').addEventListener('change',()=>syncSpotOrder(item));
+            syncSpotOrder(item); renumberProjectItems();
+        }
+        function syncSpotOrder(item){const checked=item.querySelector('[data-field="spot_order"]').checked,life=item.querySelector('[data-field="project_period"]'),basis=item.querySelector('[data-field="forecast_basis"]');item.classList.toggle('is-spot',checked);life.disabled=checked;life.required=!checked;if(checked){life.value='';basis.value='spot_order'}else if(basis.value==='spot_order'){basis.value='per_month';}}
+        function renumberProjectItems(){[...projectItems.children].forEach((item,index)=>{item.querySelector('[data-item-number]').textContent=index+1;item.querySelectorAll('[data-field]').forEach(input=>{input.name=`items[${index}][${input.dataset.field}]`;});});}
+        initialProjectItems.forEach(addProjectItem);
+        document.getElementById('addProjectItem').addEventListener('click',()=>addProjectItem({forecast:2000,forecast_uom:'PCE',forecast_basis:'per_month',project_period:2}));
         const RECEIPT_ALLOWED_EXTENSIONS = ['xls', 'xlsx'];
         const RECEIPT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 

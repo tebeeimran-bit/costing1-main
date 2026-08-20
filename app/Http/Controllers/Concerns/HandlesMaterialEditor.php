@@ -778,6 +778,106 @@ HandlesMaterialEditor
         }
     }
 
+    public function importManualMaterialExcel(Request $request)
+    {
+        @set_time_limit(120);
+        @ini_set('memory_limit', '1024M');
+
+        $validated = $request->validate([
+            'material_file' => ['required', 'file', 'mimes:xls,xlsx', 'max:10240'],
+        ]);
+
+        try {
+            $reader = IOFactory::createReaderForFile($validated['material_file']->getRealPath());
+            $reader->setReadDataOnly(true);
+            $workbook = $reader->load($validated['material_file']->getRealPath());
+            $aliases = [
+                'part_no' => ['part no', 'part number', 'material no', 'material number', 'partno'],
+                'id_code' => ['id code', 'id', 'code'],
+                'part_name' => ['part name', 'material name', 'description', 'part description'],
+                'qty_req' => ['quantity', 'qty', 'qty req', 'required qty', 'usage'],
+                'unit' => ['unit', 'uom', 'satuan'],
+                'pro_code' => ['pro code', 'process code'],
+                'amount1' => ['amount', 'amount1', 'amount 1', 'price', 'unit price'],
+                'unit_price_basis' => ['unit price basis', 'unit price (basis)', 'price basis', 'basis'],
+                'currency' => ['currency', 'curr', 'mata uang'],
+                'qty_moq' => ['moq', 'qty moq', 'qty. moq', 'minimum order qty'],
+                'cn_type' => ['cn type', 'c/n', 'c / n', 'cn'],
+                'supplier' => ['supplier', 'vendor'],
+                'import_tax' => ['import tax', 'import tax (%)', 'import tax %', 'tax', 'tax (%)', 'bea masuk'],
+            ];
+            $normalize = static fn ($value) => trim((string) preg_replace('/\s+/', ' ', mb_strtolower((string) $value)));
+            $selectedSheet = null;
+            $headerRow = null;
+            $columns = [];
+
+            foreach ($workbook->getAllSheets() as $sheet) {
+                $maxRow = min(50, (int) $sheet->getHighestDataRow());
+                $maxColumn = min(60, \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($sheet->getHighestDataColumn()));
+                for ($row = 1; $row <= $maxRow; $row++) {
+                    $candidate = [];
+                    for ($column = 1; $column <= $maxColumn; $column++) {
+                        $header = $normalize($this->materialEditorCellValue($sheet->getCell([$column, $row])));
+                        foreach ($aliases as $field => $names) {
+                            if ($header !== '' && in_array($header, $names, true)) $candidate[$field] = $column;
+                        }
+                    }
+                    if (isset($candidate['part_no'], $candidate['part_name'], $candidate['qty_req'], $candidate['unit'])) {
+                        $selectedSheet = $sheet;
+                        $headerRow = $row;
+                        $columns = $candidate;
+                        break 2;
+                    }
+                }
+            }
+
+            if (!$selectedSheet) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Header material tidak ditemukan. Kolom wajib: Part Number, Part Name, Quantity, dan Unit.',
+                ], 422);
+            }
+
+            $rows = [];
+            $blankRows = 0;
+            for ($excelRow = $headerRow + 1; $excelRow <= $selectedSheet->getHighestDataRow(); $excelRow++) {
+                $row = [];
+                foreach ($aliases as $field => $_) {
+                    $row[$field] = isset($columns[$field])
+                        ? trim((string) $this->materialEditorCellValue($selectedSheet->getCell([$columns[$field], $excelRow])))
+                        : '';
+                }
+                if (collect([$row['part_no'], $row['part_name'], $row['qty_req'], $row['unit']])->every(fn ($value) => $value === '')) {
+                    if (++$blankRows >= 20) break;
+                    continue;
+                }
+                $blankRows = 0;
+                if ($row['part_no'] === '' && $row['part_name'] === '') continue;
+                foreach (['qty_req', 'amount1', 'qty_moq', 'import_tax'] as $field) {
+                    $row[$field] = $row[$field] === '' ? '' : (string) $this->toFloatValue($row[$field]);
+                }
+                $row['currency'] = strtoupper($row['currency'] ?: 'IDR');
+                $row['cn_type'] = strtoupper($row['cn_type'] ?: 'N');
+                $row['unit'] = strtoupper($row['unit']);
+                $row['__row_no'] = count($rows) + 1;
+                $rows[] = $row;
+            }
+
+            if ($rows === []) {
+                return response()->json(['success' => false, 'message' => 'Tidak ada baris material yang dapat dibaca setelah header.'], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => count($rows).' baris material ditemukan pada sheet '.$selectedSheet->getTitle().'.',
+                'sheet' => $selectedSheet->getTitle(),
+                'rows' => $rows,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'File Excel manual tidak dapat dibaca: '.$e->getMessage()], 422);
+        }
+    }
+
     private function materialEditorCellValue(\PhpOffice\PhpSpreadsheet\Cell\Cell $cell): mixed
     {
         // Hindari kalkulasi ulang ribuan formula saat import. Excel menyimpan hasil

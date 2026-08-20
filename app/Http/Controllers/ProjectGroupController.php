@@ -181,8 +181,10 @@ class ProjectGroupController extends Controller
                 && $revisionStatus === DocumentRevision::STATUS_WAITING_COORDINATOR_APPROVAL;
             $costing->can_send = in_array($userRole, ['admin', 'coordinator_costing'], true)
                 && $revisionStatus === DocumentRevision::STATUS_APPROVED_BY_COORDINATOR;
-            $costing->cogm_value = (float) $costing->material_cost + (float) $costing->labor_cost
-                + (float) $costing->overhead_cost + (float) $costing->scrap_cost;
+            $costing->cogm_value = $revision?->manual_cogm_value !== null
+                ? (float) $revision->manual_cogm_value
+                : (float) $costing->material_cost + (float) $costing->labor_cost
+                    + (float) $costing->overhead_cost + (float) $costing->scrap_cost;
             $costing->approval = $approval;
 
             return $costing;
@@ -342,7 +344,7 @@ class ProjectGroupController extends Controller
         if (isset($summary['cogm_total']) && !isset($summary['scrap_cost'])) {
             $costs['scrap_cost'] = max(0, (float) $summary['cogm_total'] - $costs['material_cost'] - $costs['labor_cost'] - $costs['overhead_cost']);
         }
-        $cogmValue = array_sum($costs);
+        $cogmValue = isset($summary['cogm_total']) ? (float) $summary['cogm_total'] : array_sum($costs);
         $missingCount = $data['pricing_status'] === 'incomplete' ? (int) $data['missing_price_count'] : 0;
 
         try {
@@ -352,6 +354,7 @@ class ProjectGroupController extends Controller
                     'cogm_import_original_name' => $file->getClientOriginalName(),
                     'cogm_import_file_path' => $path,
                     'cogm_import_uploaded_at' => now(),
+                    'manual_cogm_value' => $cogmValue,
                     'pricing_status' => $data['pricing_status'],
                     'manual_missing_price_count' => $missingCount,
                     'pricing_status_note' => $data['description'] ?? null,
@@ -516,6 +519,7 @@ class ProjectGroupController extends Controller
                 'cogm_value' => $cogmValue,
                 'a00_form_id' => $a00Form?->id,
                 'a00_document_number' => $this->cleanText($a00Form?->document_number ?? ''),
+                'project_bundle_key' => $revision->project_bundle_key,
 
                 'business_category' => $businessCategory,
                 'customer' => $customer,
@@ -606,18 +610,22 @@ class ProjectGroupController extends Controller
         $groups = $children
             ->groupBy(fn ($item) => $item->a00_form_id
                 ? 'a00:'.$item->a00_form_id
-                : $this->groupKey($item->business_category, $item->customer, $item->model)
+                : ($item->project_bundle_key
+                    ? 'bundle:'.$item->project_bundle_key
+                    : $this->groupKey($item->business_category, $item->customer, $item->model)
                     .'|assy:'.$this->normalizePartNumber($item->part_number))
+                )
             ->map(function (Collection $items) {
                 $first = $items->first();
                 $groupedByA00 = !empty($first->a00_form_id);
+                $groupedByBundle = !$groupedByA00 && !empty($first->project_bundle_key);
 
                 return (object) [
                     'key' => $groupedByA00
                         ? 'a00:'.$first->a00_form_id
                         : $this->groupKey($first->business_category, $first->customer, $first->model)
                             .'|assy:'.$this->normalizePartNumber($first->part_number),
-                    'grouped_by_a00' => $groupedByA00,
+                    'grouped_by_a00' => $groupedByA00 || $groupedByBundle,
                     'business_category' => $first->business_category,
                     'customer' => $first->customer,
                     'model' => $this->joinUnique($items->pluck('model')),
@@ -630,7 +638,11 @@ class ProjectGroupController extends Controller
                     'update_note' => $items->sortByDesc('updated_at')->first()->update_note,
                     'total_part_number' => $items->pluck('part_number')->filter()->unique()->count(),
                     'total_items' => $items->count(),
-                    'shared_a00_labels' => $items
+                    'shared_a00_labels' => $groupedByBundle ? collect([(object) [
+                        'key' => $first->project_bundle_key,
+                        'number' => 'Menunggu penerbitan A00',
+                        'project_count' => $items->pluck('project.id')->unique()->count(),
+                    ]]) : $items
                         ->filter(fn ($item) => ($item->shared_a00_count ?? 0) > 1)
                         ->map(fn ($item) => (object) [
                             'key' => $item->a00_form_id,

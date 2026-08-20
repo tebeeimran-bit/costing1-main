@@ -46,10 +46,10 @@ class BreakdownInboxController extends Controller
                 ->orWhere('part_number', 'like', "%{$search}%")
                 ->orWhere('part_name', 'like', "%{$search}%")))
             ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM project_a00_items pai WHERE pai.document_project_id = project_workflow_tasks.document_project_id) THEN 0 ELSE 1 END')
-            ->orderByRaw('(SELECT pai.project_a00_form_id FROM project_a00_items pai WHERE pai.document_project_id = project_workflow_tasks.document_project_id LIMIT 1)')
+            ->orderByRaw('(SELECT pai.project_a00_form_id FROM project_a00_items pai WHERE pai.document_project_id = project_workflow_tasks.document_project_id LIMIT 1) DESC')
             ->orderByRaw('(SELECT pai.line_number FROM project_a00_items pai WHERE pai.document_project_id = project_workflow_tasks.document_project_id LIMIT 1)')
-            ->oldest('available_at')
-            ->oldest('id');
+            ->latest('available_at')
+            ->latest('id');
         BusinessCategoryContext::apply($tasks);
         $tasks=$tasks->paginate(20)->withQueryString();
 
@@ -74,19 +74,28 @@ class BreakdownInboxController extends Controller
         };
         $documentControlRows=DocumentControlRegistration::with('revision')
             ->whereNotNull('document_project_id')->latest('id')->get()->unique('document_project_id');
-        $documentControlProjects=DocumentProject::with('product')->whereIn('id',$documentControlRows->pluck('document_project_id'))->get()->keyBy('id');
+        $documentControlProjects=DocumentProject::with('product')->whereIn('id',$documentControlRows->pluck('document_project_id'));
+        BusinessCategoryContext::applyToProjects($documentControlProjects);
+        $documentControlProjects=$documentControlProjects->get()->keyBy('id');
         $documentControlSources=$documentControlRows
             ->map(fn($registration)=>$documentControlProjects->has($registration->document_project_id)
                 ? $sourcePayload('document_control',$documentControlProjects->get($registration->document_project_id),$registration->revision)
                 : null)->filter()->values();
         $a00Items=ProjectA00Item::with(['projectRevision','form'])
             ->whereNotNull('document_project_id')->latest('id')->get()->unique('document_project_id');
-        $a00Projects=DocumentProject::with('product')->whereIn('id',$a00Items->pluck('document_project_id'))->get()->keyBy('id');
+        $a00Projects=DocumentProject::with('product')->whereIn('id',$a00Items->pluck('document_project_id'));
+        BusinessCategoryContext::applyToProjects($a00Projects);
+        $a00Projects=$a00Projects->get()->keyBy('id');
         $controlProjectSources=$a00Items
             ->map(fn($item)=>$a00Projects->has($item->document_project_id)
                 ? $sourcePayload('control_project',$a00Projects->get($item->document_project_id),$item->projectRevision)
                 : null)->filter()->values();
-        $breakdownSources=$documentControlSources->concat($controlProjectSources)->values();
+        $projectSources=DocumentProject::with(['product','revisions'=>fn($query)=>$query->latest('version_number')])
+            ->whereDoesntHave('a00Form')->whereDoesntHave('a00Item');
+        BusinessCategoryContext::applyToProjects($projectSources);
+        $projectSources=$projectSources->get()
+            ->map(fn($project)=>$sourcePayload('project',$project,$project->revisions->first()))->values();
+        $breakdownSources=$projectSources->concat($documentControlSources)->concat($controlProjectSources)->values();
         return view('breakdown.inbox', compact('tasks', 'search', 'filter', 'customers', 'categories', 'picsEngineering', 'picsMarketing', 'activeBusinessCategory', 'breakdownSources'));
     }
 
@@ -99,12 +108,25 @@ class BreakdownInboxController extends Controller
             'assy_number'=>['required','string','max:255'],'received_date'=>['required','date'],
             'pic_engineering'=>['required','string','max:255'],'pic_marketing'=>['nullable','string','max:255'],
             'notes'=>['nullable','string','max:1000'],
+            'source_project_id'=>['nullable','integer','exists:document_projects,id'],
         ]);
         $category=BusinessCategory::findOrFail($data['business_category_id']);
         abort_if(BusinessCategoryContext::selectedId() && BusinessCategoryContext::selectedId() !== $category->id,422,'Business Category form harus sama dengan kategori aktif.');
         $customer=Customer::findOrFail($data['customer_id']);
 
         DB::transaction(function() use($data,$category,$customer,$request){
+            if (!empty($data['source_project_id'])) {
+                $project=DocumentProject::lockForUpdate()->findOrFail($data['source_project_id']);
+                $revision=$project->revisions()->latest('version_number')->lockForUpdate()->firstOrFail();
+                ProjectWorkflowTask::firstOrCreate([
+                    'document_revision_id'=>$revision->id,'stage'=>ProjectWorkflowTask::STAGE_BREAKDOWN,
+                ],[
+                    'document_project_id'=>$project->id,'assigned_role'=>'admin_costing',
+                    'status'=>ProjectWorkflowTask::STATUS_PENDING,'available_at'=>now(),
+                    'metadata'=>['source'=>'project','without_a00'=>$revision->a00!=='ada'],
+                ]);
+                return;
+            }
             $product=Product::firstOrCreate(
                 ['code'=>$category->code?:strtoupper(Str::slug($category->name,'-'))],
                 ['name'=>$category->name,'line'=>'']

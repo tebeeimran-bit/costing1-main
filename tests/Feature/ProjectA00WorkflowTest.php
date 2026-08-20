@@ -205,7 +205,7 @@ class ProjectA00WorkflowTest extends TestCase
         $project=\App\Models\DocumentProject::where('part_number','DBD-001')->firstOrFail();
         $revision=$project->revisions()->firstOrFail();
         $this->actingAs($user)->get(route('document-control.inbox'))
-            ->assertOk()->assertSee('Project Menunggu Registrasi Drawing')
+            ->assertOk()->assertSee('Menunggu Registrasi & Distribusi', false)
             ->assertSee('DBD-001')->assertSee('Buat Registrasi Drawing');
 
         $this->actingAs($user)->post(route('document-control.store'),[
@@ -358,6 +358,8 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseHas('document_revisions',['version_number'=>1,'status'=>DocumentRevision::STATUS_A00_ISSUED]);
         $this->assertDatabaseHas('document_revisions',['plant_id'=>$plant->id,'period'=>'2026-08','pic_engineering'=>'Engineer Test','pic_marketing'=>'Marketing Test']);
         $this->assertDatabaseHas('project_workflow_tasks',['stage'=>'drawing','assigned_role'=>'document_control','status'=>'pending']);
+        $this->assertDatabaseHas('project_workflow_tasks',['stage'=>'breakdown','assigned_role'=>'admin_costing','status'=>'pending']);
+        $this->assertSame(3, app(\App\Services\ProjectProgressService::class)->compact(DocumentRevision::firstOrFail())['current']);
         $this->assertDatabaseHas('costing_groups',['mode'=>'normal','status'=>'draft','pic_engineering'=>'Engineer Test','pic_marketing'=>'Marketing Test']);
         $this->assertDatabaseHas('costing_group_items',['sequence'=>1,'status'=>'pending','quantity'=>810000]);
 
@@ -440,22 +442,10 @@ class ProjectA00WorkflowTest extends TestCase
         $this->assertDatabaseHas('document_control_registrations',['workflow_task_id'=>$task->id,'registration_no'=>'A38-UPDATED']);
         $this->actingAs($user)->get(route('document-control.inbox'))
             ->assertOk()
-            ->assertSee('Lengkapi Distribusi')
+            ->assertSee('Riwayat Registrasi & Distribusi', false)
             ->assertSee('Drawing Assy develop')
             ->assertSee($customer->name)
             ->assertSee($category->name);
-
-        $this->actingAs($user)->post(route('document-control.tasks.complete',$task))
-            ->assertSessionHas('error');
-        $this->assertDatabaseMissing('project_workflow_tasks',['stage'=>'breakdown']);
-
-        $this->actingAs($user)->post(route('document-control.store'),[
-            'workflow_task_id'=>$task->id,'complete_distribution'=>1,
-            'registration_no'=>'A38-UPDATED','registration_date'=>'2026-08-03',
-            'customer'=>$customer->name,'project'=>'K4MA','part_number'=>'W40294',
-            'part_name'=>'CORD ASSY','drawing_status'=>'New Drawing','pd_distribution'=>'2026-08-04',
-        ])->assertRedirect(route('document-control.inbox'));
-        $this->actingAs($user)->post(route('document-control.tasks.complete',$task))->assertRedirect(route('document-control.inbox'));
 
         $this->assertDatabaseHas('project_workflow_tasks',[
             'id'=>$task->id,'stage'=>'drawing','status'=>'completed','completed_by_id'=>$user->id,
@@ -467,7 +457,7 @@ class ProjectA00WorkflowTest extends TestCase
 
         Storage::fake('local');
         $breakdownTask=ProjectWorkflowTask::where('stage','breakdown')->firstOrFail();
-        $this->assertSame(['QA','PNP & QT','PPE/PME'], $breakdownTask->metadata['pending_distributions']);
+        $this->assertSame('a00_direct', $breakdownTask->metadata['source']);
         $this->actingAs($user)->get(route('breakdown.inbox'))
             ->assertOk()
             ->assertSee('W40294-EDIT')
@@ -654,5 +644,43 @@ class ProjectA00WorkflowTest extends TestCase
             ->assertSessionHas('success');
         $this->assertDatabaseMissing('project_a00_forms',['id'=>$a00->id]);
         foreach($projectIds as $projectId) $this->assertDatabaseMissing('document_projects',['id'=>$projectId]);
+    }
+
+    public function test_new_project_modal_creates_multiple_assy_and_preserves_spot_order(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $category = BusinessCategory::create(['code' => 'MULTI', 'name' => 'Multi Category']);
+        $customer = Customer::create(['code' => 'MULTI', 'name' => 'Multi Customer']);
+
+        $this->actingAs($admin)->get(route('tracking-documents.create', ['embedded'=>1]))
+            ->assertOk()->assertSee('+ Tambah Item')->assertSee('Spot Order');
+
+        $this->actingAs($admin)->post(route('tracking-documents.store-receipt'), [
+            'business_category_id' => $category->id, 'customer_id' => $customer->id,
+            'pic_engineering' => 'Engineer', 'pic_marketing' => 'Marketing',
+            'items' => [
+                ['model'=>'K1','assy_no'=>'ASSY-REG','assy_name'=>'Regular','forecast'=>2000,'forecast_uom'=>'PCE','forecast_basis'=>'per_month','project_period'=>2,'spot_order'=>0],
+                ['model'=>'K1','assy_no'=>'ASSY-SPOT','assy_name'=>'Spot','forecast'=>500,'forecast_uom'=>'Set','forecast_basis'=>'spot_order','spot_order'=>1],
+            ],
+        ])->assertRedirect(route('project'));
+
+        $this->assertDatabaseHas('document_projects', ['part_number'=>'ASSY-REG']);
+        $this->assertDatabaseHas('document_projects', ['part_number'=>'ASSY-SPOT']);
+        $this->assertDatabaseHas('document_revisions', ['forecast'=>2000,'forecast_basis'=>'per_month','project_period'=>2,'spot_order'=>0]);
+        $this->assertDatabaseHas('document_revisions', ['forecast'=>500,'forecast_basis'=>'spot_order','project_period'=>null,'spot_order'=>1]);
+        $bundleKeys = DocumentRevision::whereHas('project', fn ($query) => $query->whereIn('part_number', ['ASSY-REG','ASSY-SPOT']))
+            ->pluck('project_bundle_key')->filter()->unique();
+        $this->assertCount(1, $bundleKeys);
+        $this->actingAs($admin)->get(route('project'))->assertOk()
+            ->assertSee('ASSY-REG')->assertSee('ASSY-SPOT')->assertSee('Menunggu penerbitan A00');
+
+        $sourceProject = \App\Models\DocumentProject::where('part_number', 'ASSY-REG')->firstOrFail();
+        $revisionCount = $sourceProject->revisions()->count();
+        $this->actingAs($admin)->post(route('breakdown.manual.store'), [
+            'source_project_id'=>$sourceProject->id, 'business_category_id'=>$category->id,
+            'customer_id'=>$customer->id, 'model'=>'K1', 'assy_name'=>'Regular', 'assy_number'=>'ASSY-REG',
+            'received_date'=>'2026-08-20', 'pic_engineering'=>'Engineer', 'pic_marketing'=>'Marketing',
+        ])->assertRedirect(route('breakdown.inbox'));
+        $this->assertSame($revisionCount, $sourceProject->revisions()->count());
     }
 }

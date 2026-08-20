@@ -15,14 +15,15 @@ class DocumentControlInboxController extends Controller
 {
     public function index(Request $request)
     {
-        $tab=in_array($request->query('tab'),['breakdown','distribution','registrations'],true)
-            ? (string)$request->query('tab')
-            : 'breakdown';
+        $requestedTab = (string) $request->query('tab');
+        // Registrasi dan distribusi adalah satu proses. URL tab lama tetap
+        // diarahkan ke antrean yang sama agar bookmark pengguna tidak rusak.
+        $tab = $requestedTab === 'registrations' ? 'registrations' : 'pending';
         $search=trim((string)$request->query('q'));
         $query=ProjectWorkflowTask::with(['project.product','revision','drawingRegistration'])
             ->where('stage',ProjectWorkflowTask::STAGE_DRAWING)
             ->where('assigned_role','document_control')
-            ->oldest('available_at')->oldest('id');
+            ->latest('available_at')->latest('id');
         BusinessCategoryContext::apply($query);
         $breakdownProjectsQuery=DocumentProject::with(['product','revisions'=>fn($q)=>$q->latest('version_number')])
             ->whereHas('workflowTasks',fn($q)=>$q->where('stage',ProjectWorkflowTask::STAGE_BREAKDOWN)
@@ -45,7 +46,11 @@ class DocumentControlInboxController extends Controller
         $page=max(1,(int)$request->query('tasks_page',1));$perPage=20;
         $taskGroups=new LengthAwarePaginator($groups->forPage($page,$perPage)->values(),$groups->count(),$perPage,$page,['path'=>$request->url(),'pageName'=>'tasks_page','query'=>$request->query()]);
         $registrationsQuery=DocumentControlRegistration::with('workflowTask')
-            ->whereNotNull('document_project_id');
+            ->whereNotNull('document_project_id')
+            ->where(function ($query) {
+                $query->whereNull('workflow_task_id')
+                    ->orWhereHas('workflowTask', fn ($task) => $task->where('status', ProjectWorkflowTask::STATUS_COMPLETED));
+            });
         BusinessCategoryContext::apply($registrationsQuery);
         $registrations=$registrationsQuery
             ->when($search!=='',function($query) use($search){$query->where(function($q) use($search){$q->where('registration_no','like',"%{$search}%")->orWhere('customer','like',"%{$search}%")->orWhere('project','like',"%{$search}%")->orWhere('part_number','like',"%{$search}%")->orWhere('part_name','like',"%{$search}%");});})

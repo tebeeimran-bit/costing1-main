@@ -12,6 +12,7 @@
 </form>
 
 <input type="file" id="materialEditorFileInput" accept=".xls,.xlsx" hidden onchange="importMaterialEditor(this)">
+<input type="file" id="manualMaterialFileInput" accept=".xls,.xlsx" hidden data-import-url="{{ route('costing.material-excel.import-manual', absolute: false) }}" onchange="importManualMaterialExcel(this)">
 @if(isset($trackingRevision) && $trackingRevision)
 <input type="file" id="newPartRequestFileInput" accept=".xls,.xlsx" hidden data-import-url="{{ route('tracking-documents.import-new-part-request', ['revision' => $trackingRevision->id], absolute: false) }}" onchange="importNewPartRequest(this)">
 @endif

@@ -480,6 +480,75 @@
             }
         }
 
+        function chooseManualMaterialImport(mode) {
+            const input = document.getElementById('manualMaterialFileInput');
+            if (!input) return;
+            input.dataset.mode = mode === 'append' ? 'append' : 'replace';
+            input.click();
+        }
+
+        async function importManualMaterialExcel(input) {
+            const file = input?.files?.[0];
+            if (!file) return;
+            const mode = input.dataset.mode === 'append' ? 'append' : 'replace';
+            const formData = new FormData();
+            formData.append('material_file', file);
+            showAppLoading('Membaca Excel Material manual...');
+            try {
+                const response = await fetch(input.dataset.importUrl || '', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('#costingForm input[name="_token"]')?.value || '',
+                        'Accept': 'application/json',
+                    },
+                    body: formData,
+                });
+                const data = await response.json();
+                if (!response.ok || data.success === false) throw new Error(data.message || 'Import Excel manual gagal.');
+                hideAppLoading();
+                const action = mode === 'replace' ? 'mengganti seluruh isi' : 'menambahkan ke';
+                openAppConfirm(
+                    `${data.rows.length} baris ditemukan pada sheet ${data.sheet}. Lanjutkan untuk ${action} tabel Material?`,
+                    () => applyManualMaterialRows(data.rows, mode),
+                    { title: 'Konfirmasi Import Excel Manual', buttonLabel: mode === 'replace' ? 'Ganti & Simpan' : 'Tambah & Simpan', tone: 'primary' }
+                );
+            } catch (error) {
+                hideAppLoading();
+                openAppNotify(error.message || 'Import Excel manual gagal.', 'error');
+            } finally {
+                input.value = '';
+            }
+        }
+
+        async function applyManualMaterialRows(rows, mode) {
+            const tbody = document.getElementById('materialTableBody');
+            if (!tbody) return;
+            const beforeSnapshot = getMaterialStateSnapshot();
+            if (mode === 'replace') {
+                tbody.innerHTML = '';
+                rowCounter = 0;
+            }
+            rows.forEach(incoming => {
+                addMaterialRow();
+                const row = tbody.lastElementChild;
+                Object.entries(incoming).forEach(([field, value]) => {
+                    if (field === '__row_no') return;
+                    const control = row?.querySelector(`[name$="[${field}]"]`);
+                    if (control) control.value = value ?? '';
+                });
+                row.dataset.materialDirty = '1';
+                const calculatorControl = row.querySelector('.qty-req, .amount1, .currency');
+                if (calculatorControl) calculateRow(calculatorControl);
+            });
+            materialStructureDirty = true;
+            renumberRows();
+            calculateTableTotal();
+            refreshUnpricedRecap();
+            applyMaterialFilters();
+            pushMaterialHistoryAction({ type: 'snapshot', before: beforeSnapshot, after: getMaterialStateSnapshot() });
+            await persistImportedMaterialRows();
+        }
+
         async function importMaterialEditor(input) {
             const file = input?.files?.[0];
             if (!file) return;

@@ -62,6 +62,13 @@ class DocumentRevision extends Model
         'cogm_import_original_name',
         'cogm_import_file_path',
         'cogm_import_uploaded_at',
+        'manual_cogm_value',
+        'forecast',
+        'forecast_uom',
+        'forecast_basis',
+        'project_period',
+        'spot_order',
+        'project_bundle_key',
         'cogm_export_original_name',
         'cogm_export_file_path',
         'cogm_exported_at',
@@ -81,6 +88,9 @@ class DocumentRevision extends Model
         'new_part_request_exported_at' => 'datetime',
         'costing_edit_uploaded_at' => 'datetime',
         'cogm_import_uploaded_at' => 'datetime',
+        'manual_cogm_value' => 'decimal:4',
+        'forecast' => 'decimal:4',
+        'spot_order' => 'boolean',
         'cogm_exported_at' => 'datetime',
     ];
 

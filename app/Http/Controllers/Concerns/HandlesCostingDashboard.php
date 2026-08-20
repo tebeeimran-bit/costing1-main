@@ -49,11 +49,19 @@ HandlesCostingDashboard
             return $this->roleDashboard($request);
         }
 
-        $periods = CostingData::query()
+        $costingPeriods = CostingData::query()
             ->select('period')
             ->distinct()
-            ->orderBy('period', 'desc')
             ->pluck('period')
+            ->filter();
+        $projectPeriods = DocumentRevision::query()
+            ->whereNotNull('received_date')
+            ->pluck('received_date')
+            ->map(fn ($date) => \Carbon\Carbon::parse($date)->format('Y-m'));
+        $periods = $costingPeriods
+            ->merge($projectPeriods)
+            ->unique()
+            ->sortDesc()
             ->values();
 
         $requestedPeriod = trim((string) $request->get('period', ''));
@@ -333,7 +341,30 @@ HandlesCostingDashboard
         });
         $avgCostPerUnit = $totalQty > 0 ? $totalCost / $totalQty : 0;
 
-        // Status KPI must follow filtered costing rows so total matches actual data count.
+        /*
+         * Status project berasal dari revisi project terbaru, bukan dari costing_data.
+         * A00 diterbitkan sebelum Form Costing dibuat, sehingga memakai costing_data
+         * di sini membuat seluruh project A00 yang masih menunggu costing menghilang
+         * dari dashboard.
+         */
+        $latestDashboardRevisionIds = DocumentRevision::query()
+            ->selectRaw('MAX(id)')
+            ->whereNotNull('document_project_id')
+            ->groupBy('document_project_id');
+
+        $dashboardRevisionsQuery = DocumentRevision::query()
+            ->with('project.product')
+            ->whereIn('id', $latestDashboardRevisionIds)
+            ->whereHas('project', function ($projectQuery) use ($applyProjectFilters) {
+                $applyProjectFilters($projectQuery);
+            });
+
+        if ($periodStart && $periodEnd) {
+            $dashboardRevisionsQuery->whereBetween('received_date', [$periodStart, $periodEnd]);
+        }
+
+        $dashboardRevisions = $dashboardRevisionsQuery->get();
+
         $statusProjectCountsByLabel = [
             'A00 (RFQ/RFI)' => 0,
             'A04 (Canceled/Failed)' => 0,
@@ -345,6 +376,17 @@ HandlesCostingDashboard
             'A05 (Die Go)' => 0,
         ];
 
+        foreach ($dashboardRevisions as $revision) {
+            if (($revision->a05 ?? null) === 'ada') {
+                $statusProjectCountsByLabel['A05 (Die Go)'] += 1;
+            } elseif (($revision->a04 ?? null) === 'ada') {
+                $statusProjectCountsByLabel['A04 (Canceled/Failed)'] += 1;
+            } elseif (($revision->a00 ?? null) === 'ada') {
+                $statusProjectCountsByLabel['A00 (RFQ/RFI)'] += 1;
+            }
+        }
+
+        // Nilai potential tetap hanya dapat dihitung dari Form Costing yang tersedia.
         foreach ($costingData as $item) {
             $revision = $item->trackingRevision;
             if (!$revision) {
@@ -353,13 +395,10 @@ HandlesCostingDashboard
 
             $potentialCost = $resolvePotentialSales($item);
             if (($revision->a05 ?? null) === 'ada') {
-                $statusProjectCountsByLabel['A05 (Die Go)'] += 1;
                 $statusPotentialCostByLabel['A05 (Die Go)'] += $potentialCost;
             } elseif (($revision->a04 ?? null) === 'ada') {
-                $statusProjectCountsByLabel['A04 (Canceled/Failed)'] += 1;
                 $statusPotentialCostByLabel['A04 (Canceled/Failed)'] += $potentialCost;
             } elseif (($revision->a00 ?? null) === 'ada') {
-                $statusProjectCountsByLabel['A00 (RFQ/RFI)'] += 1;
                 $statusPotentialCostByLabel['A00 (RFQ/RFI)'] += $potentialCost;
             }
         }
@@ -372,7 +411,7 @@ HandlesCostingDashboard
         $costingProjectCount = (int) $costingData->count();
         $pendingFormCostingCount = max(0, (int) $trackingProjectCount - (int) $costingProjectCount);
         $totalProjectCount = $costingProjectCount;
-        $statusProjectTotal = $costingProjectCount;
+        $statusProjectTotal = $a00ProjectCount + $a04ProjectCount + $a05ProjectCount;
 
         $statusProjectData = collect([
             [

@@ -140,10 +140,10 @@ class MarketingCogmWorkflowTest extends TestCase
         $sheet = $book->getActiveSheet();
         $sheet->fromArray([
             ['TOTAL MATERIAL COST', 'Rp', 1065.95],
-            ['PROCESS COST', 'Rp', 545.48],
+            ['PROCESS COST', 0.1397, 'hour', 545.48, 0.25],
             ['DEPRESIASI TOOLING COST', 'Rp', 53.30],
             ['ADMINISTRATION COST', 'Rp', 10],
-            ['COGM', 'Rp', 1674.73],
+            ['COGM', 'Rp', 2039.43],
         ], null, 'A1');
         $path = tempnam(sys_get_temp_dir(), 'manual-cogm-').'.xlsx';
         (new Xlsx($book))->save($path);
@@ -169,10 +169,11 @@ class MarketingCogmWorkflowTest extends TestCase
             'pricing_status' => 'full_price',
             'manual_missing_price_count' => 0,
             'cogm_import_original_name' => 'COGM Manual.xlsx',
+            'manual_cogm_value' => 2039.43,
         ]);
         $this->assertDatabaseHas('cogm_submissions', [
             'id' => $submission->id,
-            'cogm_value' => 1674.73,
+            'cogm_value' => 2039.43,
             'update_count' => 2,
         ]);
     }

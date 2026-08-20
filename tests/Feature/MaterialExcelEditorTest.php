@@ -262,4 +262,35 @@ class MaterialExcelEditorTest extends TestCase
             if (is_file($path)) unlink($path);
         }
     }
+
+    public function test_manual_material_excel_accepts_flexible_headers_without_export_template(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet()->setTitle('My Materials');
+        $sheet->fromArray(['Material Number', 'Description', 'Qty', 'UOM', 'Amount 1', 'Unit Price (Basis)', 'Currency', 'Qty MOQ', 'C/N', 'Supplier', 'Import Tax (%)'], null, 'B4');
+        $sheet->fromArray(['MAN-001', 'Manual Wire', 12.5, 'pcs', 1500, '100', 'idr', 500, 'c', 'Supplier Manual', 7.5], null, 'B5');
+        $path = tempnam(sys_get_temp_dir(), 'manual-material-').'.xlsx';
+        (new Xlsx($spreadsheet))->save($path);
+
+        try {
+            $this->actingAs($admin)->post(route('costing.material-excel.import-manual'), [
+                'material_file' => new UploadedFile($path, 'manual.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+            ])->assertOk()
+                ->assertJsonPath('sheet', 'My Materials')
+                ->assertJsonPath('rows.0.part_no', 'MAN-001')
+                ->assertJsonPath('rows.0.part_name', 'Manual Wire')
+                ->assertJsonPath('rows.0.qty_req', '12.5')
+                ->assertJsonPath('rows.0.unit', 'PCS')
+                ->assertJsonPath('rows.0.amount1', '1500')
+                ->assertJsonPath('rows.0.unit_price_basis', '100')
+                ->assertJsonPath('rows.0.supplier', 'Supplier Manual')
+                ->assertJsonPath('rows.0.currency', 'IDR')
+                ->assertJsonPath('rows.0.qty_moq', '500')
+                ->assertJsonPath('rows.0.cn_type', 'C')
+                ->assertJsonPath('rows.0.import_tax', '7.5');
+        } finally {
+            if (is_file($path)) unlink($path);
+        }
+    }
 }

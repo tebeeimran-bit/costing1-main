@@ -38,7 +38,7 @@ class TrackingDocumentController extends Controller
 
     public function storeReceipt(StoreDocumentReceiptRequest $request, TrackingDocumentProjectService $projectService)
     {
-        $projectService->createReceipt($request->validated(), $request);
+        $projectService->createReceipts($request->validated(), $request);
 
         if ($request->boolean('embedded')) {
             return view('tracking-documents.created');
@@ -201,11 +201,43 @@ class TrackingDocumentController extends Controller
 
     public function updateProjectInfo(UpdateTrackingProjectInfoRequest $request, DocumentProject $project, TrackingDocumentProjectService $projectService)
     {
+        $previousRevision = $project->revisions()->orderByDesc('version_number')->orderByDesc('id')->first();
+        $previousPicNames = collect([$previousRevision?->pic_engineering, $previousRevision?->pic_marketing]);
         $result = $projectService->updateProjectInfo($project, $request->validated(), $request);
 
         if (!($result['updated'] ?? false) && ($result['reason'] ?? '') === 'duplicate') {
             return redirect()->back()->with('warning', 'Informasi project sama persis dengan project lain yang sudah ada.');
         }
+
+        $project->refresh();
+        $latestRevision = $project->revisions()->orderByDesc('version_number')->orderByDesc('id')->first();
+        $picNames = $previousPicNames
+            ->merge([$latestRevision?->pic_engineering, $latestRevision?->pic_marketing])
+            ->filter()
+            ->map(fn ($name) => mb_strtolower(trim((string) $name)))
+            ->unique()
+            ->values();
+        $recipientIds = $project->workflowTasks()->whereNotNull('assigned_user_id')->pluck('assigned_user_id')
+            ->push($project->a00Item?->form?->created_by)
+            ->push($request->user()->id)
+            ->filter()
+            ->unique();
+        $recipients = User::query()
+            ->where(function ($query) use ($recipientIds, $picNames) {
+                $query->whereIn('id', $recipientIds);
+                foreach ($picNames as $picName) {
+                    $query->orWhereRaw('LOWER(TRIM(name)) = ?', [$picName]);
+                }
+            })
+            ->get()
+            ->unique('id');
+        $recipients->each->notify(new CostingGroupChanged([
+            'event' => 'project_information_updated',
+            'title' => 'Informasi Project Diperbarui',
+            'message' => ($project->part_number ?: $project->part_name).' diperbarui oleh '.$request->user()->name.'. Data terkait telah disinkronkan.',
+            'project_id' => $project->id,
+            'url' => route('project', absolute: false),
+        ]));
 
         return redirect()->back()->with('success', 'Informasi project berhasil diperbarui.');
     }

@@ -7,10 +7,14 @@ use App\Models\CostingData;
 use App\Models\Customer;
 use App\Models\DocumentProject;
 use App\Models\DocumentRevision;
+use App\Models\DocumentControlRegistration;
 use App\Models\Product;
+use App\Models\ProjectA00Form;
+use App\Models\ProjectA00Item;
 use App\Models\RolePermission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
@@ -135,6 +139,105 @@ class ExampleTest extends TestCase
                     && (int) $model['a05_count'] === 1
                     && (float) $model['a05_potential'] > 0;
             });
+    }
+
+    public function test_dashboard_counts_a00_project_before_costing_form_exists(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+        $project = DocumentProject::create([
+            'customer' => 'Toyota Astra Motor, PT',
+            'model' => '688D',
+            'part_number' => 'TBD',
+            'part_name' => 'SUB WIRING HARNESS',
+            'project_key' => 'dashboard-a00-without-costing',
+        ]);
+
+        DocumentRevision::create([
+            'document_project_id' => $project->id,
+            'version_number' => 1,
+            'received_date' => '2026-08-19',
+            'pic_engineering' => 'RAMDAN',
+            'status' => DocumentRevision::STATUS_A00_ISSUED,
+            'a00' => 'ada',
+            'a00_received_date' => '2026-08-19',
+            'partlist_original_name' => '',
+            'partlist_file_path' => '',
+            'umh_original_name' => '',
+            'umh_file_path' => '',
+        ]);
+
+        $otherCustomer = Customer::create(['code' => 'OTHER', 'name' => 'Other Customer']);
+        $otherProduct = Product::create(['code' => 'OTHER', 'name' => 'Other Product']);
+        CostingData::create([
+            'customer_id' => $otherCustomer->id,
+            'product_id' => $otherProduct->id,
+            'period' => '2026-09',
+            'wo_number' => 'OTHER-PERIOD',
+            'model' => 'OTHER',
+            'assy_no' => 'OTHER',
+            'assy_name' => 'OTHER PERIOD',
+        ]);
+
+        $this->actingAs($user)->get('/?period=2026-08')
+            ->assertOk()
+            ->assertViewHas('trackingProjectCount', 1)
+            ->assertViewHas('costingProjectCount', 0)
+            ->assertViewHas('a00ProjectCount', 1)
+            ->assertViewHas('statusProjectTotal', 1);
+    }
+
+    public function test_edit_project_syncs_related_data_and_sends_notifications(): void
+    {
+        Notification::fake();
+        $admin = User::factory()->create(['name' => 'ADMIN EDITOR', 'role' => 'admin']);
+        $oldPic = User::factory()->create(['name' => 'OLD ENGINEER', 'role' => 'engineering']);
+        $newPic = User::factory()->create(['name' => 'NEW MARKETING', 'role' => 'marketing']);
+        $customer = Customer::create(['code' => 'SYNC', 'name' => 'Customer Sinkron']);
+        $product = Product::create(['code' => 'OLD-PRODUCT', 'name' => 'Old Product', 'line' => 'OLD CATEGORY']);
+        $newProduct = Product::create(['code' => 'NEW-PRODUCT', 'name' => 'New Product', 'line' => 'NEW CATEGORY']);
+        $project = DocumentProject::create([
+            'product_id' => $product->id, 'customer' => $customer->name, 'model' => 'OLD MODEL',
+            'part_number' => 'OLD-001', 'part_name' => 'OLD ASSY', 'project_key' => 'sync-old-project',
+        ]);
+        $revision = DocumentRevision::create([
+            'document_project_id' => $project->id, 'version_number' => 1, 'received_date' => '2026-08-19',
+            'pic_engineering' => $oldPic->name, 'pic_marketing' => 'OLD MARKETING',
+            'status' => DocumentRevision::STATUS_A00_ISSUED, 'a00' => 'ada',
+            'partlist_original_name' => '', 'partlist_file_path' => '', 'umh_original_name' => '', 'umh_file_path' => '',
+        ]);
+        $a00 = ProjectA00Form::create([
+            'document_project_id' => $project->id, 'document_revision_id' => $revision->id,
+            'document_number' => 'SYNC/A00/001', 'document_date' => '2026-08-19',
+            'customer' => $customer->name, 'model' => 'OLD MODEL', 'assy_name' => 'OLD ASSY',
+            'assy_number' => 'OLD-001', 'created_by' => $admin->id,
+        ]);
+        ProjectA00Item::create([
+            'project_a00_form_id' => $a00->id, 'document_project_id' => $project->id,
+            'document_revision_id' => $revision->id, 'line_number' => 1,
+            'model' => 'OLD MODEL', 'assy_number' => 'OLD-001', 'assy_name' => 'OLD ASSY',
+        ]);
+        DocumentControlRegistration::create([
+            'document_revision_id' => $revision->id, 'customer' => $customer->name,
+            'project' => 'OLD MODEL', 'part_number' => 'OLD-001', 'part_name' => 'OLD ASSY',
+        ]);
+        CostingData::create([
+            'product_id' => $product->id, 'customer_id' => $customer->id,
+            'tracking_revision_id' => $revision->id, 'period' => '2026-08',
+            'wo_number' => 'SYNC-001', 'model' => 'OLD MODEL', 'assy_no' => 'OLD-001', 'assy_name' => 'OLD ASSY',
+        ]);
+
+        $this->actingAs($admin)->post(route('tracking-documents.update-project-info', $project), [
+            'product_id' => $newProduct->id, 'customer_id' => $customer->id,
+            'model' => 'NEW MODEL', 'part_number' => 'NEW-001', 'part_name' => 'NEW ASSY',
+            'received_date' => '2026-08-20', 'pic_engineering' => $oldPic->name,
+            'pic_marketing' => $newPic->name, 'forecast_uom' => 'PCE', 'forecast_basis' => 'per_month',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('project_a00_items', ['document_project_id' => $project->id, 'model' => 'NEW MODEL', 'assy_number' => 'NEW-001', 'assy_name' => 'NEW ASSY']);
+        $this->assertDatabaseHas('project_a00_forms', ['id' => $a00->id, 'model' => 'NEW MODEL', 'assy_number' => 'NEW-001', 'assy_name' => 'NEW ASSY']);
+        $this->assertDatabaseHas('costing_data', ['tracking_revision_id' => $revision->id, 'model' => 'NEW MODEL', 'assy_no' => 'NEW-001', 'assy_name' => 'NEW ASSY']);
+        $this->assertDatabaseHas('document_control_registrations', ['document_revision_id' => $revision->id, 'project' => 'NEW MODEL', 'part_number' => 'NEW-001']);
+        Notification::assertSentTo([$admin, $oldPic, $newPic], \App\Notifications\CostingGroupChanged::class);
     }
 
     public function test_marketing_dashboard_only_shows_projects_assigned_to_the_logged_in_pic(): void

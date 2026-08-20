@@ -182,24 +182,22 @@ class ProjectA00Controller extends Controller
                 });
                 DocumentControlRegistration::where('document_revision_id',$entry['revision']->id)->update(['a00'=>'ada']);
 
-                if (count($created) > 1) {
-                    ProjectWorkflowTask::firstOrCreate([
-                        'document_revision_id' => $entry['revision']->id,
-                        'stage' => ProjectWorkflowTask::STAGE_BREAKDOWN,
-                    ], [
-                        'document_project_id' => $entry['project']->id,
-                        'assigned_role' => 'admin_costing',
-                        'status' => ProjectWorkflowTask::STATUS_PENDING,
-                        'available_at' => now(),
-                        'notes' => 'A00 Gabung dapat langsung diproses di Breakdown tanpa menunggu distribusi Drawing.',
-                        'metadata' => [
-                            'source' => 'a00_group_direct',
-                            'a00_form_id' => $form->id,
-                            'a00_number' => $form->document_number,
-                            'drawing_optional' => true,
-                        ],
-                    ]);
-                }
+                ProjectWorkflowTask::firstOrCreate([
+                    'document_revision_id' => $entry['revision']->id,
+                    'stage' => ProjectWorkflowTask::STAGE_BREAKDOWN,
+                ], [
+                    'document_project_id' => $entry['project']->id,
+                    'assigned_role' => 'admin_costing',
+                    'status' => ProjectWorkflowTask::STATUS_PENDING,
+                    'available_at' => now(),
+                    'notes' => 'Project dari A00 dapat langsung diproses di Breakdown tanpa menunggu Drawing.',
+                    'metadata' => [
+                        'source' => 'a00_direct',
+                        'a00_form_id' => $form->id,
+                        'a00_number' => $form->document_number,
+                        'drawing_optional' => true,
+                    ],
+                ]);
             }
             app(CostingGroupService::class)->syncFromA00($form, $request->user()->id);
             return $form;
